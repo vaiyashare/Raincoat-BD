@@ -1,0 +1,90 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net default catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Reusable, hardened validation checks
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-+ ]+$');
+    }
+
+    function isNumeric(val) {
+      return val is int || val is float;
+    }
+
+    function isValidInventory(data) {
+      return data.keys().hasAll(['id', 'color', 'size', 'quantity'])
+        && data.id is string && data.id.size() <= 128
+        && data.color is string && data.color.size() <= 30
+        && data.size is string && data.size.size() <= 10
+        && isNumeric(data.quantity);
+    }
+
+    function isValidOrder(data) {
+      return data.keys().hasAll(['id', 'name', 'village', 'phone', 'size', 'color', 'weight', 'heightFeet', 'heightInches', 'price', 'status', 'createdAt'])
+        && data.id is string && data.id.size() <= 128
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.phone is string && data.phone.size() >= 11 && data.phone.size() <= 15
+        && data.village is string && data.village.size() > 0 && data.village.size() <= 300
+        && data.size is string && data.size.size() <= 10
+        && data.color is string && data.color.size() <= 30
+        && isNumeric(data.weight) && data.weight > 0 && data.weight < 300
+        && isNumeric(data.heightFeet) && data.heightFeet >= 0 && data.heightFeet <= 10
+        && isNumeric(data.heightInches) && data.heightInches >= 0 && data.heightInches < 12
+        && isNumeric(data.price) && data.price >= 0 && data.price <= 10000
+        && data.status is string && (
+             data.status == 'Pending' || 
+             data.status == 'Shipped' || 
+             data.status == 'Delivered' || 
+             data.status == 'Cancelled' || 
+             data.status == 'Canceled' || 
+             data.status == 'Canceled Fake Order'
+           )
+        && data.createdAt is string && data.createdAt.size() <= 100;
+    }
+
+    function isValidIncompleteOrder(data) {
+      return data.keys().hasAll(['id', 'createdAt', 'lastUpdatedAt', 'fieldsFilledCount'])
+        && data.id is string && data.id.size() <= 128
+        && data.createdAt is string && data.createdAt.size() <= 100
+        && data.lastUpdatedAt is string && data.lastUpdatedAt.size() <= 100
+        && isNumeric(data.fieldsFilledCount) && data.fieldsFilledCount >= 0;
+    }
+
+    // Connection validation target
+    match /test-connection-doc/{testId} {
+      allow read, write: if true;
+    }
+
+    // Orders Collection Rules
+    match /orders/{orderId} {
+      // Allow unauthenticated clients to read/list orders to display status/history
+      allow read: if true;
+      // Clients can create orders during checkout, valid IDs only
+      allow create: if isValidId(orderId) && isValidOrder(request.resource.data);
+      // Full update and delete access for administration/testing
+      allow update, delete: if true;
+    }
+
+    // Incomplete Checkout Drafts Collection Rules
+    match /incompleteOrders/{incompleteId} {
+      // Allow unauthenticated clients/admin to read/list drafts
+      allow read: if true;
+      // Clients can create or update drafts during modern form steps
+      allow create, update: if isValidId(incompleteId) && isValidIncompleteOrder(request.resource.data);
+      // Delete draft upon checkout completion or admin action
+      allow delete: if true;
+    }
+
+    // Inventory Collection Rules
+    match /inventory/{itemId} {
+      allow read: if true;
+      allow create, update: if isValidId(itemId) && isValidInventory(request.resource.data);
+      allow delete: if true;
+    }
+  }
+}

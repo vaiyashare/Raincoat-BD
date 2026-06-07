@@ -1,0 +1,74 @@
+{
+  "entities": {
+    "Order": {
+      "title": "Raincoat Order",
+      "description": "An order placed by a customer on the landing page",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Global unique ID of the order" },
+        "name": { "type": "string", "description": "Recipient full name" },
+        "village": { "type": "string", "description": "Address details" },
+        "policeStation": { "type": "string", "description": "Thana/Police station name" },
+        "district": { "type": "string", "description": "District name" },
+        "phone": { "type": "string", "description": "Mobile number" },
+        "size": { "type": "string", "description": "Raincoat Size" },
+        "color": { "type": "string", "description": "Raincoat Color" },
+        "weight": { "type": "number", "description": "Body weight in kg" },
+        "heightFeet": { "type": "number", "description": "Height feet part" },
+        "heightInches": { "type": "number", "description": "Height inches part" },
+        "price": { "type": "number", "description": "Total final cash amount" },
+        "status": { "type": "string", "enum": ["Pending", "Shipped", "Delivered", "Cancelled"], "description": "Order shipment processing status" },
+        "createdAt": { "type": "string", "description": "Creation timestamp string" }
+      },
+      "required": ["id", "name", "village", "phone", "size", "color", "weight", "heightFeet", "heightInches", "price", "status", "createdAt"]
+    },
+    "IncompleteOrder": {
+      "title": "Incomplete Order",
+      "description": "An incomplete checkout form draft session",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Session ID" },
+        "name": { "type": "string", "description": "Name prefix typed" },
+        "phone": { "type": "string", "description": "Incomplete mobile format" },
+        "village": { "type": "string", "description": "Incomplete location typed" },
+        "size": { "type": "string", "description": "Selected sizing" },
+        "color": { "type": "string", "description": "Selected color" },
+        "weight": { "type": "number", "description": "Draft body weight in kg" },
+        "heightFeet": { "type": "number", "description": "Draft height feet" },
+        "heightInches": { "type": "number", "description": "Draft height inches" },
+        "price": { "type": "number", "description": "Computed final price tag" },
+        "createdAt": { "type": "string", "description": "Initial draft date" },
+        "lastUpdatedAt": { "type": "string", "description": "Last typist update" },
+        "fieldsFilledCount": { "type": "number", "description": "Step fill counter" }
+      },
+      "required": ["id", "createdAt", "lastUpdatedAt", "fieldsFilledCount"]
+    },
+    "Inventory": {
+      "title": "Inventory Item",
+      "description": "Stock inventory levels for product color and size combinations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Variant combination ID" },
+        "color": { "type": "string", "description": "Product color variant" },
+        "size": { "type": "string", "description": "Product size variant" },
+        "quantity": { "type": "number", "description": "Quantity in stock" },
+        "lowStockAlert": { "type": "number", "description": "Alert limit threshold" }
+      },
+      "required": ["id", "color", "size", "quantity"]
+    }
+  },
+  "firestore": {
+    "orders/{orderId}": {
+      "schema": "Order",
+      "description": "Raincoat Orders Collection"
+    },
+    "incompleteOrders/{incompleteId}": {
+      "schema": "IncompleteOrder",
+      "description": "Incomplete Checkout Form Drafts Collection"
+    },
+    "inventory/{itemId}": {
+      "schema": "Inventory",
+      "description": "Variant stock levels"
+    }
+  }
+}

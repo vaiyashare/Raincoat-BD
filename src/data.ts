@@ -1,0 +1,177 @@
+import { CustomerReview, SizeRecommendation } from './types';
+
+export const SIZE_RECOMMENDATIONS: SizeRecommendation[] = [
+  {
+    size: 'XL',
+    price: 990,
+    weightRange: '৪৫ - ৬০ কেজি',
+    heightRange: '৫’০” - ৫’৫”',
+  },
+  {
+    size: 'XXL',
+    price: 990,
+    weightRange: '৬০ - ৮০ কেজি',
+    heightRange: '৫’৪” - ৫’৯”',
+  },
+  {
+    size: '3XL',
+    price: 1090,
+    weightRange: '৮০ - ৯৫ কেজি',
+    heightRange: '৫’৭” - ৬’০”',
+  },
+  {
+    size: '4XL',
+    price: 1090,
+    weightRange: '৯৫ - ১১০ কেজি',
+    heightRange: '৫’৯” - ৬’৪”',
+  },
+];
+
+export const DETAILED_SIZE_CHART = [
+  {
+    parameter: 'জামা (Shirt) লম্বা',
+    xl: '২৮.৫ ইঞ্চি',
+    xxl: '২৯.০ ইঞ্চি',
+    '3xl': '৩০.৫ ইঞ্চি',
+    '4xl': '৩১.০ ইঞ্চি',
+  },
+  {
+    parameter: 'জামা (Shirt) চওড়া / বুক',
+    xl: '৪৭ ইঞ্চি',
+    xxl: '৪৯ ইঞ্চি',
+    '3xl': '৫১ ইঞ্চি',
+    '4xl': '৫৩ ইঞ্চি',
+  },
+  {
+    parameter: 'হাতের কব্জি (টানলে)',
+    xl: '২২.৫ ইঞ্চি',
+    xxl: '২৪.৫ ইঞ্চি',
+    '3xl': '২৬.৫ ইঞ্চি',
+    '4xl': '২৮.৫ ইঞ্চি',
+  },
+  {
+    parameter: 'প্যান্ট লম্বা',
+    xl: '৩৭ ইঞ্চি',
+    xxl: '৩৯ ইঞ্চি',
+    '3xl': '৪১ ইঞ্চি',
+    '4xl': '৪২ ইঞ্চি',
+  },
+  {
+    parameter: 'প্যান্টের হাই (Crotch)',
+    xl: '১৩.৫ ইঞ্চি',
+    xxl: '১৪.৫ ইঞ্চি',
+    '3xl': '১৬.৫ ইঞ্চি',
+    '4xl': '১৭.৫ ইঞ্চি',
+  },
+  {
+    parameter: 'দাম / Price',
+    xl: '৯৯০/- TK',
+    xxl: '৯৯০/- TK',
+    '3xl': '১০৯০/- TK',
+    '4xl': '১০৯০/- TK',
+  },
+  {
+    parameter: 'উপযুক্ত ওজন (Weight)',
+    xl: '৪৫ - ৬০ কেজি',
+    xxl: '৬০ - ৮০ কেজি',
+    '3xl': '৮০ - ৯৫ কেজি',
+    '4xl': '৯৫ - ১১০ কেজি',
+  }
+];
+
+export const CUSTOMER_REVIEWS: CustomerReview[] = [
+  {
+    id: 'rev-1',
+    customerName: 'এম.ডি শফিকুল',
+    phoneNumberMasked: '+880 1750-5478**',
+    verifiedPurchase: true,
+    avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=120&h=120&q=80',
+    reviewDate: 'আজ দুপুর ১২:৪০',
+    rating: 5,
+    messages: [
+      { id: '1', sender: 'client', text: 'আপনার কাছে বড় রেনকোট আছে?', time: '06:59 PM' },
+      { id: '2', sender: 'admin', text: 'কতো বড় লাগবে ভাইয়া?', time: '06:59 PM' },
+      { id: '3', sender: 'client', text: 'আপনার কাছে জেনেন কোডটা নিয়েছি ওটা অনেক ভালো ❤️', time: '06:59 PM' },
+      { id: '4', sender: 'client', text: 'এ্যাক্সেল বড় না ডাবল এ্যাক্সেল বড়?', time: '06:59 PM' },
+      { id: '5', sender: 'admin', text: 'আমাদের XXL বড় কিন্তু এই টার লাস্ট সাইজ ৮০ কেজি পর্যন্ত ঠিকঠাক হবে।', time: '07:00 PM' },
+    ],
+  },
+  {
+    id: 'rev-2',
+    customerName: 'রাজীব দে',
+    phoneNumberMasked: '+880 1723-0606**',
+    verifiedPurchase: true,
+    avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=120&h=120&q=80',
+    reviewDate: 'আজ সকাল ১০:১৬',
+    rating: 5,
+    messages: [
+      { id: '1', sender: 'client', text: 'ভাইয়া আরেকটা রেইনকোট লাগবে।', time: '06:55 AM' },
+      { id: '2', sender: 'admin', text: 'জি অবশ্যই ভাইয়া। আপনার ওজন ও উচ্চতা কত?', time: '09:36 AM' },
+      { id: '3', sender: 'client', text: '৫ ফিট ৭ ইঞ্চি, ওজন ৬০ কেজি।', time: '09:40 AM' },
+      { id: '4', sender: 'admin', text: 'জি তাহলে আমাদের XL সাইজের টা একদম পারফেক্ট লাগবে ভাইয়া।', time: '09:41 AM' },
+    ],
+  },
+  {
+    id: 'rev-3',
+    customerName: 'সাঈদ আহমেদ',
+    phoneNumberMasked: '+880 1737-5701**',
+    verifiedPurchase: true,
+    avatarUrl: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=120&h=120&q=80',
+    reviewDate: 'গতকাল বিকাল ৪:৪০',
+    rating: 5,
+    messages: [
+      { id: '1', sender: 'admin', text: 'পরের ৩ দিনের মধ্যে পেয়ে যাবেন ইনশাআল্লাহ। ডেলিভারি ম্যান কল দিবে। একটু অপেক্ষা করুন।', time: '12:03 AM' },
+      { id: '2', sender: 'client', text: 'Ok ধন্যবাদ ভাইয়া।', time: '12:03 AM' },
+      { id: '3', sender: 'client', text: 'ওকে ধন্যবাদ গত কালকে হাতে পেয়েছি আলহামদুলিল্লাহ, তবে কম দামের ভিতরে মোটামুটি চলে, আরো একটা লাগবে, আগের ঠিকানায় পাঠিয়ে দিলেও হবে, সাইজ XXL ওজন ৮০ কেজি', time: '04:40 PM' },
+      { id: '4', sender: 'admin', text: 'আলহামদুলিল্লাহ ভাইয়া। ঠিক আছে কনফার্ম করলাম এই টা ৮০ কেজির জন্য XXL সাইজ। আগের ঠিকানায় পাঠিয়ে দিব।', time: '04:42 PM' },
+    ],
+  },
+  {
+    id: 'rev-4',
+    customerName: 'জসিম খান',
+    phoneNumberMasked: '+880 1965-8923**',
+    verifiedPurchase: true,
+    avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=120&h=120&q=80',
+    reviewDate: '৮ মে ২০২৬',
+    rating: 5,
+    messages: [
+      { id: '1', sender: 'admin', text: 'পরের ৩ দিনে পাবেন। ডেলিভারি ম্যান কল দিবে। অপেক্ষা করুন।', time: '10:33 PM' },
+      { id: '2', sender: 'client', text: 'Okay apna ke dhanyavad ভাইয়া।', time: '10:35 PM' },
+      { id: '3', sender: 'admin', text: 'জি ভাইয়া বলুন কীভাবে সাহায্য করতে পারি?', time: '10:15 AM' },
+      { id: '4', sender: 'client', text: 'Amr Aro 3pics rain coat lagbe', time: '10:15 AM' },
+      { id: '5', sender: 'admin', text: 'শোর ভাইয়া, সাইজ কত লাগবে?', time: '10:16 AM' },
+      { id: '6', sender: 'client', text: 'Height 5/7 and weight 65 kg', time: '10:22 AM' },
+      { id: '7', sender: 'admin', text: 'এই সাইজের ৩ টা লাগবেন তাহলে?', time: '10:27 AM' },
+      { id: '8', sender: 'client', text: 'Hum ৩ টাই সেম সাইজ।', time: '10:27 AM' },
+    ],
+  },
+  {
+    id: 'rev-5',
+    customerName: 'মোস্তফা মোল্লা',
+    phoneNumberMasked: '+880 1985-9355**',
+    verifiedPurchase: true,
+    avatarUrl: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=120&h=120&q=80',
+    reviewDate: '৪ মে ২০২৬',
+    rating: 5,
+    messages: [
+      { id: '1', sender: 'admin', text: 'হাতের কব্জিতে রবার ও প্যান্টের ফিনিশিং এর ছবি পাঠালাম ভাইয়া।', time: '08:26 PM' },
+      { id: '2', sender: 'admin', text: 'এই রকমই ইলাস্টিক হাত থাকবে যাতে ফাক দিয়ে পানি ঢুকতে না পারে।', time: '11:25 AM' },
+      { id: '3', sender: 'client', text: 'ওকে দেখে খুব ভালো লাগলো।', time: '11:27 AM' },
+      { id: '4', sender: 'client', text: 'আলহামদুলিল্লাহ! রেইনকোট হাতে পেয়েছি। দাম কমে অনেক ভালো রেনকোট দিয়েছেন। পানি ঢুকে না একটুও। ❤️', time: '11:16 AM' },
+    ],
+  },
+  {
+    id: 'rev-6',
+    customerName: 'ফারুক হোসেন',
+    phoneNumberMasked: '+880 1812-3214**',
+    verifiedPurchase: true,
+    avatarUrl: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=120&h=120&q=80',
+    reviewDate: '২ দিন আগে',
+    rating: 4,
+    messages: [
+      { id: '1', sender: 'client', text: 'ভাই রেইনকোট পেয়েছি কাপড় অনেক সফট এবং মজবুত', time: '02:15 PM' },
+      { id: '2', sender: 'admin', text: 'পছন্দ হয়েছে শুনে আনন্দিত ভাইয়া। সাইজ ঠিক আছে তো?', time: '02:16 PM' },
+      { id: '3', sender: 'client', text: 'হ্যাঁ সাইজ একবারে পারফেক্ট হয়েছে, শুধু চেইনের লকটা একটু শক্ত তা ছাড়া বাকি সব ১০০ তে ১০০', time: '02:20 PM' },
+    ],
+  },
+];
