@@ -65,8 +65,22 @@ export interface IncompleteOrder {
 
 export interface InventoryItem {
   id: string; // e.g. "Black-XL", "Navy Blue-XXL"
-  color: ProductColor;
-  size: Size;
+  color: string;
+  size: string;
   quantity: number;
   lowStockAlert?: number;
+  productId?: string;
+  productTitle?: string;
+}
+
+export interface MediaItem {
+  id: string;
+  url: string; // Base64 data string or direct web link address
+  title: string;
+  tag: string;
+  description?: string;
+  orderIndex: number;
+  createdAt: string;
+  page?: 'raincoat' | 'bikecover';
+  bgUrl?: string; // Optional background image URL if set
 }

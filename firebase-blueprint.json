@@ -55,6 +55,21 @@
         "lowStockAlert": { "type": "number", "description": "Alert limit threshold" }
       },
       "required": ["id", "color", "size", "quantity"]
+    },
+    "Media": {
+      "title": "Media Item",
+      "description": "An uploaded image file or remote image url with metadata stored for custom landing page carousel",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Global unique id for media reference" },
+        "url": { "type": "string", "description": "Base64 encoded string data or remote https image web link address" },
+        "title": { "type": "string", "description": "Brief header title of slide" },
+        "tag": { "type": "string", "description": "Badge sticker text" },
+        "description": { "type": "string", "description": "Description of the slide product feature overlay" },
+        "orderIndex": { "type": "number", "description": "Sort rendering index tracker" },
+        "createdAt": { "type": "string", "description": "Datetime marker string" }
+      },
+      "required": ["id", "url", "title", "tag", "orderIndex"]
     }
   },
   "firestore": {
@@ -69,6 +84,10 @@
     "inventory/{itemId}": {
       "schema": "Inventory",
       "description": "Variant stock levels"
+    },
+    "media/{mediaId}": {
+      "schema": "Media",
+      "description": "Customized user slideshow carousel media items collection"
     }
   }
 }

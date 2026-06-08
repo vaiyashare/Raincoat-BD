@@ -102,6 +102,7 @@ export default function ReviewsList() {
                     alt={review.customerName}
                     className="w-7 h-7 sm:w-11 sm:h-11 rounded-full object-cover border border-slate-700 shrink-0"
                     referrerPolicy="no-referrer"
+                    loading="lazy"
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
@@ -159,6 +160,7 @@ export default function ReviewsList() {
                     alt={selectedReview.customerName}
                     className="w-7 h-7 sm:w-10 sm:h-10 rounded-full object-cover border border-emerald-600 shrink-0"
                     referrerPolicy="no-referrer"
+                    loading="lazy"
                   />
                   <div className="w-2 h-2 sm:w-3 sm:h-3 bg-emerald-400 border-2 border-[#075e54] rounded-full absolute bottom-0 right-0 animate-ping"></div>
                   <div className="w-2 h-2 sm:w-3 sm:h-3 bg-emerald-500 border-2 border-[#075e54] rounded-full absolute bottom-0 right-0"></div>

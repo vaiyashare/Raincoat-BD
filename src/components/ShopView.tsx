@@ -14,6 +14,8 @@ interface Product {
   category: string;
   sizes: string[];
   colors: string[];
+  images?: string[];
+  addDeliveryCharge?: boolean;
 }
 
 interface ShopViewProps {
@@ -23,9 +25,7 @@ interface ShopViewProps {
 export default function ShopView({ onOrderSuccess }: ShopViewProps) {
   // Load products dynamically
   const [products] = useState<Product[]>(() => {
-    const list = localStorage.getItem('raincoat_shop_products');
-    if (list) return JSON.parse(list);
-    return [
+    const fullDefaults = [
       {
         id: 'p-1',
         title: 'প্রিমিয়াম ওয়াটারপ্রুফ রেইনকোট জ্যাকেট ও প্যান্ট সেট (Navy Blue & Black)',
@@ -55,8 +55,133 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
         category: 'অনুষঙ্গ',
         sizes: ['Universal'],
         colors: ['Black', 'Blue']
+      },
+      {
+        id: 'p-4',
+        title: 'মোটরসাইকেল হ্যান্ডেলবার ওয়াটারপ্রুফ হ্যান্ড গ্লাভস',
+        description: 'বর্ষায় আর কনকনে ঠান্ডায় বাইক চালানোর জন্য শতভাগ ওয়াটারপ্রুফ ও আরামদায়ক হ্যান্ডগ্লাভস সেট। গরম ও শুষ্ক গ্রিপ।',
+        price: 350,
+        image: 'https://images.unsplash.com/photo-1516257984-b1b4d707412e?auto=format&fit=crop&q=80&w=600',
+        category: 'বাইকিং গিয়ার',
+        sizes: ['M', 'L'],
+        colors: ['Black', 'Red']
+      },
+      {
+        id: 'p-5',
+        title: 'প্রিমিয়াম সেলফ-লকিং ওয়াটারপ্রুফ বাইক মোবাইল হোল্ডার',
+        description: 'যেকোনো সাইকেল বা মোটরসাইকেল হ্যান্ডেলে সহজে ফিট করা যায়। সম্পূর্ণ ওয়াটারপ্রুফ কভার সহ টাচ স্ক্রিন সাপোর্টেড।',
+        price: 590,
+        image: 'https://images.unsplash.com/photo-1584438784894-089d6a128f3e?auto=format&fit=crop&q=80&w=600',
+        category: 'বাইকিং গিয়ার',
+        sizes: ['L', 'XL'],
+        colors: ['Midnight Black']
+      },
+      {
+        id: 'p-6',
+        title: 'ব্যাকপ্যাক ওয়াটারপ্রুফ আল্ট্রা-শিল্ড রেইন কাভার',
+        description: '৩৫ থেকে ৪৫ লিটার সাইজের যেকোনো স্কুল, college বা ট্রাভেল ব্যাগ সম্পূর্ণ পানি ও ধুলোবালি থেকে সুরক্ষিত রাখার কাভার।',
+        price: 190,
+        image: 'https://images.unsplash.com/photo-1622560480654-d96214fdc887?auto=format&fit=crop&q=80&w=600',
+        category: 'অনুষঙ্গ',
+        sizes: ['Standard'],
+        colors: ['Neon Yellow', 'Black']
+      },
+      {
+        id: 'p-7',
+        title: 'স্পোর্টস আল্ট্রা-লাইট ব্রিদাবল উইন্ডব্রেকার রেইন জ্যাকেট',
+        description: 'রানিং, সাইক্লিং এবং ট্র্যাকিংয়ের জন্য হালকা ও আরামদায়ক রেইনপ্রুফ জ্যাকেট। সহজেই ভাজ করে পকেটে রাখা যায়।',
+        price: 790,
+        image: 'https://images.unsplash.com/photo-1548883354-7622d03aca27?auto=format&fit=crop&q=80&w=600',
+        category: 'রেইনকোট',
+        sizes: ['M', 'L', 'XL', 'XXL'],
+        colors: ['Lime Green', 'Navy Blue', 'Silver Gray']
+      },
+      {
+        id: 'p-8',
+        title: 'কিডস ফানি কার্টুন ওয়াটারপ্রুফ রেইনকোট (স্কুল ব্যাগ স্পেস সহ)',
+        description: 'ছোট সোনামণিদের সহজে স্কুলে যাতায়াত করতে আকর্ষণীয় কার্টুন ডিজাইন সম্পন্ন রেইনকোট যা খুব দ্রুত শুকিয়ে যায়।',
+        price: 450,
+        image: 'https://images.unsplash.com/photo-1515621061946-eff1c2a352bd?auto=format&fit=crop&q=80&w=600',
+        category: 'রেইনকোট',
+        sizes: ['S', 'M', 'L'],
+        colors: ['Pink Rose', 'Sky Blue', 'Yellow Duck']
+      },
+      {
+        id: 'p-9',
+        title: 'লেডিস ক্লাসিক লং বেল্ট রেনকোট ট্রেইল কোট',
+        description: 'স্টাইলিশ ও অভিজাত নারীদের জন্য লং বেল্টেড ওয়াটারপ্রুফ ট্রেনচ কোট। আরামদায়ক ও ১০০% প্রিমিয়াম পলিয়েস্টার ফ্যাব্রিক।',
+        price: 1190,
+        image: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&q=80&w=600',
+        category: 'রেইনকোট',
+        sizes: ['M', 'L', 'XL'],
+        colors: ['Beige', 'Black', 'Wine Red']
+      },
+      {
+        id: 'p-10',
+        title: 'আউটডোর ট্রাভেলার্স ওয়াটারপ্রুফ ড্রাই ব্যাগ (২০ লিটার)',
+        description: 'নদী পারাপার, ট্র্যাকিং বা ক্যাম্পিংয়ে ক্যামেরা, মোবাইল ও কাপড় সম্পূর্ণ ওয়াটার টাইট ও ভাসমান রাখতে হেভি ডিউটি ড্রাই ব্যাগ।',
+        price: 550,
+        image: 'https://images.unsplash.com/photo-1611002214172-792c1f90b59a?auto=format&fit=crop&q=80&w=600',
+        category: 'অনুষঙ্গ',
+        sizes: ['20 Liters'],
+        colors: ['Orange Orange', 'Black Shield']
+      },
+      {
+        id: 'p-11',
+        title: 'নাইট-সেফ হাই-ভিজিবিলিটি রিফ্লেক্টভ সেফটি রেইন ভেস্ট',
+        description: 'ঝড়ো বৃষ্টির রাতে বাইকিং বা সড়ক মেরামতে অনন্য সুরক্ষী রিফ্লেক্টিভ স্ট্রিপ সমৃদ্ধ ওয়াটারপ্রুফ ভেস্ট জ্যাকেট।',
+        price: 280,
+        image: 'https://images.unsplash.com/photo-1604176354204-9268737828e4?auto=format&fit=crop&q=80&w=600',
+        category: 'বাইকিং গিয়ার',
+        sizes: ['L', 'XL'],
+        colors: ['Neon Green']
+      },
+      {
+        id: 'p-12',
+        title: 'হেভি হিট-সিলড প্রিমিয়াম রেন পনচো (হুড যুক্ত)',
+        description: 'সহজে গায়ে জড়িয়ে নেয়ার উপযোগী আল্ট্রা-সুপিরিয়র ফিতা যুক্ত পনচো। ১০০% ওয়াটার ব্লক ফ্যাব্রিক যা সহজে ফাটে না।',
+        price: 690,
+        image: 'https://images.unsplash.com/photo-1601924638867-3a6de6b7a500?auto=format&fit=crop&q=80&w=600',
+        category: 'রেইনকোট',
+        sizes: ['Universal Free Size'],
+        colors: ['Hunter Green', 'Royal Blue']
+      },
+      {
+        id: 'p-13',
+        title: 'সিলিকন ইলাস্টিক অ্যান্টি-স্লিপ রেইন শু কাভার (পকেট সাইজ)',
+        description: 'পকেটে রাখা মতো পাতলা কিন্তু অত্যন্ত মজবুত ও ১০০% ওয়াটারপ্রুফ ইলাস্টিক সিলিকন সু গার্ড। রাস্তায় পিচ্ছিল কাদা রোধক গ্রিপ।',
+        price: 190,
+        image: 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?auto=format&fit=crop&q=80&w=600',
+        category: 'অনুষঙ্গ',
+        sizes: ['S', 'M', 'L'],
+        colors: ['Sky Blue', 'Transparent Clear', 'Coal Black']
+      },
+      {
+        id: 'p-14',
+        title: '১০০% ওয়াটারপ্রুফ ও ডাস্টপ্রুফ প্রিমিয়াম বাইক কভার (Premium Bike Cover)',
+        description: '৩০০০ মিলি ওজনের ছাতা কাপড়ের তৈরি শতভাগ ওয়াটারপ্রুফ ও ডাস্টপ্রুফ বাইক কভার। রোদ, বৃষ্টি ও ধুলোবালি প্রতিরোধক সিলভার হিট প্রুফ কোটিং এবং চাকার দুই পাশে ইলাস্টিক জ্যাকিং বেল্ট সহ সম্পূর্ণ স্ট্যান্ডার্ড সাইজ।',
+        price: 600,
+        image: 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?auto=format&fit=crop&q=80&w=600',
+        category: 'বাইকিং গিয়ার',
+        sizes: ['XL'],
+        colors: ['Navy Blue', 'Black'],
+        addDeliveryCharge: false
       }
     ];
+
+    const list = localStorage.getItem('raincoat_shop_products');
+    if (list) {
+      try {
+        const parsed = JSON.parse(list);
+        if (parsed && parsed.length >= 14) {
+          return parsed;
+        }
+      } catch (e) {}
+    }
+    
+    // Save to local storage for persistence across admin views
+    localStorage.setItem('raincoat_shop_products', JSON.stringify(fullDefaults));
+    return fullDefaults;
   });
 
   // State for shopping cart
@@ -102,7 +227,13 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
   };
 
   const cartTotal = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
-  const deliveryFee = district === 'ঢাকা' ? 60 : 120;
+  
+  // Read custom charges
+  const courierInside = Number(localStorage.getItem('raincoat_courier_inside')) || 80;
+  const courierOutside = Number(localStorage.getItem('raincoat_courier_outside')) || 130;
+  const hasDeliveryCharge = cart.some(item => item.product.addDeliveryCharge !== false);
+
+  const deliveryFee = hasDeliveryCharge ? (district === 'ঢাকা' ? courierInside : courierOutside) : 0;
   const grandTotal = cartTotal + deliveryFee;
 
   const handleCheckout = (e: React.FormEvent) => {
@@ -245,6 +376,7 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
                           alt={product.title} 
                           className="w-full h-full object-cover"
                           referrerPolicy="no-referrer"
+                          loading="lazy"
                         />
                         <span className="absolute top-3 left-3 bg-slate-900/80 text-white text-[10px] font-black px-2.5 py-1 rounded-full uppercase">
                           {product.category}
@@ -423,8 +555,8 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
                         onChange={(e) => setDistrict(e.target.value)}
                         className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none"
                       >
-                        <option value="ঢাকা">ঢাকার ভিতরে (ডেলিভারি চার্জ ৬০ টাকা)</option>
-                        <option value="ঢাকার বাহিরে">ঢাকার বাইরে (ডেলিভারি চার্জ ১২০ টাকা)</option>
+                        <option value="ঢাকা">ঢাকার ভিতরে (ডেলিভারি চার্জ ৳{courierInside} টাকা)</option>
+                        <option value="ঢাকার বাহিরে">ঢাকার বাইরে (ডেলিভারি চার্জ ৳{courierOutside} টাকা)</option>
                       </select>
                     </div>
 
@@ -452,15 +584,15 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
                       <span className="font-mono font-bold text-slate-800">+{deliveryFee} TK</span>
                     </div>
 
-                    {/* Trust Badge - 30-Day Guarantee */}
+                    {/* Trust Badge - 3 Seasons Guarantee */}
                     <div className="my-1.5 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2.5">
                       <div className="relative shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 font-extrabold border border-emerald-200">
                         <ShieldCheck className="h-5 w-5" />
-                        <span className="absolute text-[7px] font-black font-sans text-emerald-800 mt-0.5">30</span>
+                        <span className="absolute text-[7px] font-black font-sans text-emerald-800 mt-0.5">3S</span>
                       </div>
                       <div className="text-left leading-normal">
-                        <div className="text-[10px] font-black text-emerald-950 font-sans">🛡️ ৩০ দিন মানি-ব্যাক ওয়ারেন্টি</div>
-                        <div className="text-[9px] text-emerald-800 font-sans">পছন্দ না হলে বা সাইজে সমস্যা থাকলে ৩০ দিনে সহজ রিফান্ড/এক্সচেঞ্জ!</div>
+                        <div className="text-[10px] font-black text-emerald-950 font-sans">🛡️ ৩ সিজন অনায়াসে ব্যবহারের নিশ্চয়তা</div>
+                        <div className="text-[9px] text-emerald-800 font-sans">৩ সিজন ব্যবহার করতে পারবেন অনায়াসে যদি সঠিকভাবে ব্যবহার করেন।</div>
                       </div>
                     </div>
 

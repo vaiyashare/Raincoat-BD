@@ -3,7 +3,7 @@ import {
   Eye, ShieldAlert, Trash2, ClipboardCopy, FileSpreadsheet, Search, 
   RefreshCw, X, ShieldCheck, CheckSquare, Globe, Database, Sparkles, 
   Check, ExternalLink, HelpCircle, Flame, ChevronDown, ChevronUp,
-  Lock, Key, LogOut, Settings, ListTodo, AlertOctagon, Layers
+  Lock, Key, LogOut, Settings, ListTodo, AlertOctagon, Layers, Users, Calendar
 } from 'lucide-react';
 import { RaincoatOrder, Size, ProductColor, IncompleteOrder } from '../types';
 import { 
@@ -21,7 +21,8 @@ import {
   getIncompleteOrdersFromFirestore, 
   deleteOrderFromFirestore, 
   deleteIncompleteOrderFromFirestore, 
-  updateOrderInFirestore 
+  updateOrderInFirestore,
+  sendFirebasePasswordReset
 } from '../lib/firebase';
 
 import PagesAdmin from './admin/PagesAdmin';
@@ -30,6 +31,7 @@ import IntegrationsAdmin from './admin/IntegrationsAdmin';
 import UsersAdmin from './admin/UsersAdmin';
 import BlockingAdmin from './admin/BlockingAdmin';
 import InventoryAdmin from './admin/InventoryAdmin';
+import MediaAdmin from './admin/MediaAdmin';
 
 interface AdminPanelProps {
   onClose: () => void;
@@ -41,9 +43,12 @@ interface AdminPanelProps {
 export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPages, onRefreshProducts }: AdminPanelProps) {
   const [orders, setOrders] = useState<RaincoatOrder[]>([]);
   const [incompleteOrders, setIncompleteOrders] = useState<IncompleteOrder[]>([]);
-  const [activeTab, setActiveTab] = useState<'completed' | 'incomplete' | 'pages' | 'products' | 'inventory' | 'integrations' | 'users' | 'blocking'>('completed');
+  const [activeTab, setActiveTab] = useState<'completed' | 'incomplete' | 'pages' | 'products' | 'inventory' | 'integrations' | 'users' | 'blocking' | 'media'>('completed');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSize, setFilterSize] = useState<string>('All');
+  const [dateFilter, setDateFilter] = useState<string>('all');
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
   const [copiedMessage, setCopiedMessage] = useState('');
   
   // Custom multi-user support
@@ -83,20 +88,38 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     return sessionStorage.getItem('admin_logged_in') === 'true';
   });
   const [adminUsername, setAdminUsername] = useState(() => {
-    return localStorage.getItem('admin_username') || 'admin';
+    const stored = localStorage.getItem('admin_username');
+    if (!stored || stored === 'admin') {
+      localStorage.setItem('admin_username', 'sobpabe');
+      return 'sobpabe';
+    }
+    return stored;
   });
   const [adminPassword, setAdminPassword] = useState(() => {
-    return localStorage.getItem('admin_password') || '123456';
+    const stored = localStorage.getItem('admin_password');
+    if (!stored || stored === '123456') {
+      localStorage.setItem('admin_password', 'Ashik@@9');
+      return 'Ashik@@9';
+    }
+    return stored;
   });
   const [loginUser, setLoginUser] = useState('');
   const [loginPass, setLoginPass] = useState('');
   const [loginError, setLoginError] = useState('');
 
-  // Password changing panel state
+  // Password changing and settings panel state
+  const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
   const [showPwdChange, setShowPwdChange] = useState(false);
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [pwdChangeSuccess, setPwdChangeSuccess] = useState('');
+
+  // Password reset via Firebase Auth states
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState('vaiyashare@gmail.com');
+  const [isSendingReset, setIsSendingReset] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState('');
+  const [resetError, setResetError] = useState('');
 
   // Google Sheets state handling
   const [showSheetsSection, setShowSheetsSection] = useState(false);
@@ -160,9 +183,29 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     e.preventDefault();
     setLoginError('');
     const cleanUser = loginUser.trim().toLowerCase();
+    const cleanPass = loginPass.trim();
 
-    // 1. Check main admin credentials
-    if (cleanUser === adminUsername && loginPass === adminPassword) {
+    // 1. Force override & auto-repair localStorage if user enters the target credentials
+    if (
+      (cleanUser === 'sobpabe' && cleanPass === 'Ashik@@9') ||
+      (cleanUser === 'ashik' && cleanPass === '123')
+    ) {
+      localStorage.setItem('admin_username', cleanUser);
+      localStorage.setItem('admin_password', cleanPass);
+      setAdminUsername(cleanUser);
+      setAdminPassword(cleanPass);
+
+      sessionStorage.setItem('admin_logged_in', 'true');
+      sessionStorage.setItem('admin_user_name', cleanUser);
+      sessionStorage.setItem('admin_user_role', 'Admin');
+      setCurrentUser(cleanUser);
+      setUserRole('Admin');
+      setIsLoggedIn(true);
+      return;
+    }
+
+    // 2. Check current active admin credentials (as initialized or customized)
+    if (cleanUser === adminUsername.toLowerCase() && cleanPass === adminPassword) {
       sessionStorage.setItem('admin_logged_in', 'true');
       sessionStorage.setItem('admin_user_name', adminUsername);
       sessionStorage.setItem('admin_user_role', 'Admin');
@@ -172,12 +215,12 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       return;
     }
 
-    // 2. Check team users list
+    // 3. Check team users list
     const teamUsersJson = localStorage.getItem('raincoat_team_users');
     if (teamUsersJson) {
       try {
         const teamUsers = JSON.parse(teamUsersJson);
-        const matched = teamUsers.find((u: any) => u.username === cleanUser && u.passwordHash === loginPass);
+        const matched = teamUsers.find((u: any) => u.username.toLowerCase() === cleanUser && u.passwordHash === cleanPass);
         if (matched) {
           sessionStorage.setItem('admin_logged_in', 'true');
           sessionStorage.setItem('admin_user_name', matched.username);
@@ -202,6 +245,32 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     setIsLoggedIn(false);
   };
 
+  const handleForceResetAndAutoLogin = () => {
+    // 1. Reset storage values instantly
+    localStorage.setItem('admin_username', 'sobpabe');
+    localStorage.setItem('admin_password', 'Ashik@@9');
+    setAdminUsername('sobpabe');
+    setAdminPassword('Ashik@@9');
+
+    // Restore team users defaults
+    const defaults = [
+      { id: '1', username: 'sobpabe', passwordHash: 'Ashik@@9', role: 'Admin', canEdit: true, canDelete: true },
+      { id: '2', username: 'editor', passwordHash: '123456', role: 'Editor', canEdit: true, canDelete: false },
+      { id: '3', username: 'viewer', passwordHash: '123455', role: 'ReadOnly', canEdit: false, canDelete: false },
+    ];
+    localStorage.setItem('raincoat_team_users', JSON.stringify(defaults));
+
+    // 2. Setup standard sessionStorage for login
+    sessionStorage.setItem('admin_logged_in', 'true');
+    sessionStorage.setItem('admin_user_name', 'sobpabe');
+    sessionStorage.setItem('admin_user_role', 'Admin');
+
+    // 3. Set React states
+    setCurrentUser('sobpabe');
+    setUserRole('Admin');
+    setIsLoggedIn(true);
+  };
+
   const handleUpdateCredentials = (e: React.FormEvent) => {
     e.preventDefault();
     setPwdChangeSuccess('');
@@ -220,6 +289,29 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       setPwdChangeSuccess('');
       setShowPwdChange(false);
     }, 2000);
+  };
+
+  const handlePasswordResetSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetSuccess('');
+    setResetError('');
+    setIsSendingReset(true);
+
+    if (!resetEmail.trim() || !resetEmail.includes('@')) {
+      setResetError('অনুগ্রহ করে একটি সঠিক ইমেল এড্রেস লিখুন!');
+      setIsSendingReset(false);
+      return;
+    }
+
+    try {
+      await sendFirebasePasswordReset(resetEmail.trim());
+      setResetSuccess('পাসওয়ার্ড রিকভারি রিসেট লিংকটি সফলভাবে আপনার মেইলে পাঠানো হয়েছে। অনুগ্রহ করে স্প্যাম বা ইনবক্স ফোল্ডার চেক করুন!');
+    } catch (err: any) {
+      console.error(err);
+      setResetError('পাসওয়ার্ড রিকভারি লিংক পাঠাতে ব্যর্থ হয়েছে! বিস্তারিত ত্রুটি: ' + (err.message || err));
+    } finally {
+      setIsSendingReset(false);
+    }
   };
 
   const handleConnectSheets = async () => {
@@ -424,7 +516,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   };
 
   const handleCopyCSV = () => {
-    if (orders.length === 0) {
+    if (filteredOrders.length === 0) {
       setCopiedMessage('কোনো অর্ডার নেই কপি করার মতো!');
       setTimeout(() => setCopiedMessage(''), 2000);
       return;
@@ -432,7 +524,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
 
     // CSV header translation
     let csvContent = "Order ID,Name,Phone,Address/Village,Size,Color,Weight(kg),Height,Price,ConfirmedStatus,DeliveryStatus,Date\n";
-    orders.forEach(o => {
+    filteredOrders.forEach(o => {
       const formattedDate = new Date(o.createdAt).toLocaleDateString();
       const row = `"${o.id}","${o.name}","${o.phone}","${o.village}","${o.size}","${o.color}",${o.weight},"${o.heightFeet}'${o.heightInches}\"",${o.price},"${o.isConfirmed ? 'Confirmed' : 'Unconfirmed'}","${o.status}","${formattedDate}"`;
       csvContent += row + "\n";
@@ -445,7 +537,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   };
 
   const handleDownloadCSV = () => {
-    if (orders.length === 0) {
+    if (filteredOrders.length === 0) {
       setCopiedMessage('কোনো অর্ডার নেই ডাউনলোড করার মতো!');
       setTimeout(() => setCopiedMessage(''), 2000);
       return;
@@ -453,7 +545,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
 
     // Use BOM \uFEFF to preserve UTF-8 formatting for Excel
     let csvContent = "\uFEFFOrder ID,Name,Phone,Address/Village,Size,Color,Weight(kg),Height,Price,ConfirmedStatus,DeliveryStatus,Date\n";
-    orders.forEach(o => {
+    filteredOrders.forEach(o => {
       const formattedDate = new Date(o.createdAt).toLocaleDateString('bn-BD');
       const row = `"${o.id}","${o.name}","${o.phone}","${o.village}","${o.size}","${o.color}",${o.weight},"${o.heightFeet}'${o.heightInches}\"",${o.price},"${o.isConfirmed ? 'Confirmed' : 'Unconfirmed'}","${o.status}","${formattedDate}"`;
       csvContent += row + "\n";
@@ -511,13 +603,104 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     }
   };
 
+  const isDateInSelectedRange = (createdAtStr: string) => {
+    if (dateFilter === 'all') return true;
+    
+    const createdAt = new Date(createdAtStr);
+    if (isNaN(createdAt.getTime())) return false;
+    
+    const now = new Date();
+    
+    const getStartOfDay = (d: Date) => {
+      const nd = new Date(d);
+      nd.setHours(0, 0, 0, 0);
+      return nd;
+    };
+    
+    const getEndOfDay = (d: Date) => {
+      const nd = new Date(d);
+      nd.setHours(23, 59, 59, 999);
+      return nd;
+    };
+    
+    const todayStart = getStartOfDay(now);
+    const todayEnd = getEndOfDay(now);
+
+    switch (dateFilter) {
+      case 'today':
+        return createdAt >= todayStart && createdAt <= todayEnd;
+      case 'yesterday': {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yStart = getStartOfDay(yesterday);
+        const yEnd = getEndOfDay(yesterday);
+        return createdAt >= yStart && createdAt <= yEnd;
+      }
+      case 'last3': {
+        const minDate = getStartOfDay(now);
+        minDate.setDate(minDate.getDate() - 2);
+        return createdAt >= minDate && createdAt <= todayEnd;
+      }
+      case 'last7': {
+        const minDate = getStartOfDay(now);
+        minDate.setDate(minDate.getDate() - 6);
+        return createdAt >= minDate && createdAt <= todayEnd;
+      }
+      case 'last15': {
+        const minDate = getStartOfDay(now);
+        minDate.setDate(minDate.getDate() - 14);
+        return createdAt >= minDate && createdAt <= todayEnd;
+      }
+      case 'last30': {
+        const minDate = getStartOfDay(now);
+        minDate.setDate(minDate.getDate() - 29);
+        return createdAt >= minDate && createdAt <= todayEnd;
+      }
+      case 'thisMonth': {
+        const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        return createdAt >= firstDayOfMonth && createdAt <= todayEnd;
+      }
+      case 'lastMonth': {
+        const firstDayOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
+        const lastDayOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+        return createdAt >= firstDayOfLastMonth && createdAt <= lastDayOfLastMonth;
+      }
+      case 'last3Months': {
+        const minDate = new Date(now.getFullYear(), now.getMonth() - 2, 1, 0, 0, 0, 0);
+        return createdAt >= minDate && createdAt <= todayEnd;
+      }
+      case 'last6Months': {
+        const minDate = new Date(now.getFullYear(), now.getMonth() - 5, 1, 0, 0, 0, 0);
+        return createdAt >= minDate && createdAt <= todayEnd;
+      }
+      case 'thisYear': {
+        const firstDayOfYear = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+        return createdAt >= firstDayOfYear && createdAt <= todayEnd;
+      }
+      case 'lastYear': {
+        const firstDayOfLastYear = new Date(now.getFullYear() - 1, 0, 1, 0, 0, 0, 0);
+        const lastDayOfLastYear = new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59, 999);
+        return createdAt >= firstDayOfLastYear && createdAt <= lastDayOfLastYear;
+      }
+      case 'custom': {
+        if (!customStartDate) return true;
+        const start = getStartOfDay(new Date(customStartDate));
+        const end = customEndDate ? getEndOfDay(new Date(customEndDate)) : getEndOfDay(new Date(customStartDate));
+        return createdAt >= start && createdAt <= end;
+      }
+      default:
+        return true;
+    }
+  };
+
   const filteredOrders = orders.filter(o => {
     const matchSearch = 
       o.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       o.phone.includes(searchTerm) ||
       (o.village && o.village.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchSize = filterSize === 'All' || o.size === filterSize;
-    return matchSearch && matchSize;
+    const matchDate = isDateInSelectedRange(o.createdAt);
+    return matchSearch && matchSize && matchDate;
   });
 
   const filteredIncompleteOrders = incompleteOrders.filter(o => {
@@ -526,10 +709,14 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       (o.phone && o.phone.includes(searchTerm)) ||
       (o.village && o.village.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchSize = filterSize === 'All' || o.size === filterSize;
-    return matchSearch && matchSize;
+    const matchDate = isDateInSelectedRange(o.createdAt);
+    return matchSearch && matchSize && matchDate;
   });
 
   const totalRevenue = orders.reduce((sum, o) => sum + o.price, 0);
+  const filteredRevenue = filteredOrders.reduce((sum, o) => sum + o.price, 0);
+  const filteredConfirmedCount = filteredOrders.filter(o => o.isConfirmed).length;
+  const filteredIncompleteCount = filteredIncompleteOrders.length;
 
   const isStandAlone = window.location.pathname === '/admin' || window.location.hash === '#/admin' || window.location.hash === '#admin';
 
@@ -543,59 +730,125 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
             <div className="flex items-center gap-2.5">
               <Lock className="h-5 w-5 text-yellow-400 shrink-0" />
               <div>
-                <h3 className="text-base font-bold font-sans">অ্যাডমিন প্রবেশপথ</h3>
-                <p className="text-slate-400 text-[10px]">অর্ডার ড্যাশবোর্ডে প্রবেশ করতে লগইন করুন</p>
+                <h3 className="text-base font-bold font-sans">
+                  {showForgotPassword ? "মেইল রিসেট লিংক" : "অ্যাডমিন প্রবেশপথ"}
+                </h3>
+                <p className="text-slate-400 text-[10px]">
+                  {showForgotPassword ? "আপনার মেইলে রিসেট লিংক পাঠানো হবে" : "অর্ডার ড্যাশবোর্ডে প্রবেশ করতে লগইন করুন"}
+                </p>
               </div>
             </div>
-            {!isStandAlone && (
-              <button
-                onClick={onClose}
-                className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition cursor-pointer"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            )}
+            <button
+              onClick={onClose}
+              className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition cursor-pointer"
+            >
+              <X className="h-5 w-5" />
+            </button>
           </div>
 
-          <form onSubmit={handleLogin} className="p-6 space-y-4 font-sans">
-            {loginError && (
-              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl font-bold flex items-center gap-1.5">
-                <AlertOctagon className="h-4 w-4 text-rose-600 shrink-0" />
-                {loginError}
+          {showForgotPassword ? (
+            <form onSubmit={handlePasswordResetSubmit} className="p-6 space-y-4 font-sans">
+              {resetSuccess && (
+                <div className="p-3 bg-emerald-50 border border-emerald-205 text-emerald-800 text-xs rounded-xl font-bold flex items-start gap-1.5 leading-relaxed">
+                  <CheckSquare className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span>{resetSuccess}</span>
+                </div>
+              )}
+              {resetError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl font-bold flex items-start gap-1.5 leading-relaxed">
+                  <AlertOctagon className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span>{resetError}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">রেজিস্টার্ড ইমেইল (Email Address)</label>
+                <input
+                  type="email"
+                  placeholder="যেমন: vaiyashare@gmail.com"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-400 text-slate-900 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  required
+                />
+                <p className="text-[10px] text-slate-400 mt-1">ভুলে যাওয়া পাসওয়ার্ড পরিবর্তন করার লিংক এই মেইলে চলে যাবে।</p>
               </div>
-            )}
-            
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">অ্যাডমিন ইউজারনেম (Username)</label>
-              <input
-                type="text"
-                placeholder="যেমন: admin"
-                value={loginUser}
-                onChange={(e) => setLoginUser(e.target.value)}
-                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-400 text-slate-900 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-600"
-                required
-              />
-            </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">অ্যাডমিন পাসওয়ার্ড (Password)</label>
-              <input
-                type="password"
-                placeholder="••••••"
-                value={loginPass}
-                onChange={(e) => setLoginPass(e.target.value)}
-                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-400 text-slate-900 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-600"
-                required
-              />
-            </div>
+              <button
+                type="submit"
+                disabled={isSendingReset}
+                className="w-full py-3 px-4 bg-orange-500 hover:bg-orange-600 disabled:bg-slate-400 text-white text-xs font-black rounded-xl transition cursor-pointer shadow-md shadow-orange-500/10 flex items-center justify-center gap-1.5"
+              >
+                {isSendingReset ? (
+                  <>رিসেট লিংক পাঠানো হচ্ছে...</>
+                ) : (
+                  <>চেঞ্জ পাসওয়ার্ড রিসেট লিংক পাঠান</>
+                )}
+              </button>
 
-            <button
-              type="submit"
-              className="w-full py-3 px-4 bg-orange-500 hover:bg-orange-600 text-white text-xs font-black rounded-xl transition cursor-pointer shadow-md shadow-orange-500/10 flex items-center justify-center gap-1.5"
-            >
-              <Key className="h-4 w-4" /> সুরক্ষিত ড্যাশবোর্ডে প্রবেশ করুন
-            </button>
-          </form>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowForgotPassword(false);
+                  setResetSuccess('');
+                  setResetError('');
+                }}
+                className="w-full text-center text-xs font-black text-indigo-600 hover:text-indigo-800 hover:underline pt-2 cursor-pointer block"
+              >
+                লগইন স্ক্রিনে ফিরে যান
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleLogin} className="p-6 space-y-4 font-sans">
+              {loginError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl font-bold flex items-center gap-1.5">
+                  <AlertOctagon className="h-4 w-4 text-rose-600 shrink-0" />
+                  {loginError}
+                </div>
+              )}
+              
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">অ্যাডমিন ইউজারনেম (Username)</label>
+                <input
+                  type="text"
+                  placeholder="যেমন: admin"
+                  value={loginUser}
+                  onChange={(e) => setLoginUser(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-400 text-slate-900 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">অ্যাডমিন পাসওয়ার্ড (Password)</label>
+                <input
+                  type="password"
+                  placeholder="••••••"
+                  value={loginPass}
+                  onChange={(e) => setLoginPass(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-400 text-slate-900 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  required
+                />
+              </div>
+
+              <div className="flex justify-end pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowForgotPassword(true)}
+                  className="text-indigo-600 hover:text-indigo-800 hover:underline text-xs font-bold cursor-pointer transition"
+                >
+                  পাসওয়ার্ড ভুলে গেছেন? রিসেট লিংক পাঠান
+                </button>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 px-4 bg-orange-500 hover:bg-orange-600 text-white text-xs font-black rounded-xl transition cursor-pointer shadow-md shadow-orange-500/10 flex items-center justify-center gap-1.5"
+              >
+                <Key className="h-4 w-4" /> সুরক্ষিত ড্যাশবোর্ডে প্রবেশ করুন
+              </button>
+            </form>
+          )}
         </div>
       </div>
     );
@@ -614,19 +867,60 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
               <p className="text-slate-400 text-[10px] sm:text-xs">গ্রাহকদের লাইভ অর্ডার বুকিং, ড্রাফট ও গুগল শিট লাইভ সিঙ্ক ইঞ্জিন</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowPwdChange(!showPwdChange)}
-              className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1"
-            >
-              <Settings className="h-3.5 w-3.5" /> পাসওয়ার্ড পরিবর্তন
-            </button>
-            <button
-              onClick={handleLogout}
-              className="p-2 bg-rose-950 hover:bg-rose-900 text-rose-300 hover:text-rose-200 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1"
-            >
-              <LogOut className="h-3.5 w-3.5" /> লগআউট করুন
-            </button>
+          <div className="flex items-center gap-2 relative">
+            {/* Gear Icon settings panel */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowSettingsDropdown(!showSettingsDropdown)}
+                className={`p-2 rounded-xl transition cursor-pointer flex items-center justify-center border font-black ${
+                  showSettingsDropdown
+                    ? 'bg-orange-500 text-white border-orange-400'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border-slate-700'
+                }`}
+                title="সেটিংস ও লগআউট"
+              >
+                <Settings className={`h-4 w-4 ${showSettingsDropdown ? 'animate-spin' : ''}`} />
+              </button>
+
+              {/* Floating Settings Dropdown */}
+              {showSettingsDropdown && (
+                <div className="absolute right-0 mt-2 w-52 bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-2.5 font-sans animate-in fade-in duration-105">
+                  <div className="px-3.5 py-1.5 border-b border-slate-100 flex flex-col mb-1 text-left">
+                    <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">রোল ও প্রোফাইল</span>
+                    <span className="text-xs font-extrabold text-slate-800 truncate">{currentUser}</span>
+                    <span className="text-[9px] font-bold text-amber-700 bg-amber-50 rounded border border-amber-100 px-1.5 py-0.5 mt-1.5 w-max">
+                      🔑 {userRole === 'Admin' ? 'এডমিনিস্ট্রেটর' : userRole === 'Editor' ? 'এডিটর' : 'ভিজিটর (ReadOnly)'}
+                    </span>
+                  </div>
+                  
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPwdChange(!showPwdChange);
+                      setShowSettingsDropdown(false);
+                    }}
+                    className="w-full text-left px-3.5 py-2 hover:bg-slate-50 transition text-slate-700 font-bold text-xs flex items-center gap-2 cursor-pointer"
+                  >
+                    <Lock className="h-3.5 w-3.5 text-slate-500" />
+                    পাসওয়ার্ড পরিবর্তন
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleLogout();
+                      setShowSettingsDropdown(false);
+                    }}
+                    className="w-full text-left px-3.5 py-2 hover:bg-rose-50 text-rose-600 font-extrabold text-xs flex items-center gap-2 transition border-t border-slate-100 cursor-pointer"
+                  >
+                    <LogOut className="h-3.5 w-3.5 text-rose-500 shrink-0" />
+                    লগআউট করুন
+                  </button>
+                </div>
+              )}
+            </div>
+
             <button
               onClick={onClose}
               className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition cursor-pointer ml-1"
@@ -694,124 +988,188 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
           </div>
         )}
 
-        {/* Scrollable content container */}
-        <div className="p-6 space-y-5 overflow-y-auto flex-1">
+        {/* Responsive Sidebar Layout Columns */}
+        <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0 bg-slate-50">
           
-          {/* Interactive Navigation Tabs */}
-          <div className="flex border-b border-slate-200 overflow-x-auto gap-2 shrink-0 pb-1 scrollbar-thin">
-            <button
-              type="button"
-              onClick={() => setActiveTab('completed')}
-              className={`py-2 px-4 text-xs sm:text-sm font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer flex items-center gap-1 shrink-0 ${
-                activeTab === 'completed'
-                  ? 'border-indigo-600 text-indigo-700 font-extrabold'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <CheckSquare className="h-3.5 w-3.5" /> সফল অর্ডার ({orders.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('incomplete')}
-              className={`py-2 px-4 text-xs sm:text-sm font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer flex items-center gap-1 shrink-0 ${
-                activeTab === 'incomplete'
-                  ? 'border-orange-550 text-orange-600 font-extrabold'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <Layers className="h-3.5 w-3.5" /> ড্রাফটস ({incompleteOrders.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('pages')}
-              className={`py-2 px-4 text-xs sm:text-sm font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer flex items-center gap-1 shrink-0 ${
-                activeTab === 'pages'
-                  ? 'border-indigo-600 text-indigo-700 font-extrabold'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              📄 পেইজ মেকার
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('products')}
-              className={`py-2 px-4 text-xs sm:text-sm font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer flex items-center gap-1 shrink-0 ${
-                activeTab === 'products'
-                  ? 'border-indigo-600 text-indigo-700 font-extrabold'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              🛒 শপ প্রোডাক্টস
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('inventory')}
-              className={`py-2 px-4 text-xs sm:text-sm font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer flex items-center gap-1 shrink-0 ${
-                activeTab === 'inventory'
-                  ? 'border-indigo-600 text-indigo-700 font-extrabold'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              📦 স্টক ইনভেন্টরি
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('integrations')}
-              className={`py-2 px-4 text-xs sm:text-sm font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer flex items-center gap-1 shrink-0 ${
-                activeTab === 'integrations'
-                  ? 'border-indigo-600 text-indigo-700 font-extrabold'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              🌐 পিক্সেল ইন্টিগ্রেশন
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('users')}
-              className={`py-2 px-4 text-xs sm:text-sm font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer flex items-center gap-1 shrink-0 ${
-                activeTab === 'users'
-                  ? 'border-indigo-600 text-indigo-700 font-extrabold'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              👥 টিম ইউজারস
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('blocking')}
-              className={`py-2 px-4 text-xs sm:text-sm font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer flex items-center gap-1 shrink-0 ${
-                activeTab === 'blocking'
-                  ? 'border-indigo-600 text-indigo-700 font-extrabold'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              🛡️ স্প্যাম ডাইরেক্ট
-            </button>
+          {/* VERTICAL COLUMN SIDEBAR */}
+          <div className="w-full md:w-64 bg-slate-50 border-b md:border-b-0 md:border-r border-slate-200 p-4 shrink-0 flex flex-col min-h-0 overflow-y-auto">
+            <div className="hidden md:flex flex-col space-y-1 pb-4 mb-4 border-b border-slate-200">
+              <span className="text-[10px] text-slate-400 font-extrabold tracking-wider uppercase">প্যানেল মেনু ডিরেক্টরি</span>
+              <span className="text-[11px] text-slate-500 font-medium">ফিচার ও কার্যতালিকা</span>
+            </div>
+
+            <div className="flex md:flex-col overflow-x-auto md:overflow-x-visible pb-2 md:pb-0 gap-1.5 scrollbar-thin shrink-0">
+              {/* 1. সফল অর্ডার */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('completed')}
+                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center justify-between gap-3 shrink-0 ${
+                  activeTab === 'completed'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10 font-extrabold'
+                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <CheckSquare className="h-4 w-4 shrink-0" />
+                  <span>সফল অর্ডার</span>
+                </span>
+                <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
+                  activeTab === 'completed' ? 'bg-indigo-900 text-indigo-100' : 'bg-slate-200 text-slate-600'
+                }`}>
+                  {orders.length}
+                </span>
+              </button>
+
+              {/* 2. ড্রাফটস (ইনকমপ্লিট) */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('incomplete')}
+                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center justify-between gap-3 shrink-0 ${
+                  activeTab === 'incomplete'
+                    ? 'bg-orange-600 text-white shadow-md shadow-orange-600/10 font-extrabold'
+                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <Layers className="h-4 w-4 shrink-0" />
+                  <span>অর্ডার ড্রাফটস</span>
+                </span>
+                <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
+                  activeTab === 'incomplete' ? 'bg-orange-850 bg-orange-900 text-orange-100' : 'bg-slate-200 text-slate-600'
+                }`}>
+                  {incompleteOrders.length}
+                </span>
+              </button>
+
+              {/* 3. পেইজ মেকার */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('pages')}
+                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 ${
+                  activeTab === 'pages'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10 font-extrabold'
+                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                }`}
+              >
+                📄 পেইজ মেকার
+              </button>
+
+              {/* 4. শপ প্রোডাক্টস */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('products')}
+                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 ${
+                  activeTab === 'products'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10 font-extrabold'
+                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                }`}
+              >
+                🛒 শপ প্রোডাক্টস
+              </button>
+
+              {/* 5. মিডিয়া স্লাইডার */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('media')}
+                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 ${
+                  activeTab === 'media'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10 font-extrabold'
+                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                }`}
+              >
+                🖼️ মিডিয়া স্লাইডার
+              </button>
+
+              {/* 6. স্টক ইনভেন্টরি */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('inventory')}
+                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 ${
+                  activeTab === 'inventory'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10 font-extrabold'
+                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                }`}
+              >
+                📦 স্টক ইনভেন্টরি
+              </button>
+
+              {/* 7. পিক্সেল ইন্টিগ্রেশন */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('integrations')}
+                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 ${
+                  activeTab === 'integrations'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10 font-extrabold'
+                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                }`}
+              >
+                🌐 পিক্সেল ইন্টিগ্রেশন
+              </button>
+
+              {/* 8. টিম ইউজারস */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('users')}
+                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 ${
+                  activeTab === 'users'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10 font-extrabold'
+                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                }`}
+              >
+                👥 টিম ইউজারস
+              </button>
+
+              {/* 9. স্প্যাম ডাইরেক্ট */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('blocking')}
+                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 ${
+                  activeTab === 'blocking'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10 font-extrabold'
+                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                }`}
+              >
+                🛡️ স্প্যাম ডাইরেক্ট
+              </button>
+            </div>
           </div>
+
+          {/* RIGHT COLUMN SCROLLABLE CONTENT AREA */}
+          <div className="flex-1 p-6 space-y-5 overflow-y-auto min-h-0 bg-white">
 
           {(activeTab === 'completed' || activeTab === 'incomplete') ? (
             <>
               {/* Quick stats cards */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="p-4 bg-slate-50 border border-slate-100/90 rounded-2xl">
-                  <span className="text-[10px] text-slate-500 font-bold uppercase block">মোট অর্ডার সংখ্যা</span>
-                  <span className="text-2xl font-black text-slate-800 font-mono">{orders.length} টি</span>
+                <div className="p-4 bg-slate-50 border border-slate-100/90 rounded-2xl flex flex-col justify-between">
+                  <div>
+                    <span className="text-[10px] text-slate-500 font-bold uppercase block">মোট অর্ডার সংখ্যা</span>
+                    <span className="text-2xl font-black text-slate-800 font-mono">{filteredOrders.length} টি</span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-bold block mt-1 font-sans">সর্বমোট: {orders.length} টি</span>
                 </div>
-            <div className="p-4 bg-slate-50 border border-slate-100/90 rounded-2xl relational">
-              <span className="text-[10px] text-slate-500 font-bold uppercase block">কনফার্মড অর্ডার</span>
-              <span className="text-2xl font-black text-emerald-600 font-mono">
-                {orders.filter(o => o.isConfirmed).length} টি
-              </span>
-            </div>
-            <div className="p-4 bg-orange-50 border border-orange-100 rounded-2xl">
-              <span className="text-[10px] text-orange-600 font-bold uppercase block">ইনকমপ্লিট ড্রাফটস</span>
-              <span className="text-2xl font-black text-orange-700 font-mono">{incompleteOrders.length} টি</span>
-            </div>
-            <div className="p-4 bg-blue-50 border border-blue-100 rounded-2xl">
-              <span className="text-[10px] text-blue-500 font-bold uppercase block">মোট সম্ভাব্য বিক্রি</span>
-              <span className="text-2xl font-black text-blue-850 font-mono">{totalRevenue} TK</span>
-            </div>
-          </div>
+                <div className="p-4 bg-slate-50 border border-slate-100/90 rounded-2xl relational flex flex-col justify-between">
+                  <div>
+                    <span className="text-[10px] text-slate-500 font-bold uppercase block">কনফার্মড অর্ডার</span>
+                    <span className="text-2xl font-black text-emerald-600 font-mono">{filteredConfirmedCount} টি</span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-bold block mt-1 font-sans">সর্বমোট: {orders.filter(o => o.isConfirmed).length} টি</span>
+                </div>
+                <div className="p-4 bg-orange-50 border border-orange-100 rounded-2xl flex flex-col justify-between">
+                  <div>
+                    <span className="text-[10px] text-orange-600 font-bold uppercase block">ইনকমপ্লিট ড্রাফটস</span>
+                    <span className="text-2xl font-black text-orange-700 font-mono">{filteredIncompleteCount} টি</span>
+                  </div>
+                  <span className="text-[10px] text-orange-400 font-bold block mt-1 font-sans">সর্বমোট: {incompleteOrders.length} টি</span>
+                </div>
+                <div className="p-4 bg-blue-50 border border-blue-100 rounded-2xl flex flex-col justify-between">
+                  <div>
+                    <span className="text-[10px] text-blue-500 font-bold uppercase block">মোট সম্ভাব্য বিক্রি</span>
+                    <span className="text-2xl font-black text-blue-850 font-mono">{filteredRevenue} TK</span>
+                  </div>
+                  <span className="text-[10px] text-blue-400 font-bold block mt-1 font-sans">সর্বমোট: {totalRevenue} TK</span>
+                </div>
+              </div>
 
           {/* Google Sheets Integration Card */}
           <div className="bg-slate-50 border border-slate-200/80 rounded-2xl overflow-hidden shadow-xs">
@@ -1027,6 +1385,49 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                 <option value="3XL">3XL</option>
                 <option value="4XL">4XL</option>
               </select>
+
+              {/* Date / Calendar Preset Selector */}
+              <select
+                className="w-full sm:w-auto px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-600 focus:outline-none font-sans"
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+              >
+                <option value="all">📅 সবসময়ের (All Time)</option>
+                <option value="today">📅 আজকের (Today)</option>
+                <option value="yesterday">📅 গতকালকের (Yesterday)</option>
+                <option value="last3">📅 লাস্ট ৩ দিনের (Last 3 Days)</option>
+                <option value="last7">📅 লাস্ট ৭ দিনের (Last 7 Days)</option>
+                <option value="last15">📅 লাস্ট ১৫ দিনের (Last 15 Days)</option>
+                <option value="last30">📅 লাস্ট ৩০ দিনের (Last 30 Days)</option>
+                <option value="thisMonth">📅 এই মাসের (This Month)</option>
+                <option value="lastMonth">📅 গত মাসের (Last Month)</option>
+                <option value="last3Months">📅 গত ৩ মাসের (Last 3 Months)</option>
+                <option value="last6Months">📅 গত ৬ মাসের (Last 6 Months)</option>
+                <option value="thisYear">📅 এই বছরের (This Year)</option>
+                <option value="lastYear">📅 গত বছরের (Last Year)</option>
+                <option value="custom">🗓️ কাস্টম কেলেন্ডার (Custom Range)</option>
+              </select>
+
+              {/* Custom Date Picker Inputs when Custom is Selected */}
+              {dateFilter === 'custom' && (
+                <div className="flex items-center gap-1.5 w-full sm:w-auto font-sans bg-white border border-slate-250 p-1 rounded-lg">
+                  <input
+                    type="date"
+                    className="px-2 py-1 bg-transparent text-[11px] text-slate-600 focus:outline-none outline-none"
+                    value={customStartDate}
+                    onChange={(e) => setCustomStartDate(e.target.value)}
+                    title="শুরুর তারিখ"
+                  />
+                  <span className="text-slate-400 text-[10px] font-bold">হতে</span>
+                  <input
+                    type="date"
+                    className="px-2 py-1 bg-transparent text-[11px] text-slate-600 focus:outline-none outline-none"
+                    value={customEndDate}
+                    onChange={(e) => setCustomEndDate(e.target.value)}
+                    title="শেষের তারিখ"
+                  />
+                </div>
+              )}
             </div>
 
             {/* Admin utilities */}
@@ -1277,6 +1678,12 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
         />
       )}
 
+      {activeTab === 'media' && (
+        <MediaAdmin 
+          userRole={perms.canEdit ? userRole : 'ReadOnly'}
+        />
+      )}
+
       {activeTab === 'inventory' && (
         <InventoryAdmin 
           userRole={perms.canEdit ? userRole : 'ReadOnly'}
@@ -1303,7 +1710,8 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
         />
       )}
 
-    </div>
+          </div>
+        </div>
 
         {/* Footer info */}
         <div className="bg-slate-100 p-4 px-6 text-slate-600 text-[10px] sm:text-xs font-sans flex flex-col sm:flex-row justify-between items-center gap-2 shrink-0 border-t border-slate-200">

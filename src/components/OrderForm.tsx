@@ -9,6 +9,7 @@ import {
   getInventoryFromFirestore,
   decrementInventoryItemInFirestore
 } from '../lib/firebase';
+import { trackPixelEvent } from '../lib/tracking';
 
 interface OrderFormProps {
   initialSize: Size;
@@ -119,6 +120,16 @@ export default function OrderForm({
   
   const price = getPrice(initialSize);
 
+  // Trigger PixelYourSite-like InitiateCheckout event on form mount
+  useEffect(() => {
+    trackPixelEvent('InitiateCheckout', {
+      value: price,
+      currency: 'BDT',
+      content_name: 'Premium Raincoat Selection',
+      content_category: 'Raincoats',
+    });
+  }, []);
+
   // Session ID for tracking partial draft/incomplete order
   const [sessionId] = useState(() => 'draft-' + Math.floor(100000 + Math.random() * 900000));
 
@@ -208,7 +219,7 @@ export default function OrderForm({
     setIsSubmitting(true);
 
     // Save final order to database
-    // We do not block the 1 second UI transition, we trigger firestore operations with handlers
+    // We do not block the UI transition, we trigger firestore operations with handlers
     const newId = 'ord-' + Math.floor(Math.random() * 100000);
     const newOrder: RaincoatOrder = {
       id: newId,
@@ -237,39 +248,52 @@ export default function OrderForm({
       console.error("Firebase connection error during submission:", err);
     });
 
-    setTimeout(() => {
-      // Save to localStorage for store owner demo retrieval / local storage fallback
-      const existingOrdersJson = localStorage.getItem('raincoat_orders') || '[]';
-      const existingOrders = JSON.parse(existingOrdersJson);
-      existingOrders.unshift(newOrder);
-      localStorage.setItem('raincoat_orders', JSON.stringify(existingOrders));
+    // Save of orders instantly without timeout delay
+    // Save to localStorage for store owner demo retrieval / local storage fallback
+    const existingOrdersJson = localStorage.getItem('raincoat_orders') || '[]';
+    const existingOrders = JSON.parse(existingOrdersJson);
+    existingOrders.unshift(newOrder);
+    localStorage.setItem('raincoat_orders', JSON.stringify(existingOrders));
 
-      // Save order ID to my past order IDs for local history mapping
-      try {
-        const myOrderIdsJson = localStorage.getItem('raincoat_my_order_ids') || '[]';
-        const myOrderIds = JSON.parse(myOrderIdsJson);
-        if (!myOrderIds.includes(newOrder.id)) {
-          myOrderIds.push(newOrder.id);
-        }
-        localStorage.setItem('raincoat_my_order_ids', JSON.stringify(myOrderIds));
-      } catch (err) {
-        console.error('Error saving order ID to history:', err);
+    // Save order ID to my past order IDs for local history mapping
+    try {
+      const myOrderIdsJson = localStorage.getItem('raincoat_my_order_ids') || '[]';
+      const myOrderIds = JSON.parse(myOrderIdsJson);
+      if (!myOrderIds.includes(newOrder.id)) {
+        myOrderIds.push(newOrder.id);
       }
+      localStorage.setItem('raincoat_my_order_ids', JSON.stringify(myOrderIds));
+    } catch (err) {
+      console.error('Error saving order ID to history:', err);
+    }
 
-      // Clear the temporary draft from incomplete orders because it is now verified & complete
-      const incompleteJson = localStorage.getItem('raincoat_incomplete_orders') || '[]';
-      let incompleteOrders = JSON.parse(incompleteJson);
-      incompleteOrders = incompleteOrders.filter((o: any) => o.id !== sessionId);
-      localStorage.setItem('raincoat_incomplete_orders', JSON.stringify(incompleteOrders));
+    // Clear the temporary draft from incomplete orders because it is now verified & complete
+    const incompleteJson = localStorage.getItem('raincoat_incomplete_orders') || '[]';
+    let incompleteOrders = JSON.parse(incompleteJson);
+    incompleteOrders = incompleteOrders.filter((o: any) => o.id !== sessionId);
+    localStorage.setItem('raincoat_incomplete_orders', JSON.stringify(incompleteOrders));
 
-      setIsSubmitting(false);
-      onOrderSuccess(newOrder);
+    // Dispatch Facebook Pixel / Conversion API Purchase Event with real purchase data & Advanced User Matching
+    trackPixelEvent('Purchase', {
+      value: newOrder.price,
+      currency: 'BDT',
+      content_name: `Premium Raincoat (${newOrder.color} - ${newOrder.size})`,
+      content_category: 'Raincoats',
+      content_ids: [newOrder.id],
+      num_items: 1,
+    }, {
+      name: newOrder.name,
+      phone: newOrder.phone,
+      address: `${newOrder.village}, Bangladesh`,
+    });
 
-      // Reset form fields
-      setName('');
-      setVillage('');
-      setPhone('');
-    }, 1000);
+    setIsSubmitting(false);
+    onOrderSuccess(newOrder);
+
+    // Reset form fields
+    setName('');
+    setVillage('');
+    setPhone('');
   };
 
   return (
@@ -531,21 +555,7 @@ export default function OrderForm({
             <span className="text-emerald-600 font-extrabold font-sans text-[11px]">৳ ০/- (মূল্যের সাথেই অন্তর্ভুক্ত)</span>
           </div>
           
-          {/* Visual Trust Badge: 30-Day Money Back Guarantee */}
-          <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl flex items-center gap-3 shadow-xs">
-            <div className="relative shrink-0 flex items-center justify-center w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 font-bold border border-emerald-200">
-              <ShieldCheck className="h-6 w-6" />
-              <span className="absolute text-[8px] font-black font-sans text-emerald-800 mt-1">30</span>
-            </div>
-            <div className="space-y-0.5 text-left">
-              <h5 className="text-[11px] font-extrabold text-emerald-950 font-sans flex items-center gap-1">
-                🛡️ ৩০ দিন মানি-ব্যাক ওয়ারেন্টি
-              </h5>
-              <p className="text-[10px] sm:text-[11px] text-emerald-800 leading-normal font-sans font-medium">
-                পণ্য পছন্দ না হলে অথবা সাইজে গড়মিল থাকলে ৩০ দিনের মধ্যে রিটার্ন ও ১০০% রিফান্ড সুবিধা পাবেন!
-              </p>
-            </div>
-          </div>
+
 
           <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200/50 p-2.5 rounded-lg font-sans leading-relaxed">
             ⚠️ <strong>রিটার্ন পলিসি:</strong> পছন্দ না হলে অথবা রিটার্ন করতে চাইলে শুধুমাত্র কুরিয়ার চার্জ <strong>১০০ টাকা</strong> দিয়ে রিটার্ন করতে হবে।

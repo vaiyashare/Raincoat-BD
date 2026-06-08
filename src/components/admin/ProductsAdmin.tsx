@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Tag, ShoppingBag, Edit, Save, RefreshCw, Star } from 'lucide-react';
+import { Plus, Trash2, Tag, ShoppingBag, Edit, Save, RefreshCw, Star, Upload, X } from 'lucide-react';
 
 interface Product {
   id: string;
@@ -11,6 +11,8 @@ interface Product {
   category: string;
   sizes: string[];
   colors: string[];
+  images?: string[];
+  addDeliveryCharge?: boolean;
 }
 
 interface ProductsAdminProps {
@@ -32,39 +34,220 @@ export default function ProductsAdmin({ onRefreshProducts, userRole }: ProductsA
   const [category, setCategory] = useState('বাইকিং গিয়ার');
   const [sizes, setSizes] = useState('M,L,XL');
   const [colors, setColors] = useState('Black');
+  const [additionalImages, setAdditionalImages] = useState<string[]>([]);
+  const [addDeliveryCharge, setAddDeliveryCharge] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  const handleMainImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          setImage(reader.result);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleAdditionalImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files) {
+      const updated = [...additionalImages];
+      const remainingSlots = 8 - updated.length;
+      const filesToProcess = (Array.from(files).slice(0, remainingSlots)) as File[];
+
+      let processedCount = 0;
+      if (filesToProcess.length === 0) return;
+
+      filesToProcess.forEach(file => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          if (typeof reader.result === 'string') {
+            updated.push(reader.result);
+            processedCount++;
+            if (processedCount === filesToProcess.length) {
+              setAdditionalImages(updated.slice(0, 8));
+            }
+          }
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+  };
+
+  const addAdditionalImageUrl = (url: string) => {
+    if (!url.trim()) return;
+    if (additionalImages.length >= 8) {
+      alert('সর্বোচ্চ ৮ টি অতিরিক্ত ছবি যোগ করতে পারবেন!');
+      return;
+    }
+    setAdditionalImages(prev => [...prev, url.trim()].slice(0, 8));
+  };
+
+  const removeAdditionalImage = (index: number) => {
+    setAdditionalImages(prev => prev.filter((_, i) => i !== index));
+  };
 
   const loadProducts = () => {
     const list = localStorage.getItem('raincoat_shop_products');
     if (list) {
-      setProducts(JSON.parse(list));
-    } else {
-      const defaults = [
-        {
-          id: 'p-1',
-          title: 'প্রিমিয়াম ওয়াটারপ্রুফ রেইনকোট জ্যাকেট ও প্যান্ট সেট (Navy Blue & Black)',
-          description: 'ডাবল পার্ট প্রিমিয়াম ফ্যাব্রিক ও হিট সিলিং টেকনোলজি সহ বর্ষাকালের সেরা রেনকোট গিয়ার।',
-          price: 990,
-          image: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=600',
-          category: 'রেইনকোট',
-          sizes: ['XL', 'XXL', '3XL', '4XL'],
-          colors: ['Black', 'Navy Blue']
-        },
-        {
-          id: 'p-2',
-          title: 'হেভি ডিউটি ওয়াটারপ্রুফ মোটরসাইকেল সু কাভার (Shoe Guard)',
-          description: 'বর্ষায় বাইক ট্রাভেলে আপনার জুতো কাঁদা জল থেকে শতভাগ শুকনো রাখতে জুতো প্রোটেক্টর শু কাভার।',
-          price: 490,
-          image: 'https://images.unsplash.com/photo-1622434641406-a158123450f9?auto=format&fit=crop&q=80&w=600',
-          category: 'বাইকিং গিয়ার',
-          sizes: ['M', 'L', 'XL'],
-          colors: ['Black']
+      try {
+        const parsed = JSON.parse(list);
+        if (parsed && parsed.length >= 14) {
+          setProducts(parsed);
+          return;
         }
-      ];
-      localStorage.setItem('raincoat_shop_products', JSON.stringify(defaults));
-      setProducts(defaults);
+      } catch (e) {}
     }
+    
+    const defaults = [
+      {
+        id: 'p-1',
+        title: 'প্রিমিয়াম ওয়াটারপ্রুফ রেইনকোট জ্যাকেট ও প্যান্ট সেট (Navy Blue & Black)',
+        description: 'ডাবল পার্ট প্রিমিয়াম ফ্যাব্রিক ও হিট সিলিং টেকনোলজি সহ বর্ষাকালের সেরা রেনকোট গিয়ার।',
+        price: 990,
+        image: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=600',
+        category: 'রেইনকোট',
+        sizes: ['XL', 'XXL', '3XL', '4XL'],
+        colors: ['Black', 'Navy Blue']
+      },
+      {
+        id: 'p-2',
+        title: 'হেভি ডিউটি ওয়াটারপ্রুফ মোটরসাইকেল সু কাভার (Shoe Guard)',
+        description: 'বর্ষায় বাইক ট্রাভেলে আপনার জুতো কাঁদা জল থেকে শতভাগ শুকনো রাখতে জুতো প্রোটেক্টর শু কাভার।',
+        price: 490,
+        image: 'https://images.unsplash.com/photo-1622434641406-a158123450f9?auto=format&fit=crop&q=80&w=600',
+        category: 'বাইকিং গিয়ার',
+        sizes: ['M', 'L', 'XL'],
+        colors: ['Black']
+      },
+      {
+        id: 'p-3',
+        title: 'ডাবল পার্ট উইন্ডপ্রুফ আমব্রেলা ছাতা (Premium Laptop Defense)',
+        description: 'ভারী ঝড়ে উল্টে যাবে না এমন বিশেষ উইন্ড কন্ডাক্টর ও ইউভি কোটিং সমৃদ্ধ ছাতা।',
+        price: 680,
+        image: 'https://images.unsplash.com/photo-1510200378107-1601ee036683?auto=format&fit=crop&q=80&w=600',
+        category: 'অনুষঙ্গ',
+        sizes: ['Universal'],
+        colors: ['Black', 'Blue']
+      },
+      {
+        id: 'p-4',
+        title: 'মোটরসাইকেল হ্যান্ডেলবার ওয়াটারপ্রুফ হ্যান্ড গ্লাভস',
+        description: 'বর্ষায় আর কনকনে ঠান্ডায় বাইক চালানোর জন্য শতভাগ ওয়াটারপ্রুফ ও আরামদায়ক হ্যান্ডগ্লাভস সেট। গরম ও শুষ্ক গ্রিপ।',
+        price: 350,
+        image: 'https://images.unsplash.com/photo-1516257984-b1b4d707412e?auto=format&fit=crop&q=80&w=600',
+        category: 'বাইকিং গিয়ার',
+        sizes: ['M', 'L'],
+        colors: ['Black', 'Red']
+      },
+      {
+        id: 'p-5',
+        title: 'প্রিমিয়াম সেলফ-লকিং ওয়াটারপ্রুফ বাইক মোবাইল হোল্ডার',
+        description: 'যেকোনো সাইকেল বা মোটরসাইকেল হ্যান্ডেলে সহজে ফিট করা যায়। সম্পূর্ণ ওয়াটারপ্রুফ কভার সহ টাচ স্ক্রিন সাপোর্টেড।',
+        price: 590,
+        image: 'https://images.unsplash.com/photo-1584438784894-089d6a128f3e?auto=format&fit=crop&q=80&w=600',
+        category: 'বাইকিং গিয়ার',
+        sizes: ['L', 'XL'],
+        colors: ['Midnight Black']
+      },
+      {
+        id: 'p-6',
+        title: 'ব্যাকপ্যাক ওয়াটারপ্রুফ আল্ট্রা-শিল্ড রেইন কাভার',
+        description: '৩৫ থেকে ৪৫ লিটার সাইজের যেকোনো স্কুল, college বা ট্রাভেল ব্যাগ সম্পূর্ণ পানি ও ধুলোবালি থেকে সুরক্ষিত রাখার কাভার।',
+        price: 190,
+        image: 'https://images.unsplash.com/photo-1622560480654-d96214fdc887?auto=format&fit=crop&q=80&w=600',
+        category: 'অনুষঙ্গ',
+        sizes: ['Standard'],
+        colors: ['Neon Yellow', 'Black']
+      },
+      {
+        id: 'p-7',
+        title: 'স্পোর্টস আল্ট্রা-লাইট ব্রিদাবল উইন্ডব্রেকার রেইন জ্যাকেট',
+        description: 'রানিং, সাইক্লিং এবং ট্র্যাকিংয়ের জন্য হালকা ও আরামদায়ক রেইনপ্রুফ জ্যাকেট। সহজেই ভাজ করে পকেটে রাখা যায়।',
+        price: 790,
+        image: 'https://images.unsplash.com/photo-1548883354-7622d03aca27?auto=format&fit=crop&q=80&w=600',
+        category: 'রেইনকোট',
+        sizes: ['M', 'L', 'XL', 'XXL'],
+        colors: ['Lime Green', 'Navy Blue', 'Silver Gray']
+      },
+      {
+        id: 'p-8',
+        title: 'কিডস ফানি কার্টুন ওয়াটারপ্রুফ রেইনকোট (স্কুল ব্যাগ স্পেস সহ)',
+        description: 'ছোট সোনামণিদের সহজে স্কুলে যাতায়াত করতে আকর্ষণীয় কার্টুন ডিজাইন সম্পন্ন রেইনকোট যা খুব দ্রুত শুকিয়ে যায়।',
+        price: 450,
+        image: 'https://images.unsplash.com/photo-1515621061946-eff1c2a352bd?auto=format&fit=crop&q=80&w=600',
+        category: 'রেইনকোট',
+        sizes: ['S', 'M', 'L'],
+        colors: ['Pink Rose', 'Sky Blue', 'Yellow Duck']
+      },
+      {
+        id: 'p-9',
+        title: 'লেডিস ক্লাসিক লং বেল্ট রেনকোট ট্রেইল কোট',
+        description: 'স্টাইলিশ ও অভিজাত নারীদের জন্য লং বেল্টেড ওয়াটারপ্রুফ ট্রেনচ কোট। আরামদায়ক ও ১০০% প্রিমিয়াম পলিয়েস্টার ফ্যাব্রিক।',
+        price: 1190,
+        image: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&q=80&w=600',
+        category: 'রেইনকোট',
+        sizes: ['M', 'L', 'XL'],
+        colors: ['Beige', 'Black', 'Wine Red']
+      },
+      {
+        id: 'p-10',
+        title: 'আউটডোর ট্রাভেলার্স ওয়াটারপ্রুফ ড্রাই ব্যাগ (২০ লিটার)',
+        description: 'নদী পারাপার, ট্র্যাকিং বা ক্যাম্পিংয়ে ক্যামেরা, মোবাইল ও কাপড় সম্পূর্ণ ওয়াটার টাইট ও ভাসমান রাখতে হেভি ডিউটি ড্রাই ব্যাগ।',
+        price: 550,
+        image: 'https://images.unsplash.com/photo-1611002214172-792c1f90b59a?auto=format&fit=crop&q=80&w=600',
+        category: 'অনুষঙ্গ',
+        sizes: ['20 Liters'],
+        colors: ['Orange Orange', 'Black Shield']
+      },
+      {
+        id: 'p-11',
+        title: 'নাইট-সেফ হাই-ভিজিবিলিটি রিফ্লেক্টভ সেফটি রেইন ভেস্ট',
+        description: 'ঝড়ো বৃষ্টির রাতে বাইকিং বা সড়ক মেরামতে অনন্য সুরক্ষী রিফ্লেক্টিভ স্ট্রিপ সমৃদ্ধ ওয়াটারপ্রুফ ভেস্ট জ্যাকেট।',
+        price: 280,
+        image: 'https://images.unsplash.com/photo-1604176354204-9268737828e4?auto=format&fit=crop&q=80&w=600',
+        category: 'বাইকিং গিয়ার',
+        sizes: ['L', 'XL'],
+        colors: ['Neon Green']
+      },
+      {
+        id: 'p-12',
+        title: 'হেভি হিট-সিলড প্রিমিয়াম রেন পনচো (হুড যুক্ত)',
+        description: 'সহজে গায়ে জড়িয়ে নেয়ার উপযোগী আল্ট্রা-সুপিরিয়র ফিতা যুক্ত পনচো। ১০০% ওয়াটার ব্লক ফ্যাব্রিক যা সহজে ফাটে না।',
+        price: 690,
+        image: 'https://images.unsplash.com/photo-1601924638867-3a6de6b7a500?auto=format&fit=crop&q=80&w=600',
+        category: 'রেইনকোট',
+        sizes: ['Universal Free Size'],
+        colors: ['Hunter Green', 'Royal Blue']
+      },
+      {
+        id: 'p-13',
+        title: 'সিলিকন ইলাস্টিক অ্যান্টি-স্লিপ রেইন শু কাভার (পকেট সাইজ)',
+        description: 'পকেটে রাখা মতো পাতলা কিন্তু অত্যন্ত মজবুত ও ১০০% ওয়াটারপ্রুফ ইলাস্টিক সিলিকন সু গার্ড। রাস্তায় পিচ্ছিল কাদা রোধক গ্রিপ।',
+        price: 190,
+        image: 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?auto=format&fit=crop&q=80&w=600',
+        category: 'অনুষঙ্গ',
+        sizes: ['S', 'M', 'L'],
+        colors: ['Sky Blue', 'Transparent Clear', 'Coal Black']
+      },
+      {
+        id: 'p-14',
+        title: '১০০% ওয়াটারপ্রুফ ও ডাস্টপ্রুফ প্রিমিয়াম বাইক কভার (Premium Bike Cover)',
+        description: '৩০০০ মিলি ওজনের ছাতা কাপড়ের তৈরি শতভাগ ওয়াটারপ্রুফ ও ডাস্টপ্রুফ বাইক কভার। রোদ, বৃষ্টি ও ধুলোবালি প্রতিরোধক সিলভার হিট প্রুফ কোটিং এবং চাকার দুই পাশে ইলাস্টিক জ্যাকিং বেল্ট সহ সম্পূর্ণ স্ট্যান্ডার্ড সাইজ।',
+        price: 600,
+        image: 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?auto=format&fit=crop&q=80&w=600',
+        category: 'বাইকিং গিয়ার',
+        sizes: ['XL'],
+        colors: ['Navy Blue', 'Black'],
+        addDeliveryCharge: false
+      }
+    ];
+    localStorage.setItem('raincoat_shop_products', JSON.stringify(defaults));
+    setProducts(defaults);
   };
 
   useEffect(() => {
@@ -82,6 +265,8 @@ export default function ProductsAdmin({ onRefreshProducts, userRole }: ProductsA
     setCategory('বাইকিং গিয়ার');
     setSizes('M,L,XL');
     setColors('Black');
+    setAdditionalImages([]);
+    setAddDeliveryCharge(true);
   };
 
   const handleAddProduct = (e: React.FormEvent) => {
@@ -118,6 +303,8 @@ export default function ProductsAdmin({ onRefreshProducts, userRole }: ProductsA
             category: category,
             sizes: sizes.split(',').map(s => s.trim()).filter(Boolean),
             colors: colors.split(',').map(c => c.trim()).filter(Boolean),
+            images: additionalImages,
+            addDeliveryCharge: addDeliveryCharge,
           };
         }
         return p;
@@ -141,6 +328,8 @@ export default function ProductsAdmin({ onRefreshProducts, userRole }: ProductsA
       category: category,
       sizes: sizes.split(',').map(s => s.trim()).filter(Boolean),
       colors: colors.split(',').map(c => c.trim()).filter(Boolean),
+      images: additionalImages,
+      addDeliveryCharge: addDeliveryCharge,
     };
 
     const updated = [...products, newProduct];
@@ -163,6 +352,8 @@ export default function ProductsAdmin({ onRefreshProducts, userRole }: ProductsA
     setCategory(p.category);
     setSizes(p.sizes.join(', '));
     setColors(p.colors.join(', '));
+    setAdditionalImages(p.images || []);
+    setAddDeliveryCharge(p.addDeliveryCharge !== false);
   };
 
   const handleDeleteProduct = (id: string) => {
@@ -280,15 +471,158 @@ export default function ProductsAdmin({ onRefreshProducts, userRole }: ProductsA
               </div>
             </div>
 
-            <div>
-              <label className="block text-[10px] text-slate-500 font-bold uppercase mb-1">ইমেজ লিংক (Unsplash/Direct Img Web Address)</label>
+            {/* 📦 Courier Delivery Charge Active Checkbox */}
+            <div className="p-3 bg-indigo-50/60 border border-indigo-150 rounded-xl flex items-center justify-between">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-xs font-black text-slate-900 leading-normal">📦 কুরিয়ার চার্জ কি এড হবে?</span>
+                <span className="text-[9px] text-slate-500 font-medium">টিক দিলে কুরিয়ার চার্জ মূল হিসাবের সাথে যোগ হবে।</span>
+              </div>
               <input 
-                type="text" 
-                placeholder="https://images.unsplash.com/..."
-                className="w-full px-3 py-1.8 border rounded-lg focus:outline-none focus:border-indigo-500 text-slate-800 focus:bg-white text-xs bg-white"
-                value={image}
-                onChange={(e) => setImage(e.target.value)}
+                type="checkbox" 
+                checked={addDeliveryCharge}
+                onChange={(e) => setAddDeliveryCharge(e.target.checked)}
+                className="w-4 h-4 text-indigo-600 border-slate-350 rounded focus:ring-indigo-500 cursor-pointer"
               />
+            </div>
+
+            {/* 📸 MAIN PRODUCT IMAGE PANEL with UPLOAD and REMOVE */}
+            <div className="space-y-2 border border-slate-100 bg-slate-50/50 p-4 rounded-2xl">
+              <label className="block text-[10px] text-slate-700 font-extrabold uppercase tracking-wider">
+                🖼️ প্রধান প্রোডাক্ট ছবি (Main Product Image)
+              </label>
+              
+              <div className="flex flex-col sm:flex-row items-center gap-3">
+                {/* Main image preview */}
+                <div className="w-20 h-20 bg-slate-100 rounded-xl border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center relative group">
+                  {image ? (
+                    <>
+                      <img src={image} className="w-full h-full object-cover" alt="Main" />
+                      <button 
+                        type="button"
+                        onClick={() => setImage('')}
+                        className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white font-extrabold text-[10px] cursor-pointer"
+                      >
+                        রিমুভ ✖
+                      </button>
+                    </>
+                  ) : (
+                    <span className="text-[10px] text-slate-400 italic font-medium">কোনো ছবি নেই</span>
+                  )}
+                </div>
+
+                {/* Main image input fields */}
+                <div className="flex-1 w-full space-y-1.5">
+                  <input 
+                    type="text" 
+                    placeholder="ছবির লিংক দিন (https://images.unsplash.com/...)"
+                    className="w-full px-3 py-1.8 border rounded-lg focus:outline-none focus:border-indigo-500 text-slate-800 text-[11px] bg-white"
+                    value={image}
+                    onChange={(e) => setImage(e.target.value)}
+                  />
+                  <div className="flex items-center gap-2">
+                    <label className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 hover:bg-slate-200 text-slate-700 bg-slate-100 border border-slate-300 rounded-lg text-[10px] font-black cursor-pointer transition">
+                      <Upload className="h-3.5 w-3.5 text-slate-550" />
+                      <span>কম্পিউটার থেকে ছবি আপলোড করুন</span>
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        onChange={handleMainImageUpload}
+                        className="hidden" 
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 📸 ADDITIONAL GALLERY IMAGES PANEL (UP TO 8) with UPLOAD, REMOVE, ADD VIA URL */}
+            <div className="space-y-3.5 border border-slate-200/60 bg-white p-4 rounded-2xl">
+              <div className="flex items-center justify-between">
+                <label className="block text-[10px] text-slate-700 font-extrabold uppercase tracking-wider">
+                  📂 অতিরিক্ত প্রোডাক্ট গ্যালারি ছবি ({additionalImages.length}/৮ টি)
+                </label>
+                {additionalImages.length > 0 && (
+                  <button 
+                    type="button"
+                    onClick={() => setAdditionalImages([])}
+                    className="text-[10px] text-red-500 font-black hover:underline cursor-pointer"
+                  >
+                    সবগুলো মুছুন
+                  </button>
+                )}
+              </div>
+
+              {/* 8 horizontal grid/flex slots */}
+              <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
+                {[...Array(8)].map((_, i) => {
+                  const url = additionalImages[i];
+                  return (
+                    <div 
+                      key={i} 
+                      className="aspect-square bg-slate-50 border border-dashed border-slate-350 rounded-xl overflow-hidden relative group flex flex-col items-center justify-center"
+                    >
+                      {url ? (
+                        <>
+                          <img src={url} className="w-full h-full object-cover" alt={`Gallery-${i}`} />
+                          <button 
+                            type="button" 
+                            onClick={() => removeAdditionalImage(i)}
+                            className="absolute -top-1 -right-1 bg-red-500 hover:bg-red-650 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-bold shadow-xs cursor-pointer z-10 transition scale-90"
+                            title="রিমুভ করুন"
+                          >
+                            ✖
+                          </button>
+                        </>
+                      ) : (
+                        <label className="w-full h-full flex flex-col items-center justify-center cursor-pointer hover:bg-slate-100/80 transition">
+                          <Plus className="h-4 w-4 text-slate-400 group-hover:scale-110 transition" />
+                          <span className="text-[8px] text-slate-400 font-medium mt-0.5">আপলোড</span>
+                          <input 
+                            type="file" 
+                            accept="image/*" 
+                            onChange={handleAdditionalImageUpload}
+                            className="hidden" 
+                          />
+                        </label>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Back up URL adder input for additional images */}
+              <div className="flex gap-2">
+                <input 
+                  type="text" 
+                  id="add-gallery-url-input"
+                  placeholder="লিংক দিয়ে গ্যালারিতে ছবি যোগ করুন..."
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const target = e.currentTarget;
+                      addAdditionalImageUrl(target.value);
+                      target.value = '';
+                    }
+                  }}
+                  className="flex-1 px-3 py-1.8 border rounded-lg focus:outline-none focus:border-indigo-500 text-slate-800 text-[11px] bg-slate-50"
+                />
+                <button 
+                  type="button"
+                  onClick={() => {
+                    const el = document.getElementById('add-gallery-url-input') as HTMLInputElement;
+                    if (el) {
+                      addAdditionalImageUrl(el.value);
+                      el.value = '';
+                    }
+                  }}
+                  className="px-3.5 py-1.8 bg-slate-850 hover:bg-slate-950 text-white rounded-lg text-xs font-black cursor-pointer transition"
+                >
+                  যোগ করুন
+                </button>
+              </div>
+              <p className="text-[10px] text-rose-500/80 font-bold leading-normal">
+                * আপনি প্লাস আইকনে ক্লিক করে সর্বোচ্চ ৮ টি ছবি গ্যালারিতে আপলোড করতে পারবেন।
+              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-2 text-xs">

@@ -18,10 +18,14 @@ import OrderTracker from './components/OrderTracker';
 import OrderHistory from './components/OrderHistory';
 import SuccessToast from './components/SuccessToast';
 import FAQSection from './components/FAQSection';
+import ShopView from './components/ShopView';
+import AmazonMarketplace from './components/AmazonMarketplace';
+import BikeCoverLanding from './components/BikeCoverLanding';
 import navyRaincoatImg from './assets/images/navy_raincoat_1780660053988.png';
 import { Size, ProductColor, RaincoatOrder } from './types';
 import { motion, AnimatePresence } from 'motion/react';
 import { getSheetsConfig, getAccessToken, appendOrderToSheet } from './lib/googleSheets';
+import { initMetaPixel, trackPixelEvent } from './lib/tracking';
 
 export default function App() {
   const [selectedSize, setSelectedSize] = useState<Size>('XXL');
@@ -32,6 +36,30 @@ export default function App() {
   const [showAdmin, setShowAdmin] = useState(false);
   const [ordersCount, setOrdersCount] = useState(0);
   const [scrollProgress, setScrollProgress] = useState(0);
+  const [bundleOfferImage, setBundleOfferImage] = useState<string>(() => {
+    return localStorage.getItem('raincoat_bundle_offer_image') || navyRaincoatImg;
+  });
+  const [liveVideosList, setLiveVideosList] = useState<any[]>(() => {
+    const cached = localStorage.getItem('raincoat_live_videos');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (parsed && parsed.length > 0) return parsed;
+      } catch (e) {}
+    }
+    return [
+      {
+        id: 'live-video-default-1',
+        url: 'https://www.facebook.com/reel/1471402964313008/',
+        title: 'লাইভ ওয়াটার রেসিস্ট্যান্স টেস্ট',
+      },
+      {
+        id: 'live-video-default-2',
+        url: 'https://www.facebook.com/reel/2183474582444791/',
+        title: 'হিট সিলিং ও রেইনপ্রুফ ডেমো',
+      }
+    ];
+  });
   const [currentHash, setCurrentHash] = useState(window.location.hash);
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
 
@@ -88,7 +116,7 @@ export default function App() {
     setOrdersCount(JSON.parse(listJson).length);
 
     // Sync count asynchronously from Firestore database
-    import('./lib/firebase').then(({ getOrdersFromFirestore }) => {
+    import('./lib/firebase').then(({ getOrdersFromFirestore, getMediaFromFirestore }) => {
       getOrdersFromFirestore().then((fbOrders) => {
         if (fbOrders && fbOrders.length > 0) {
           localStorage.setItem('raincoat_orders', JSON.stringify(fbOrders));
@@ -97,7 +125,42 @@ export default function App() {
       }).catch((err) => {
         console.warn("Could not sync orders count on startup:", err);
       });
+
+      // Synchronize custom bundle offer image from Firestore
+      getMediaFromFirestore().then((media) => {
+        const found = media.find(item => item.id === 'bundle-offer-image');
+        if (found && found.url) {
+          localStorage.setItem('raincoat_bundle_offer_image', found.url);
+          setBundleOfferImage(found.url);
+        }
+
+        // Sync live videos
+        const filteredVideos = media.filter(item => String(item.id).startsWith('live-video-'));
+        if (filteredVideos && filteredVideos.length > 0) {
+          localStorage.setItem('raincoat_live_videos', JSON.stringify(filteredVideos));
+          setLiveVideosList(filteredVideos);
+        }
+      }).catch((err) => {
+        console.warn("Could not sync custom configurations:", err);
+      });
     }).catch(() => {});
+
+    const handleBundleImageUpdate = () => {
+      setBundleOfferImage(localStorage.getItem('raincoat_bundle_offer_image') || navyRaincoatImg);
+    };
+    const handleLiveVideosUpdate = () => {
+      const cached = localStorage.getItem('raincoat_live_videos');
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (parsed && parsed.length > 0) {
+            setLiveVideosList(parsed);
+          }
+        } catch (e) {}
+      }
+    };
+    window.addEventListener('raincoat_bundle_image_updated', handleBundleImageUpdate);
+    window.addEventListener('raincoat_live_videos_updated', handleLiveVideosUpdate);
 
     // Dynamically inject Facebook SDK script
     const fbScript = document.createElement('script');
@@ -113,9 +176,11 @@ export default function App() {
       }
     };
 
-    return () => {
-      document.body.removeChild(fbScript);
-    };
+     return () => {
+       document.body.removeChild(fbScript);
+       window.removeEventListener('raincoat_bundle_image_updated', handleBundleImageUpdate);
+       window.removeEventListener('raincoat_live_videos_updated', handleLiveVideosUpdate);
+     };
   }, []);
 
   // Inject third-party custom code snippets (Header & Footer slugs) dynamically
@@ -174,24 +239,8 @@ export default function App() {
 
   // Inject Google Analytics & Facebook Pixel tags dynamically
   useEffect(() => {
-    const pixelId = localStorage.getItem('fb_pixel_id');
-    if (pixelId) {
-      const script = document.createElement('script');
-      script.innerHTML = `
-        !function(f,b,e,v,n,t,s)
-        {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-        n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-        if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-        n.queue=[];t=b.createElement(e);t.async=!0;
-        t.src=v;s=b.getElementsByTagName(e)[0];
-        s.parentNode.insertBefore(t,s)}(window, document,'script',
-        'https://connect.facebook.net/en_US/fbevents.js');
-        fbq('init', '${pixelId}');
-        fbq('track', 'PageView');
-      `;
-      script.setAttribute('data-injected-api', 'fb-pixel');
-      document.head.appendChild(script);
-    }
+    // Initial run
+    initMetaPixel();
 
     const gaId = localStorage.getItem('ga_track_id');
     if (gaId) {
@@ -212,8 +261,17 @@ export default function App() {
       document.head.appendChild(scriptConfig);
     }
 
+    // Hot config updater (PixelYourSite style real-time reload)
+    const handlePixelUpdate = () => {
+      document.querySelectorAll('[data-injected-api="fb-pixel-lib"]').forEach(el => el.remove());
+      initMetaPixel();
+    };
+
+    window.addEventListener('raincoat_pixel_config_updated', handlePixelUpdate);
+
     return () => {
       document.querySelectorAll('[data-injected-api]').forEach(el => el.remove());
+      window.removeEventListener('raincoat_pixel_config_updated', handlePixelUpdate);
     };
   }, []);
 
@@ -262,9 +320,40 @@ export default function App() {
     }
   };
 
+  const getEmbedVideoUrl = (rawUrl: string): string => {
+    if (!rawUrl) return '';
+    
+    // YouTube Support
+    if (rawUrl.includes('youtube.com') || rawUrl.includes('youtu.be')) {
+      let videoId = '';
+      if (rawUrl.includes('v=')) {
+        const parts = rawUrl.split('v=')[1];
+        videoId = parts ? parts.split('&')[0] : '';
+      } else if (rawUrl.includes('youtu.be/')) {
+        const parts = rawUrl.split('youtu.be/')[1];
+        videoId = parts ? parts.split('?')[0] : '';
+      } else if (rawUrl.includes('youtube.com/shorts/')) {
+        const parts = rawUrl.split('youtube.com/shorts/')[1];
+        videoId = parts ? parts.split('?')[0] : '';
+      }
+      return videoId ? `https://www.youtube.com/embed/${videoId}` : rawUrl;
+    }
+    
+    // Facebook Support
+    if (rawUrl.includes('facebook.com') || rawUrl.includes('fb.watch')) {
+      return `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(rawUrl)}&show_text=false&width=500`;
+    }
+    
+    // If it's already an embed link
+    return rawUrl;
+  };
+
   // Routing calculations
   const isAdminRoute = currentPath === '/admin' || currentHash === '#/admin' || currentHash === '#admin';
   const isTrackOrderRoute = currentPath === '/track-order' || currentHash === '#/track-order' || currentHash === '#track-order';
+  const isShopRoute = currentPath === '/shop' || currentHash === '#/shop' || currentHash === '#shop';
+  const isRaincoatLandingRoute = currentPath === '/raincoat' || currentHash === '#/raincoat' || currentHash === '#raincoat';
+  const isBikeCoverLandingRoute = currentPath === '/bikecover' || currentHash === '#/bikecover' || currentHash === '#bikecover';
 
   // Check if hash matches a custom page slug from custom landing pages collection
   const pagesJson = localStorage.getItem('raincoat_pages') || '[]';
@@ -285,7 +374,8 @@ export default function App() {
       <AdminPanel 
         onClose={() => {
           if (currentPath === '/admin') {
-            window.location.pathname = '/';
+            window.history.pushState(null, '', '/');
+            window.dispatchEvent(new Event('popstate'));
           } else {
             window.location.hash = '';
           }
@@ -375,6 +465,62 @@ export default function App() {
     );
   }
 
+  // Handle Shop routing (Separate Tab/Page View)
+  if (isShopRoute) {
+    return (
+      <div className="min-h-screen bg-slate-50 relative selection:bg-blue-600 selection:text-white flex flex-col justify-between font-sans">
+        {/* Urgent Alert Strip */}
+        <div className="bg-gradient-to-r from-orange-600 via-rose-500 to-blue-900 text-white text-xs sm:text-sm font-bold text-center py-2 px-4 shadow-sm flex items-center justify-center gap-2 relative z-40 font-sans">
+          <span>🌧️ বর্ষা ধামাকা ২০% ছাড়!  ডেলিভারি চার্জ সম্পূর্ণ ফ্রি! 🌧️</span>
+          <button 
+            onClick={() => {
+              if (currentPath === '/shop') {
+                window.history.pushState(null, '', '/');
+                window.dispatchEvent(new Event('popstate'));
+              } else {
+                window.location.hash = '';
+              }
+            }} 
+            className="underline text-amber-250 hover:text-white transition font-black ml-4 cursor-pointer"
+          >
+            প্রধান পেইজে যান
+          </button>
+        </div>
+
+        {/* Back navigation bar */}
+        <div className="bg-white border-b border-slate-200 py-3.5 px-4 shadow-xs">
+          <div className="max-w-6xl mx-auto flex items-center justify-between">
+            <button
+              onClick={() => {
+                if (currentPath === '/shop') {
+                  window.history.pushState(null, '', '/');
+                  window.dispatchEvent(new Event('popstate'));
+                } else {
+                  window.location.hash = '';
+                }
+              }}
+              className="flex items-center gap-1.5 text-slate-700 hover:text-slate-950 font-bold text-xs sm:text-sm cursor-pointer hover:underline"
+            >
+              ⬅ প্রধান পেইজে ফেরত যান
+            </button>
+            <span className="text-[11px] font-bold text-slate-400 font-mono">Premium Raincoat Shop BD</span>
+          </div>
+        </div>
+
+        {/* Main Content Area */}
+        <div className="flex-1 max-w-7xl mx-auto w-full">
+          <ShopView onOrderSuccess={handleOrderCreated} />
+        </div>
+
+        {/* Secure Trust Footer */}
+        <div className="bg-slate-900 text-slate-400 text-center py-6 border-t border-slate-800 text-xs">
+          <p>© {new Date().getFullYear()} Premium Raincoat BD. সর্বস্বত্ব সংরক্ষিত।</p>
+          <p className="text-[10px] text-slate-550 mt-1">সবচেয়ে নির্ভরযোগ্য কাস্টমার কুরিয়ার ট্র্যাকিং</p>
+        </div>
+      </div>
+    );
+  }
+
   // Handle custom Pages routing
   if (activeCustomPage) {
     return (
@@ -412,6 +558,43 @@ export default function App() {
             <Phone className="h-4.5 w-4.5 animate-pulse" />
           </a>
         </div>
+      </div>
+    );
+  }
+
+  // Handle Bike Cover Landing Route
+  if (isBikeCoverLandingRoute) {
+    return (
+      <div className="min-h-screen bg-slate-950 relative selection:bg-orange-600 selection:text-white flex flex-col justify-between font-sans">
+        <BikeCoverLanding onOrderSuccess={handleOrderCreated} />
+        
+        {/* Real-time floating purchase notification toast and success feedback */}
+        <LivePurchaseNotification />
+        {recentOrderForToast && (
+          <SuccessToast 
+            order={recentOrderForToast} 
+            onClose={() => setRecentOrderForToast(null)} 
+          />
+        )}
+      </div>
+    );
+  }
+
+  // Handle Home Route (Alibaba / Amazon marketplace design)
+  const isHomeRoute = currentPath === '/' || currentPath === '' || currentHash === '' || currentHash === '#/' || currentHash === '#home';
+  if (isHomeRoute && !isRaincoatLandingRoute) {
+    return (
+      <div className="min-h-screen bg-slate-50 relative selection:bg-orange-600 selection:text-white flex flex-col justify-between font-sans">
+        <AmazonMarketplace onOrderSuccess={handleOrderCreated} />
+        
+        {/* Real-time floating purchase notification toast and success feedback */}
+        <LivePurchaseNotification />
+        {recentOrderForToast && (
+          <SuccessToast 
+            order={recentOrderForToast} 
+            onClose={() => setRecentOrderForToast(null)} 
+          />
+        )}
       </div>
     );
   }
@@ -476,18 +659,18 @@ export default function App() {
             <div className="lg:col-span-5 relative w-full flex flex-col items-center justify-center mt-6 lg:mt-0 order-first lg:order-last animate-fade-in space-y-4">
               <ProductCarousel />
               
-              {/* 30-Day Money Back Guarantee trust badge card */}
+              {/* 3 Seasons Durability Guarantee trust badge card */}
               <div className="w-full max-w-sm sm:max-w-md md:max-w-lg bg-slate-900/60 p-4 border border-slate-700/50 rounded-2xl flex items-center gap-4 shadow-xl text-left">
-                <div className="relative shrink-0 flex items-center justify-center w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400">
-                  <Award className="h-7 w-7" />
-                  <span className="absolute text-[9px] font-black font-sans text-amber-400 mt-1">30</span>
+                <div className="relative shrink-0 flex items-center justify-center w-12 h-12 rounded-full bg-orange-500/10 border border-orange-500/30 text-orange-400">
+                  <ShieldCheck className="h-7 w-7" />
+                  <span className="absolute text-[8px] font-black font-sans text-orange-400 mt-1">3S</span>
                 </div>
                 <div className="space-y-1">
-                  <h4 className="text-xs sm:text-sm font-extrabold text-amber-400 font-sans flex items-center gap-1">
-                    🛡️ ৩০ দিনের শতভাগ মানি ব্যাক গ্যারান্টি!
+                  <h4 className="text-xs sm:text-sm font-extrabold text-orange-400 font-sans flex items-center gap-1">
+                    🛡️ ৩ সিজন ব্যবহার করতে পারবেন অনায়াসে!
                   </h4>
                   <p className="text-[10px] sm:text-xs text-slate-300 leading-relaxed font-sans">
-                    রেইনকোটের কোয়ালিটি নিয়ে আমরা সম্পূর্ণ নিশ্চিত। সাইজে সমস্যা, কোনো ডিফেক্ট অথবা পছন্দ না হলে ৩০ দিনের মধ্যে কোনো প্রশ্ন ছাড়াই ক্যাশ ব্যাক সুবিধা!
+                    ৩ সিজন ব্যবহার পারবেন অনায়েশে যদি সঠিক ভাবে ব্যবহার করেন। আমাদের রেইনকোটের উন্নত ফ্যাব্রিকেশন এবং থার্মাল পিইউ সীমিং সিলিং দীর্ঘস্থায়িত্বের শতভাগ নিশ্চয়তা দেয়।
                   </p>
                 </div>
               </div>
@@ -588,41 +771,39 @@ export default function App() {
             </p>
           </div>
 
-          {/* Facebook Video Iframes embedded side-by-side inside high-quality device frames */}
-          <div className="flex flex-col md:flex-row gap-6 justify-center items-center max-w-3xl mx-auto">
-            {/* Video 1 */}
-            <div className="relative w-full max-w-[280px] sm:max-w-[300px] bg-slate-950 border-[6px] border-slate-800 rounded-3xl shadow-2xl aspect-[9/16] overflow-hidden">
-              <iframe 
-                src="https://www.facebook.com/plugins/video.php?href=https%3A%2F%2Fwww.facebook.com%2Freel%2F1471402964313008%2F&show_text=false&width=500" 
-                width="100%" 
-                height="100%" 
-                style={{ border: 'none', overflow: 'hidden' }} 
-                scrolling="no" 
-                frameBorder="0" 
-                allowFullScreen={true}
-                allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
-                title="Premium Raincoat Live performance demo 1"
-                className="absolute inset-0"
-                id="fb-iframe-iframe-1"
-              />
-            </div>
-
-            {/* Video 2 */}
-            <div className="relative w-full max-w-[280px] sm:max-w-[300px] bg-slate-950 border-[6px] border-slate-800 rounded-3xl shadow-2xl aspect-[9/16] overflow-hidden">
-              <iframe 
-                src="https://www.facebook.com/plugins/video.php?href=https%3A%2F%2Fwww.facebook.com%2Freel%2F2183474582444791%2F&show_text=false&width=500" 
-                width="100%" 
-                height="100%" 
-                style={{ border: 'none', overflow: 'hidden' }} 
-                scrolling="no" 
-                frameBorder="0" 
-                allowFullScreen={true}
-                allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
-                title="Premium Raincoat Live performance demo 2"
-                className="absolute inset-0"
-                id="fb-iframe-iframe-2"
-              />
-            </div>
+          {/* Facebook/YouTube Video Iframes embedded inside high-quality device frames */}
+          <div className="flex flex-wrap gap-8 justify-center items-stretch max-w-4xl mx-auto">
+            {liveVideosList.map((video, index) => {
+              const embedUrl = getEmbedVideoUrl(video.url);
+              return (
+                <div key={video.id || index} className="flex flex-col items-center">
+                  <div className="relative w-[280px] sm:w-[300px] bg-slate-950 border-[6px] border-slate-800 rounded-3xl shadow-2xl aspect-[9/16] overflow-hidden">
+                    {embedUrl ? (
+                      <iframe 
+                        src={embedUrl}
+                        width="100%" 
+                        height="100%" 
+                        style={{ border: 'none', overflow: 'hidden' }} 
+                        scrolling="no" 
+                        frameBorder="0" 
+                        allowFullScreen={true}
+                        allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+                        title={video.title || `Premium Raincoat Live performance demo ${index + 1}`}
+                        className="absolute inset-0"
+                        id={`fb-iframe-iframe-${video.id || index}`}
+                      />
+                    ) : (
+                      <div className="text-xs text-slate-500 flex items-center justify-center h-full font-sans">লিংক ভুল প্রবেশ করা হয়েছে</div>
+                    )}
+                  </div>
+                  {video.title && (
+                    <span className="mt-3 text-xs sm:text-sm font-extrabold text-slate-800 bg-slate-100 border border-slate-200 shadow-sm px-3 py-1 rounded-full font-sans">
+                      📱 {video.title}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           <div className="mt-4 flex justify-center gap-4 text-[11px] sm:text-xs font-sans text-slate-500">
@@ -986,9 +1167,10 @@ export default function App() {
                 {/* Soft gradient aura behind raincoat in white card */}
                 <div className="absolute inset-x-0 bottom-0 h-40 bg-radial from-slate-100 to-transparent pointer-events-none" />
                 <img
-                  src={navyRaincoatImg}
+                  src={bundleOfferImage}
                   alt="Premium Raincoat Complete Bundle"
                   referrerPolicy="no-referrer"
+                  loading="lazy"
                   className="w-full h-auto max-h-[300px] object-contain transition duration-500 transform group-hover:scale-[1.03] relative z-10"
                 />
               </div>
@@ -1206,6 +1388,19 @@ export default function App() {
             আমরা স্থানীয় বাইকার ও সাধারণ যাতায়াতকারীদের জন্য সর্বোচ্চ প্রিমিয়াম ওয়াটারপ্রুফ গিয়ার সরবরাহ করি। আমাদের হিট সিল টেকনোলজি ও কব্জি রাবার গ্রিপ ১০০% লিক সেফ। কোনো প্রিপেইড চার্জ ছাড়া পণ্য বুঝে পেয়ে মূল্য পরিশোধ করুন।
           </p>
 
+          <div className="py-2">
+            <button
+              type="button"
+              onClick={() => {
+                window.history.pushState(null, '', '/shop');
+                window.dispatchEvent(new Event('popstate'));
+              }}
+              className="inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg shadow-emerald-950/40 hover:shadow-emerald-500/10 active:scale-[0.98] transition-all cursor-pointer font-sans"
+            >
+              <ShoppingBag className="h-4 w-4" /> আরো প্রোডাক্ট দেখুন (আমাদের শপ)
+            </button>
+          </div>
+
           <div className="flex flex-wrap items-center justify-center gap-3 text-[10px] sm:text-xs text-slate-500 font-mono">
             <span>© {new Date().getFullYear()} Raincoat BD. All rights reserved.</span>
             <span>•</span>
@@ -1226,7 +1421,10 @@ export default function App() {
             </button>
             <span className="text-slate-900 select-none">•</span>
             <button
-              onClick={() => setShowAdmin(true)}
+              onClick={() => {
+                window.history.pushState(null, '', '/admin');
+                window.dispatchEvent(new Event('popstate'));
+              }}
               className="text-slate-900 select-none hover:text-slate-900 transition-none cursor-default flex items-center gap-1 font-sans"
               id="admin-dashboard-toggle-footer"
             >
@@ -1258,14 +1456,6 @@ export default function App() {
           <Phone className="h-4.5 w-4.5 animate-pulse" />
         </a>
       </div>
-
-      {/* Admin Panel Modal Overlay */}
-      {showAdmin && (
-        <AdminPanel 
-          onClose={() => setShowAdmin(false)} 
-          onRefreshOrdersCount={refreshOrdersCount}
-        />
-      )}
 
       {/* Real-time floating purchase notification toast */}
       <LivePurchaseNotification />

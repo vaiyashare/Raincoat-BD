@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, ShieldCheck, Sparkles, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { getMediaFromFirestore } from '../lib/firebase';
 
 import navyRaincoatImg from '../assets/images/navy_raincoat_1780660053988.png';
 import blackRaincoatImg from '../assets/images/black_raincoat_1780660074069.png';
@@ -9,7 +10,7 @@ import wristCuffsImg from '../assets/images/raincoat_wrist_cuffs_1780660107193.p
 import actionImg from '../assets/images/navy_raincoat_action_1780660126544.png';
 
 interface CarouselItem {
-  id: number;
+  id: string | number;
   url: string;
   title: string;
   tag: string;
@@ -20,43 +21,97 @@ export default function ProductCarousel() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
 
-  const carouselItems: CarouselItem[] = [
+  const defaultItems: CarouselItem[] = [
     {
-      id: 1,
+      id: 'slide-1',
       url: navyRaincoatImg,
       title: 'প্রিমিয়াম নেভি ব্লু কালার',
       tag: 'নেভি ব্লু',
-      description: 'ক্যাপসহ প্রিমিয়াম ২-পিস জ্যাকেট ও জুতো কাভারসহ ট্রাউজার সেট',
+      description: 'ক্যাপসহ প্রিমিয়াম ২-পিস ஜ্যাকেট ও জুতো কাভারসহ ট্রাউজার সেট',
     },
     {
-      id: 2,
+      id: 'slide-2',
       url: blackRaincoatImg,
       title: 'প্রিমিয়াম জেট ব্ল্যাক কালার',
       tag: 'কালো',
       description: 'অভিজাত ব্ল্যাক কালার এবং জ্যাকেটের বুকে আল্ট্রা রিফ্লেক্টিভ সেফটি স্ট্রাইপ',
     },
     {
-      id: 3,
+      id: 'slide-3',
       url: actionImg,
       title: 'রেইনকোটটির বাস্তব ফিটিং লুক',
       tag: 'স্মার্ট ডিজাইন',
       description: 'যেকোনো পোশাকে সহজেই ফিট করে, হালকা এবং শতভাগ স্বাচ্ছন্দ্যময়',
     },
     {
-      id: 4,
+      id: 'slide-4',
       url: seamSealingImg,
       title: '১০০% লিকপ্রুফ সীমিং প্রযুক্তি',
       tag: 'ওয়াটারপ্রুফ গিয়ার',
       description: 'রেইনকোটের ভেতরের প্রতিটি সেলাই জয়েন্ট হট-প্রেসড পিইউ টেপ দ্বারা সিল করা',
     },
     {
-      id: 5,
+      id: 'slide-5',
       url: wristCuffsImg,
       title: 'ভেলক্রো এডজাস্টেবল রিস্ট কাফ',
       tag: 'ফিটিং লুক',
       description: 'হাতে পানি প্রবেশ করা সম্পূর্ণ আটকাতে ইলাস্টিক বর্ডার প্লাস ভেলক্রো বেল্ট সুবিধা',
     },
   ];
+
+  const [carouselItems, setCarouselItems] = useState<CarouselItem[]>(() => {
+    const cached = localStorage.getItem('raincoat_media_gallery');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (parsed && parsed.length > 0) {
+          return parsed.filter((item: any) => item.id !== 'bundle-offer-image' && !String(item.id).startsWith('live-video-'));
+        }
+      } catch (e) {}
+    }
+    return defaultItems;
+  });
+
+  const fetchFirebaseMedia = async () => {
+    try {
+      const dbMedia = await getMediaFromFirestore();
+      if (dbMedia && dbMedia.length > 0) {
+        const filtered = dbMedia.filter(item => item.id !== 'bundle-offer-image' && !String(item.id).startsWith('live-video-'));
+        setCarouselItems(filtered);
+        localStorage.setItem('raincoat_media_gallery', JSON.stringify(dbMedia));
+      } else {
+        const cached = localStorage.getItem('raincoat_media_gallery');
+        if (!cached) {
+          setCarouselItems(defaultItems);
+        }
+      }
+    } catch (err) {
+      console.warn("Could not load dynamic carousel from Firestore:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchFirebaseMedia();
+
+    const handleCarouselUpdate = () => {
+      const updated = localStorage.getItem('raincoat_media_gallery');
+      if (updated) {
+        try {
+          const parsed = JSON.parse(updated);
+          if (parsed && parsed.length > 0) {
+            setCarouselItems(parsed.filter((item: any) => item.id !== 'bundle-offer-image' && !String(item.id).startsWith('live-video-')));
+            return;
+          }
+        } catch (e) {}
+      }
+      setCarouselItems(defaultItems);
+    };
+
+    window.addEventListener('raincoat_carousel_updated', handleCarouselUpdate);
+    return () => {
+      window.removeEventListener('raincoat_carousel_updated', handleCarouselUpdate);
+    };
+  }, []);
 
   useEffect(() => {
     if (isHovered) return;
@@ -78,7 +133,8 @@ export default function ProductCarousel() {
     setCurrentIndex((prevIndex) => (prevIndex + 1) % carouselItems.length);
   };
 
-  const currentItem = carouselItems[currentIndex];
+  if (carouselItems.length === 0) return null;
+  const currentItem = carouselItems[currentIndex] || carouselItems[0];
 
   return (
     <div 
@@ -87,8 +143,19 @@ export default function ProductCarousel() {
       onMouseLeave={() => setIsHovered(false)}
       id="product-gallery-carousel"
     >
-      {/* Background Ambience Soft Light */}
-      <div className="absolute inset-0 bg-radial from-indigo-900/10 to-transparent pointer-events-none" />
+      {/* Background Ambience or Custom Background Image */}
+      {currentItem.bgUrl ? (
+        <div 
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat transition-all duration-700 pointer-events-none transform scale-102 group-hover:scale-100"
+          style={{ backgroundImage: `url(${currentItem.bgUrl})` }}
+        >
+          {/* Subtle dark glass layer for readability of overlays and text */}
+          <div className="absolute inset-0 bg-black/50" />
+        </div>
+      ) : (
+        /* Background Ambience Soft Light */
+        <div className="absolute inset-0 bg-radial from-indigo-900/10 to-transparent pointer-events-none" />
+      )}
 
       {/* Slide Image Rendering with Motion Transitions */}
       <div className="w-full h-full relative flex items-center justify-center p-2 sm:p-4">
@@ -105,6 +172,7 @@ export default function ProductCarousel() {
               src={currentItem.url}
               alt={currentItem.title}
               referrerPolicy="no-referrer"
+              loading="lazy"
               className="w-full h-full object-contain rounded-2xl max-h-[85%] transition duration-500 transform group-hover:scale-[1.02]"
               id={`carousel-img-${currentItem.id}`}
             />

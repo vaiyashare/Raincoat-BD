@@ -1,5 +1,9 @@
 import { initializeApp } from 'firebase/app';
 import { 
+  getAuth,
+  sendPasswordResetEmail
+} from 'firebase/auth';
+import { 
   initializeFirestore, 
   doc, 
   setDoc, 
@@ -12,10 +16,13 @@ import {
   orderBy
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { RaincoatOrder, IncompleteOrder, InventoryItem, ProductColor, Size } from '../types';
+import { RaincoatOrder, IncompleteOrder, InventoryItem, ProductColor, Size, MediaItem } from '../types';
 
 // Initialize Firebase App
 const app = initializeApp(firebaseConfig);
+
+// Initialize Firebase Auth
+export const auth = getAuth(app);
 
 // Initialize Cloud Firestore Database with instance ID and force long polling to bypass iframe socket blocks
 const dbId = (firebaseConfig as any).firestoreDatabaseId;
@@ -201,4 +208,46 @@ export async function decrementInventoryItemInFirestore(color: ProductColor, siz
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
+}
+
+// Media Management API methods for Landing Page Slideshow Customizer
+export async function getMediaFromFirestore(): Promise<MediaItem[]> {
+  const path = 'media';
+  try {
+    const q = query(collection(db, 'media'));
+    const snapshot = await getDocs(q);
+    const results: MediaItem[] = [];
+    snapshot.forEach((doc) => {
+      results.push(doc.data() as MediaItem);
+    });
+    // Sort ascendingly by orderIndex
+    results.sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+    return results;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+}
+
+export async function saveMediaToFirestore(item: MediaItem): Promise<void> {
+  const path = `media/${item.id}`;
+  try {
+    await setDoc(doc(db, 'media', item.id), item);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function deleteMediaFromFirestore(id: string): Promise<void> {
+  const path = `media/${id}`;
+  try {
+    await deleteDoc(doc(db, 'media', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+// Password reset functionality connected with Firebase Auth
+export async function sendFirebasePasswordReset(email: string): Promise<void> {
+  await sendPasswordResetEmail(auth, email);
 }

@@ -32,8 +32,22 @@ export default function UsersAdmin({ currentUser, onRefreshUsers, userRole }: Us
   const [success, setSuccess] = useState('');
 
   // Main login password changes states
-  const [adminUsername, setAdminUsername] = useState(() => localStorage.getItem('admin_username') || 'admin');
-  const [adminPassword, setAdminPassword] = useState(() => localStorage.getItem('admin_password') || '123456');
+  const [adminUsername, setAdminUsername] = useState(() => {
+    const stored = localStorage.getItem('admin_username');
+    if (!stored || stored === 'admin') {
+      localStorage.setItem('admin_username', 'sobpabe');
+      return 'sobpabe';
+    }
+    return stored;
+  });
+  const [adminPassword, setAdminPassword] = useState(() => {
+    const stored = localStorage.getItem('admin_password');
+    if (!stored || stored === '123456') {
+      localStorage.setItem('admin_password', 'Ashik@@9');
+      return 'Ashik@@9';
+    }
+    return stored;
+  });
   const [newAdminUser, setNewAdminUser] = useState('');
   const [newAdminPass, setNewAdminPass] = useState('');
   const [pwdMsg, setPwdMsg] = useState('');
@@ -42,11 +56,27 @@ export default function UsersAdmin({ currentUser, onRefreshUsers, userRole }: Us
   const loadTeamUsers = () => {
     const list = localStorage.getItem('raincoat_team_users');
     if (list) {
-      setTeamUsers(JSON.parse(list));
+      try {
+        let team = JSON.parse(list);
+        let updated = false;
+        team = team.map((u: any) => {
+          if (u.id === '1' && u.username === 'admin' && u.passwordHash === '123456') {
+            updated = true;
+            return { ...u, username: 'sobpabe', passwordHash: 'Ashik@@9' };
+          }
+          return u;
+        });
+        if (updated) {
+          localStorage.setItem('raincoat_team_users', JSON.stringify(team));
+        }
+        setTeamUsers(team);
+      } catch (e) {
+        setTeamUsers([]);
+      }
     } else {
       // Seed default accounts
       const defaults: TeamUser[] = [
-        { id: '1', username: 'admin', passwordHash: '123456', role: 'Admin', canEdit: true, canDelete: true },
+        { id: '1', username: 'sobpabe', passwordHash: 'Ashik@@9', role: 'Admin', canEdit: true, canDelete: true },
         { id: '2', username: 'editor', passwordHash: '123456', role: 'Editor', canEdit: true, canDelete: false },
         { id: '3', username: 'viewer', passwordHash: '123455', role: 'ReadOnly', canEdit: false, canDelete: false },
       ];

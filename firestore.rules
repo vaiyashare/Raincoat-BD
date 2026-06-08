@@ -55,6 +55,15 @@ service cloud.firestore {
         && isNumeric(data.fieldsFilledCount) && data.fieldsFilledCount >= 0;
     }
 
+    function isValidMedia(data) {
+      return data.keys().hasAll(['id', 'url', 'title', 'tag', 'orderIndex'])
+        && data.id is string && data.id.size() <= 128
+        && data.url is string && data.url.size() <= 2000000
+        && data.title is string && data.title.size() <= 150
+        && data.tag is string && data.tag.size() <= 50
+        && isNumeric(data.orderIndex);
+    }
+
     // Connection validation target
     match /test-connection-doc/{testId} {
       allow read, write: if true;
@@ -88,6 +97,13 @@ service cloud.firestore {
     match /inventory/{itemId} {
       allow read: if true;
       allow create, update: if isValidId(itemId) && isValidInventory(request.resource.data);
+      allow delete: if true;
+    }
+
+    // Media Collection Rules
+    match /media/{mediaId} {
+      allow read: if true;
+      allow create, update: if isValidId(mediaId) && isValidMedia(request.resource.data);
       allow delete: if true;
     }
   }

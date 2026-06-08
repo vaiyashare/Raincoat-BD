@@ -121,6 +121,7 @@ export default function PageRenderer({ page, onOrderSuccess }: PageRendererProps
                           alt="custom landing design block" 
                           className="max-h-[500px] object-cover rounded-2xl shadow-md border border-slate-200"
                           referrerPolicy="no-referrer"
+                          loading="lazy"
                         />
                       </div>
                     </div>
