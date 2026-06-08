@@ -473,8 +473,24 @@ export default function App() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
             
             {/* High-fidelity interactive Product Carousel showing real product images & features */}
-            <div className="lg:col-span-5 relative w-full flex justify-center mt-6 lg:mt-0 order-first lg:order-last animate-fade-in">
+            <div className="lg:col-span-5 relative w-full flex flex-col items-center justify-center mt-6 lg:mt-0 order-first lg:order-last animate-fade-in space-y-4">
               <ProductCarousel />
+              
+              {/* 30-Day Money Back Guarantee trust badge card */}
+              <div className="w-full max-w-sm sm:max-w-md md:max-w-lg bg-slate-900/60 p-4 border border-slate-700/50 rounded-2xl flex items-center gap-4 shadow-xl text-left">
+                <div className="relative shrink-0 flex items-center justify-center w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400">
+                  <Award className="h-7 w-7" />
+                  <span className="absolute text-[9px] font-black font-sans text-amber-400 mt-1">30</span>
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-xs sm:text-sm font-extrabold text-amber-400 font-sans flex items-center gap-1">
+                    🛡️ ৩০ দিনের শতভাগ মানি ব্যাক গ্যারান্টি!
+                  </h4>
+                  <p className="text-[10px] sm:text-xs text-slate-300 leading-relaxed font-sans">
+                    রেইনকোটের কোয়ালিটি নিয়ে আমরা সম্পূর্ণ নিশ্চিত। সাইজে সমস্যা, কোনো ডিফেক্ট অথবা পছন্দ না হলে ৩০ দিনের মধ্যে কোনো প্রশ্ন ছাড়াই ক্যাশ ব্যাক সুবিধা!
+                  </p>
+                </div>
+              </div>
             </div>
 
             {/* Hero text content block */}
@@ -572,22 +588,41 @@ export default function App() {
             </p>
           </div>
 
-          {/* Facebook Video Iframe embedded prominently inside high-quality device frame */}
-          <div className="relative mx-auto max-w-[320px] bg-slate-950 border-[6px] border-slate-800 rounded-3xl shadow-2xl aspect-[9/16] overflow-hidden">
-            {/* The actual FB Video embed parsed either through iframe or native SDK */}
-            <iframe 
-              src="https://www.facebook.com/plugins/video.php?href=https%3A%2F%2Fwww.facebook.com%2Freel%2F1471402964313008%2F&show_text=false&width=500" 
-              width="100%" 
-              height="100%" 
-              style={{ border: 'none', overflow: 'hidden' }} 
-              scrolling="no" 
-              frameBorder="0" 
-              allowFullScreen={true}
-              allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
-              title="Premium Raincoat Live performance demo"
-              className="absolute inset-0"
-              id="fb-iframe-iframe"
-            />
+          {/* Facebook Video Iframes embedded side-by-side inside high-quality device frames */}
+          <div className="flex flex-col md:flex-row gap-6 justify-center items-center max-w-3xl mx-auto">
+            {/* Video 1 */}
+            <div className="relative w-full max-w-[280px] sm:max-w-[300px] bg-slate-950 border-[6px] border-slate-800 rounded-3xl shadow-2xl aspect-[9/16] overflow-hidden">
+              <iframe 
+                src="https://www.facebook.com/plugins/video.php?href=https%3A%2F%2Fwww.facebook.com%2Freel%2F1471402964313008%2F&show_text=false&width=500" 
+                width="100%" 
+                height="100%" 
+                style={{ border: 'none', overflow: 'hidden' }} 
+                scrolling="no" 
+                frameBorder="0" 
+                allowFullScreen={true}
+                allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+                title="Premium Raincoat Live performance demo 1"
+                className="absolute inset-0"
+                id="fb-iframe-iframe-1"
+              />
+            </div>
+
+            {/* Video 2 */}
+            <div className="relative w-full max-w-[280px] sm:max-w-[300px] bg-slate-950 border-[6px] border-slate-800 rounded-3xl shadow-2xl aspect-[9/16] overflow-hidden">
+              <iframe 
+                src="https://www.facebook.com/plugins/video.php?href=https%3A%2F%2Fwww.facebook.com%2Freel%2F2183474582444791%2F&show_text=false&width=500" 
+                width="100%" 
+                height="100%" 
+                style={{ border: 'none', overflow: 'hidden' }} 
+                scrolling="no" 
+                frameBorder="0" 
+                allowFullScreen={true}
+                allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+                title="Premium Raincoat Live performance demo 2"
+                className="absolute inset-0"
+                id="fb-iframe-iframe-2"
+              />
+            </div>
           </div>
 
           <div className="mt-4 flex justify-center gap-4 text-[11px] sm:text-xs font-sans text-slate-500">

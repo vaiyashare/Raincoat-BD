@@ -60,6 +60,10 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    match /test/{connectionId} {
+      allow read, write: if true;
+    }
+
     // Orders Collection Rules
     match /orders/{orderId} {
       // Allow unauthenticated clients to read/list orders to display status/history

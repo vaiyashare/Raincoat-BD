@@ -451,6 +451,19 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
                       <span>কুরিয়ার চার্জ ({district === 'ঢাকা' ? 'ঢাকা সিটি' : 'ঢাকার বাহিরে'}):</span>
                       <span className="font-mono font-bold text-slate-800">+{deliveryFee} TK</span>
                     </div>
+
+                    {/* Trust Badge - 30-Day Guarantee */}
+                    <div className="my-1.5 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2.5">
+                      <div className="relative shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 font-extrabold border border-emerald-200">
+                        <ShieldCheck className="h-5 w-5" />
+                        <span className="absolute text-[7px] font-black font-sans text-emerald-800 mt-0.5">30</span>
+                      </div>
+                      <div className="text-left leading-normal">
+                        <div className="text-[10px] font-black text-emerald-950 font-sans">🛡️ ৩০ দিন মানি-ব্যাক ওয়ারেন্টি</div>
+                        <div className="text-[9px] text-emerald-800 font-sans">পছন্দ না হলে বা সাইজে সমস্যা থাকলে ৩০ দিনে সহজ রিফান্ড/এক্সচেঞ্জ!</div>
+                      </div>
+                    </div>
+
                     <div className="pt-1.5 border-t border-slate-200 flex justify-between font-extrabold text-slate-950 text-[13px]">
                       <span>সর্বমোট প্রদেয় বিল:</span>
                       <span className="font-mono text-orange-600">{grandTotal} TK</span>

@@ -530,6 +530,23 @@ export default function OrderForm({
             <span>সারা দেশে ডেলিভারি চার্জ</span>
             <span className="text-emerald-600 font-extrabold font-sans text-[11px]">৳ ০/- (মূল্যের সাথেই অন্তর্ভুক্ত)</span>
           </div>
+          
+          {/* Visual Trust Badge: 30-Day Money Back Guarantee */}
+          <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl flex items-center gap-3 shadow-xs">
+            <div className="relative shrink-0 flex items-center justify-center w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 font-bold border border-emerald-200">
+              <ShieldCheck className="h-6 w-6" />
+              <span className="absolute text-[8px] font-black font-sans text-emerald-800 mt-1">30</span>
+            </div>
+            <div className="space-y-0.5 text-left">
+              <h5 className="text-[11px] font-extrabold text-emerald-950 font-sans flex items-center gap-1">
+                🛡️ ৩০ দিন মানি-ব্যাক ওয়ারেন্টি
+              </h5>
+              <p className="text-[10px] sm:text-[11px] text-emerald-800 leading-normal font-sans font-medium">
+                পণ্য পছন্দ না হলে অথবা সাইজে গড়মিল থাকলে ৩০ দিনের মধ্যে রিটার্ন ও ১০০% রিফান্ড সুবিধা পাবেন!
+              </p>
+            </div>
+          </div>
+
           <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200/50 p-2.5 rounded-lg font-sans leading-relaxed">
             ⚠️ <strong>রিটার্ন পলিসি:</strong> পছন্দ না হলে অথবা রিটার্ন করতে চাইলে শুধুমাত্র কুরিয়ার চার্জ <strong>১০০ টাকা</strong> দিয়ে রিটার্ন করতে হবে।
           </div>
