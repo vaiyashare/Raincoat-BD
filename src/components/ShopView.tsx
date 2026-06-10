@@ -315,7 +315,15 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
     if (!name.trim()) return setErrorMessage('আপনার নাম লিখুন অনুগ্রহ করে।');
     if (!village.trim()) return setErrorMessage('আপনার সাকিন, থানা ও সঠিক ঠিকানা লিখুন!');
     
-    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    let cleanPhone = phone.replace(/[^0-9]/g, '');
+    if (cleanPhone.startsWith('88')) {
+      cleanPhone = cleanPhone.substring(2);
+    }
+    if (!cleanPhone.startsWith('01')) {
+      if (cleanPhone.startsWith('1') && cleanPhone.length === 10) {
+        cleanPhone = '0' + cleanPhone;
+      }
+    }
     if (!cleanPhone.startsWith('01') || cleanPhone.length !== 11) {
       return setErrorMessage('অনুগ্রহ করে একটি সঠিক ১১ ডিজিটের বাংলাদেশী মোবাইল নাম্বার দিন (যেমন: 017XXXXXXXX)।');
     }
@@ -382,12 +390,14 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
         orderNotes: orderNotes.trim() || undefined,
         partialPaymentSender: partialPaymentSender.trim() || undefined,
         partialPaymentTxnId: partialPaymentTxnId.trim() || undefined,
-        partialPaymentAmount: addons?.partial_payment_enabled ? addons.partial_payment_amount : undefined
+        partialPaymentAmount: addons?.partial_payment_enabled ? addons.partial_payment_amount : undefined,
+        synced: false
       };
 
       try {
         // Direct cloud persistence
         await addOrderToFirestore(newOrder);
+        newOrder.synced = true;
       } catch (err) {
         console.warn("Direct addOrderToFirestore failed, fallback using localStorage syncing:", err);
       }

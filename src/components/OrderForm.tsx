@@ -195,7 +195,15 @@ export default function OrderForm({
     if (!village.trim()) return setErrorMessage('অনুগ্রহ করে আপনার গ্রাম/বাজার/পাড়া ও সঠিক ঠিকানা লিখুন।');
     
     // Bangladesh mobile number pattern: 11 digits starting with 01
-    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    let cleanPhone = phone.replace(/[^0-9]/g, '');
+    if (cleanPhone.startsWith('88')) {
+      cleanPhone = cleanPhone.substring(2);
+    }
+    if (!cleanPhone.startsWith('01')) {
+      if (cleanPhone.startsWith('1') && cleanPhone.length === 10) {
+        cleanPhone = '0' + cleanPhone;
+      }
+    }
     if (!cleanPhone.startsWith('01') || cleanPhone.length !== 11) {
       return setErrorMessage('অনুগ্রহ করে একটি সঠিক ১১ ডিজিটের বাংলাদেশী মোবাইল নাম্বার দিন (যেমন: 017XXXXXXXX)।');
     }
@@ -236,6 +244,7 @@ export default function OrderForm({
       createdAt: new Date().toISOString(),
       orderNotes: orderNotes.trim() || undefined,
       whatsappConsent,
+      synced: false,
     };
 
     // Save of final order, delete of incomplete draft, and decrement of stock
@@ -245,6 +254,15 @@ export default function OrderForm({
       decrementInventoryItemInFirestore(selectedColor!, initialSize!)
     ]).then(() => {
       console.log("Successfully connected order to database Firestore and decremented stock!");
+      try {
+        const storedStr = localStorage.getItem('raincoat_orders') || '[]';
+        const list = JSON.parse(storedStr) as RaincoatOrder[];
+        const target = list.find(o => o.id === newOrder.id);
+        if (target) {
+          target.synced = true;
+          localStorage.setItem('raincoat_orders', JSON.stringify(list));
+        }
+      } catch (e) {}
     }).catch((err) => {
       console.error("Firebase connection error during submission:", err);
     });
@@ -307,32 +325,12 @@ export default function OrderForm({
       id="order-form-container"
     >
       {/* Header */}
-      <div className="bg-blue-900 p-6 text-white relative border-b border-blue-950">
-        <div className="absolute top-2 right-2 bg-orange-500 text-white text-[10px] font-extrabold px-3 py-1 rounded-full flex items-center gap-1 uppercase tracking-wider font-sans shadow-md animate-pulse">
-          <Flame className="h-3.5 w-3.5" /> অফার সীমিত সময়ের জন্য
-        </div>
-        <h3 className="text-xl sm:text-2xl font-black font-sans leading-tight mt-1 flex items-center gap-2">
-          📝 ডেলিভারি অর্ডার কনফার্ম করুন
+      <div className="bg-blue-900 p-4 text-white relative border-b border-blue-950 flex justify-between items-center">
+        <h3 className="text-sm font-bold font-sans flex items-center gap-2">
+          অর্ডার ফর্ম
         </h3>
-        <p className="text-xs text-slate-205 mt-1 font-sans">
-          কোনো অগ্রিম পেমেন্ট নেই! পণ্য হাতে পেয়ে, দেখে ও ট্রাই করে মূল্য পরিশোধ করবেন।
-        </p>
-
-        <div className="grid grid-cols-2 gap-3 mt-4">
-          <div className="bg-white/10 backdrop-blur-xs p-2 rounded-lg flex items-center gap-2">
-            <Truck className="h-5 w-5 text-orange-400 shrink-0" />
-            <div className="text-[10px] sm:text-xs">
-              <span className="font-sans font-bold block">সারাদেশে হোম ডেলিভারি</span>
-              <span className="font-sans text-orange-200">ডেলিভারি চার্জ সহ দাম</span>
-            </div>
-          </div>
-          <div className="bg-white/10 backdrop-blur-xs p-2 rounded-lg flex items-center gap-2">
-            <BadgePercent className="h-5 w-5 text-orange-400 shrink-0" />
-            <div className="text-[10px] sm:text-xs">
-              <span className="font-sans font-bold block">কনফার্মেশন পেমেন্ট</span>
-              <span className="font-sans text-orange-200">হাতে পেয়ে দেখে পেমেন্ট</span>
-            </div>
-          </div>
+        <div className="bg-orange-500 text-white text-[10px] font-extrabold px-3 py-1 rounded-full flex items-center gap-1 uppercase tracking-wider font-sans shadow-md">
+          <Flame className="h-3.5 w-3.5" /> অফার সীমিত সময়ের জন্য
         </div>
       </div>
 

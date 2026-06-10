@@ -15,6 +15,8 @@ import LivePurchaseNotification from './components/LivePurchaseNotification';
 import PromoCountdown from './components/PromoCountdown';
 import PageRenderer from './components/PageRenderer';
 import OrderTracker from './components/OrderTracker';
+import OrderHistory from './components/OrderHistory';
+import ReviewSubmissionForm from './components/ReviewSubmissionForm';
 import SuccessToast from './components/SuccessToast';
 import FAQSection from './components/FAQSection';
 import ShopView from './components/ShopView';
@@ -25,9 +27,71 @@ import { Size, ProductColor, RaincoatOrder, ActiveSession } from './types';
 import { motion, AnimatePresence } from 'motion/react';
 import { getSheetsConfig, getAccessToken, appendOrderToSheet } from './lib/googleSheets';
 import { initMetaPixel, trackPixelEvent, initTikTokPixel } from './lib/tracking';
-import { addOrderToFirestore, saveActiveSessionToFirestore } from './lib/firebase';
+import { addOrderToFirestore, saveActiveSessionToFirestore, syncCachedOrdersToFirestore, getAdvancedAddonsSettingsFromFirestore } from './lib/firebase';
 
 export default function App() {
+  const [siteSettings, setSiteSettings] = useState<any>(null);
+
+  useEffect(() => {
+    async function loadSiteSettings() {
+      try {
+        const res = await getAdvancedAddonsSettingsFromFirestore();
+        if (res) {
+          setSiteSettings(res);
+          if (res.site_title) {
+            document.title = res.site_title;
+          }
+          if (res.site_favicon) {
+            const faviconStr = res.site_favicon;
+            let href = faviconStr;
+            if (faviconStr.length < 5) {
+              const svgText = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="80" font-size="80">${faviconStr}</text></svg>`;
+              href = `data:image/svg+xml,${encodeURIComponent(svgText)}`;
+            }
+            let link: HTMLLinkElement | null = document.querySelector("link[rel~='icon']");
+            if (!link) {
+              link = document.createElement('link');
+              link.rel = 'icon';
+              document.head.appendChild(link);
+            }
+            link.href = href;
+          }
+        }
+      } catch (err) {
+        console.warn("Could not load site title or favicon", err);
+      }
+    }
+
+    loadSiteSettings();
+
+    const handleSettingsUpdate = () => {
+      loadSiteSettings();
+    };
+    window.addEventListener('raincoat_site_settings_updated', handleSettingsUpdate);
+    return () => {
+      window.removeEventListener('raincoat_site_settings_updated', handleSettingsUpdate);
+    };
+  }, []);
+
+  // Sync unsynced cached orders with Firestore in the background on startup, network change, and periodically
+  useEffect(() => {
+    syncCachedOrdersToFirestore();
+
+    const handleOnline = () => {
+      console.log("[Sync] Connection restored, initiating sync of local orders...");
+      syncCachedOrdersToFirestore();
+    };
+    window.addEventListener('online', handleOnline);
+
+    const interval = setInterval(() => {
+      syncCachedOrdersToFirestore();
+    }, 25000);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      clearInterval(interval);
+    };
+  }, []);
   const [selectedSize, setSelectedSize] = useState<Size | null>(null);
   const [selectedColor, setSelectedColor] = useState<ProductColor | null>(null);
   const [submittedOrder, setSubmittedOrder] = useState<RaincoatOrder | null>(null);
@@ -283,10 +347,24 @@ export default function App() {
     // Sync count asynchronously from Firestore database
     import('./lib/firebase').then(({ getOrdersFromFirestore, getMediaFromFirestore, getPagesFromFirestore }) => {
       getOrdersFromFirestore().then((fbOrders) => {
+        const listJson = localStorage.getItem('raincoat_orders') || '[]';
+        let localOrders: RaincoatOrder[] = [];
+        try {
+          localOrders = JSON.parse(listJson);
+          if (!Array.isArray(localOrders)) localOrders = [];
+        } catch (_) {}
+
+        const mergedMap = new Map<string, RaincoatOrder>();
+        localOrders.forEach(o => mergedMap.set(o.id, { ...o }));
         if (fbOrders && fbOrders.length > 0) {
-          localStorage.setItem('raincoat_orders', JSON.stringify(fbOrders));
-          setOrdersCount(fbOrders.length);
+          fbOrders.forEach(o => mergedMap.set(o.id, { ...o, synced: true }));
         }
+
+        const merged = Array.from(mergedMap.values());
+        merged.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+        localStorage.setItem('raincoat_orders', JSON.stringify(merged));
+        setOrdersCount(merged.length);
       }).catch((err) => {
         console.warn("Could not sync orders count on startup:", err);
       });
@@ -567,7 +645,9 @@ export default function App() {
   // Routing calculations
   const isAdminRoute = currentPath === '/admin' || currentHash === '#/admin' || currentHash === '#admin';
   const isTrackOrderRoute = currentPath === '/track-order' || currentHash === '#/track-order' || currentHash === '#track-order';
+  const isOrderHistoryRoute = currentPath === '/order-history' || currentHash === '#/order-history' || currentHash === '#order-history';
   const isShopRoute = currentPath === '/shop' || currentHash === '#/shop' || currentHash === '#shop';
+  const isWriteReviewRoute = currentPath === '/write-review' || currentHash === '#/write-review' || currentHash === '#write-review';
   const isRaincoatLandingRoute = currentPath === '/raincoat' || currentHash === '#/raincoat' || currentHash === '#raincoat';
   const isBikeCoverLandingRoute = currentPath === '/bikecover' || currentHash === '#/bikecover' || currentHash === '#bikecover';
 
@@ -575,7 +655,7 @@ export default function App() {
   let activeCustomPage = null;
   try {
     const cleanHash = currentHash.replace(/^#\//, '').replace(/^#/, '');
-    if (cleanHash && cleanHash !== 'home' && cleanHash !== 'features' && cleanHash !== 'live-video' && cleanHash !== 'comparison' && cleanHash !== 'bundle-offer' && cleanHash !== 'delivery-timeline' && cleanHash !== 'size-chart' && cleanHash !== 'checkout-form' && cleanHash !== 'track-order') {
+    if (cleanHash && cleanHash !== 'home' && cleanHash !== 'features' && cleanHash !== 'live-video' && cleanHash !== 'comparison' && cleanHash !== 'bundle-offer' && cleanHash !== 'delivery-timeline' && cleanHash !== 'size-chart' && cleanHash !== 'checkout-form' && cleanHash !== 'track-order' && cleanHash !== 'order-history' && cleanHash !== 'write-review') {
       activeCustomPage = customPages.find((p: any) => p.slug === cleanHash);
     }
   } catch (e) {
@@ -605,7 +685,7 @@ export default function App() {
       <div className="min-h-screen bg-slate-50 relative selection:bg-blue-600 selection:text-white flex flex-col justify-between font-sans">
         {/* Urgent Alert Strip */}
         <div className="bg-gradient-to-r from-orange-600 via-rose-500 to-blue-900 text-white text-xs sm:text-sm font-bold text-center py-2 px-4 shadow-sm flex items-center justify-center gap-2 relative z-40 font-sans">
-          <span>🌧️ বর্ষা ধামাকা ২০% ছাড়! ডেলিভারি চার্জ সম্পূর্ণ ফ্রি! 🌧️</span>
+          <span>🌧️ বর্ষা ধামাকা ২০% ছাড়!  ডেলিভারি চার্জ সম্পূর্ণ ফ্রি! 🌧️</span>
           <button 
             onClick={() => {
               if (currentPath === '/track-order') {
@@ -648,6 +728,125 @@ export default function App() {
 
         {/* Secure Trust Footer */}
         <div className="bg-slate-900 text-slate-400 text-center py-6 border-t border-slate-800 text-xs">
+          <p>© {new Date().getFullYear()} Premium Raincoat BD. সর্বস্বত্ব সংরক্ষিত।</p>
+          <p className="text-[10px] text-slate-550 mt-1">সবচেয়ে নির্ভরযোগ্য কাস্টমার কুরিয়ার ট্র্যাকিং</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Handle Order History routing (Separate Tab/Page View)
+  if (isOrderHistoryRoute) {
+    return (
+      <div className="min-h-screen bg-slate-50 relative selection:bg-blue-600 selection:text-white flex flex-col justify-between font-sans">
+        {/* Urgent Alert Strip */}
+        <div className="bg-gradient-to-r from-orange-600 via-rose-500 to-blue-900 text-white text-xs sm:text-sm font-bold text-center py-2 px-4 shadow-sm flex items-center justify-center gap-2 relative z-40 font-sans">
+          <span>🌧️ বর্ষা ধামাকা ২০% ছাড়! ডেলিভারি চার্জ সম্পূর্ণ ফ্রি! 🌧️</span>
+          <button 
+            onClick={() => {
+              if (currentPath === '/order-history') {
+                window.location.pathname = '/';
+              } else {
+                window.location.hash = '';
+              }
+            }} 
+            className="underline text-amber-250 hover:text-white transition font-black ml-4 cursor-pointer"
+          >
+            প্রধান পেইজে যান
+          </button>
+        </div>
+
+        {/* Back navigation bar */}
+        <div className="bg-white border-b border-slate-200 py-3 px-4 shadow-xs">
+          <div className="max-w-3xl mx-auto flex items-center justify-between">
+            <button
+              onClick={() => {
+                window.location.hash = '#/track-order';
+              }}
+              className="flex items-center gap-1.5 text-slate-700 hover:text-slate-950 font-bold text-xs cursor-pointer hover:underline"
+            >
+              ⬅ অর্ডার ট্র্যাকার পেইজে যান
+            </button>
+            <span className="text-[11px] font-bold text-slate-400 font-mono">Premium Raincoat Shop BD</span>
+          </div>
+        </div>
+
+        {/* Main Content Area */}
+        <div className="flex-1 py-10 px-4 max-w-3xl mx-auto w-full flex flex-col justify-center gap-6">
+          <div className="w-full">
+            <OrderHistory />
+          </div>
+        </div>
+
+        {/* Secure Trust Footer */}
+        <div className="bg-slate-900 text-slate-400 text-center py-6 border-t border-slate-800 text-xs">
+          <p>© {new Date().getFullYear()} Premium Raincoat BD. সর্বস্বত্ব সংরক্ষিত।</p>
+          <p className="text-[10px] text-slate-550 mt-1">সবচেয়ে নির্ভরযোগ্য কাস্টমার কুরিয়ার ট্র্যাকিং</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Handle Write Review routing (Separate Tab/Page View)
+  if (isWriteReviewRoute) {
+    return (
+      <div className="min-h-screen bg-slate-50 relative selection:bg-emerald-600 selection:text-white flex flex-col justify-between font-sans">
+        {/* Urgent Alert Strip */}
+        <div className="bg-gradient-to-r from-emerald-600 via-teal-500 to-blue-900 text-white text-xs sm:text-sm font-bold text-center py-2 px-4 shadow-sm flex items-center justify-center gap-2 relative z-40 font-sans">
+          <span>🌧️ বর্ষা ধামাকা ২০% ছাড়!  ডেলিভারি চার্জ সম্পূর্ণ ফ্রি! 🌧️</span>
+          <button 
+            onClick={() => {
+              if (currentPath === '/write-review') {
+                window.history.pushState(null, '', '/');
+                window.dispatchEvent(new Event('popstate'));
+              } else {
+                window.location.hash = '';
+              }
+            }} 
+            className="underline text-amber-250 hover:text-white transition font-black ml-4 cursor-pointer"
+          >
+            প্রধান পেইজে যান
+          </button>
+        </div>
+
+        {/* Back navigation bar */}
+        <div className="bg-white border-b border-slate-200 py-3 px-4 shadow-xs">
+          <div className="max-w-3xl mx-auto flex items-center justify-between">
+            <button
+              onClick={() => {
+                if (currentPath === '/write-review') {
+                  window.history.pushState(null, '', '/');
+                  window.dispatchEvent(new Event('popstate'));
+                } else {
+                  window.location.hash = '';
+                }
+              }}
+              className="flex items-center gap-1.5 text-slate-700 hover:text-slate-950 font-bold text-xs cursor-pointer hover:underline"
+            >
+              ⬅ প্রধান পেইজে ফেরত যান
+            </button>
+            <span className="text-[11px] font-bold text-slate-400 font-mono">Premium Raincoat Shop BD</span>
+          </div>
+        </div>
+
+        {/* Main Content Area */}
+        <div className="flex-1 py-10 px-4 max-w-3xl mx-auto w-full flex flex-col justify-center gap-6">
+          <div className="w-full">
+            <ReviewSubmissionForm 
+              onBack={() => {
+                if (currentPath === '/write-review') {
+                  window.history.pushState(null, '', '/');
+                  window.dispatchEvent(new Event('popstate'));
+                } else {
+                  window.location.hash = '';
+                }
+              }} 
+            />
+          </div>
+        </div>
+
+        {/* Secure Trust Footer */}
+        <div className="bg-slate-950 text-slate-400 text-center py-6 border-t border-slate-800 text-xs">
           <p>© {new Date().getFullYear()} Premium Raincoat BD. সর্বস্বত্ব সংরক্ষিত।</p>
           <p className="text-[10px] text-slate-550 mt-1">সবচেয়ে নির্ভরযোগ্য কাস্টমার কুরিয়ার ট্র্যাকিং</p>
         </div>
@@ -1486,34 +1685,6 @@ export default function App() {
             
             {/* Purchase assurances block left side */}
             <div className="lg:col-span-5 space-y-6">
-              <span className="px-3 py-1 bg-orange-50 text-orange-700 text-xs font-bold rounded-full uppercase tracking-wider font-sans inline-block border border-orange-200">
-                ১০০% ক্যাশ অন কুরিয়ার (COD)
-              </span>
-              <h2 className="text-2xl sm:text-3xl font-black text-slate-900 leading-tight font-sans">
-                অত্যন্ত সহজে অর্ডার করুন কোনো অগ্রিম টাকা পরিশোধ ছাড়াই!
-              </h2>
-              <p className="text-xs sm:text-sm text-slate-500 leading-relaxed font-sans">
-                ডেলিভারি বুক করতে বা রেইনকোটটি পেতে কোনো বিকাশ পার্সোনাল বা অফলাইন অ্যাকাউন্ট চার্য পাঠাতে হবে না। আমরা ১০০% নিরাপদ কুরিয়ার প্রকোষ্ঠে বিশ্বাসী।
-              </p>
-
-              {/* Step guidance milestones */}
-              <div className="relative border-l border-blue-200 pl-6 ml-3 space-y-6 text-slate-700">
-                <div className="relative">
-                  <span className="absolute -left-10 top-0.5 w-7 h-7 rounded-full bg-blue-900 text-white font-bold text-xs flex items-center justify-center shadow-md">১</span>
-                  <h4 className="font-bold text-slate-900 text-sm font-sans">ফরম ফিলাপ করুন</h4>
-                  <p className="text-slate-500 text-xs mt-1 font-sans">আপনার নাম, মোবাইল নাম্বার এবং ডেলিভারি জেলার নাম সঠিকভাবে লিখুন।</p>
-                </div>
-                <div className="relative">
-                  <span className="absolute -left-10 top-0.5 w-7 h-7 rounded-full bg-blue-900 text-white font-bold text-xs flex items-center justify-center shadow-md">২</span>
-                  <h4 className="font-bold text-slate-900 text-sm font-sans">কনফার্মেশন কল রিসিভ করুন</h4>
-                  <p className="text-slate-500 text-xs mt-1 font-sans">আমাদের কুরিয়ার অ্যাসোসিয়েট কল করে মাত্র ১ মিনিটে আপনার অর্ডারের সাইজ ও কালার পুনর্নিরীক্ষণ করবেন।</p>
-                </div>
-                <div className="relative">
-                  <span className="absolute -left-10 top-0.5 w-7 h-7 rounded-full bg-blue-900 text-white font-bold text-xs flex items-center justify-center shadow-md">৩</span>
-                  <h4 className="font-bold text-slate-900 text-sm font-sans">ডেলিভারি ম্যানকে চেক করে পে করুন</h4>
-                  <p className="text-slate-500 text-xs mt-1 font-sans">পার্সেল হাতে পাওয়ার পর রেইনকোট খুলে কোয়ালিটি পরখ করবেন, সব ঠিকঠাক থাকলে নগদ টাকা ক্যাশ পেমেন্ট করে চলে আসবেন!</p>
-                </div>
-              </div>
 
               {/* Bikers support quote */}
               <div className="p-4 bg-white border border-slate-200 rounded-2xl flex items-center gap-3 shadow-xs">
@@ -1570,7 +1741,7 @@ export default function App() {
           <div className="flex items-center justify-center gap-2">
             <span className="text-2xl">🌧️</span>
             <span className="text-lg font-black font-sans bg-clip-text text-transparent bg-gradient-to-r from-orange-400 to-white">
-              প্রিমিয়াম রেইনকোট বাংলাদেশ
+              {siteSettings?.site_logo_url || 'প্রিমিয়াম রেইনকোট বাংলাদেশ'}
             </span>
           </div>
 

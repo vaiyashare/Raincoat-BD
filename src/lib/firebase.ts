@@ -57,21 +57,11 @@ enum OperationType {
 // Circuit breaker state to protect against Firestore Quota Exceeded limits
 let isQuotaTripped = false;
 try {
-  const trippedTime = localStorage.getItem('firestore_quota_tripped_time');
-  const sessionTripped = sessionStorage.getItem('firestore_quota_tripped') === 'true';
-  const persistentTripped = localStorage.getItem('firestore_quota_tripped_persistent') === 'true';
-  
-  if (persistentTripped && trippedTime) {
-    const hoursElapsed = (Date.now() - parseInt(trippedTime, 10)) / (1000 * 60 * 60);
-    if (hoursElapsed < 6) {
-      isQuotaTripped = true;
-    } else {
-      localStorage.removeItem('firestore_quota_tripped_persistent');
-      localStorage.removeItem('firestore_quota_tripped_time');
-    }
-  } else if (sessionTripped) {
-    isQuotaTripped = true;
-  }
+  // Clear any historical blockages immediately so client resumes real-time operations
+  localStorage.removeItem('firestore_quota_tripped');
+  localStorage.removeItem('firestore_quota_tripped_persistent');
+  localStorage.removeItem('firestore_quota_tripped_time');
+  sessionStorage.removeItem('firestore_quota_tripped');
 } catch (_) {}
 
 function tripQuotaCircuitBreaker(error: any) {
@@ -84,15 +74,7 @@ function tripQuotaCircuitBreaker(error: any) {
     errMsg.includes('RESOURCE_EXHAUSTED') ||
     errMsg.includes('quota metric')
   ) {
-    if (!isQuotaTripped) {
-      isQuotaTripped = true;
-      try {
-        sessionStorage.setItem('firestore_quota_tripped', 'true');
-        localStorage.setItem('firestore_quota_tripped_persistent', 'true');
-        localStorage.setItem('firestore_quota_tripped_time', Date.now().toString());
-      } catch (_) {}
-      console.warn("⚠️ FIRESTORE QUOTA EXCEEDED: Bypassing raw Firestore requests for this session to run in cached/standalone mode.");
-    }
+    console.warn("⚠️ FIRESTORE QUOTA ALERT: A Firestore quota limitation has occurred.", errMsg);
   }
 }
 
@@ -988,6 +970,74 @@ export async function deleteReviewFromFirestore(id: string): Promise<void> {
     await deleteDoc(doc(db, 'reviews', id));
   } catch (error) {
     console.warn("deleteReviewFromFirestore failed:", error);
+  }
+}
+
+export async function syncCachedOrdersToFirestore(): Promise<void> {
+  if (isQuotaTripped) return;
+
+  const raincoatOrdersStr = localStorage.getItem('raincoat_orders');
+  if (raincoatOrdersStr) {
+    try {
+      const list = JSON.parse(raincoatOrdersStr) as RaincoatOrder[];
+      let updated = false;
+      for (const order of list) {
+        if (order.synced === false) {
+          try {
+            // Exclude synced property before sending to Firestore
+            const { synced, ...firestorePayload } = order;
+            await setDoc(doc(db, 'orders', order.id), firestorePayload);
+            order.synced = true;
+            updated = true;
+            console.log(`[Sync] Successfully uploaded cached order ${order.id} to Firestore!`);
+          } catch (err) {
+            console.warn(`[Sync] Uploading cached order ${order.id} failed:`, err);
+            tripQuotaCircuitBreaker(err);
+            if (isQuotaTripped) break;
+          }
+        }
+      }
+      if (updated) {
+        localStorage.setItem('raincoat_orders', JSON.stringify(list));
+      }
+    } catch (_) {}
+  }
+
+  const fallbackStr = localStorage.getItem('raincoat_orders_fallback');
+  if (fallbackStr) {
+    try {
+      const fallbackList = JSON.parse(fallbackStr) as RaincoatOrder[];
+      const successfullySyncedIds: string[] = [];
+      for (const order of fallbackList) {
+        try {
+          const { synced, ...firestorePayload } = order;
+          await setDoc(doc(db, 'orders', order.id), firestorePayload);
+          successfullySyncedIds.push(order.id);
+          console.log(`[Sync] Successfully uploaded offline fallback order ${order.id} to Firestore!`);
+        } catch (err) {
+          console.warn(`[Sync] Uploading offline fallback order ${order.id} failed:`, err);
+          tripQuotaCircuitBreaker(err);
+          if (isQuotaTripped) break;
+        }
+      }
+      if (successfullySyncedIds.length > 0) {
+        const remaining = fallbackList.filter(o => !successfullySyncedIds.includes(o.id));
+        localStorage.setItem('raincoat_orders_fallback', JSON.stringify(remaining));
+
+        const currentOrdersStr = localStorage.getItem('raincoat_orders');
+        if (currentOrdersStr) {
+          try {
+            const list = JSON.parse(currentOrdersStr) as RaincoatOrder[];
+            list.forEach(o => {
+              if (successfullySyncedIds.includes(o.id)) {
+                o.synced = true;
+              }
+            });
+            localStorage.setItem('raincoat_orders', JSON.stringify(list));
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
   }
 }
 

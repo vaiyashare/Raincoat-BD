@@ -11,7 +11,8 @@ import {
   ArrowRight,
   ShieldAlert,
   Send,
-  HelpCircle
+  HelpCircle,
+  Globe
 } from 'lucide-react';
 import { 
   getAdvancedAddonsSettingsFromFirestore, 
@@ -26,7 +27,7 @@ interface AdvancedPluginsAdminProps {
 }
 
 export default function AdvancedPluginsAdmin({ userRole, orders = [], onRefreshOrders }: AdvancedPluginsAdminProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'payment' | 'sms' | 'exit-popup' | 'analytics'>('payment');
+  const [activeSubTab, setActiveSubTab] = useState<'payment' | 'sms' | 'exit-popup' | 'analytics' | 'site-identity'>('payment');
   const [isSaving, setIsSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   
@@ -106,6 +107,7 @@ export default function AdvancedPluginsAdmin({ userRole, orders = [], onRefreshO
       setSettings(merged);
       await saveAdvancedAddonsSettingsToFirestore(merged);
       setSuccessMsg('কনফিগারেশন সফলভাবে সেভ করা হয়েছে!');
+      window.dispatchEvent(new Event('raincoat_site_settings_updated'));
       setTimeout(() => setSuccessMsg(''), 4050);
     } catch (err) {
       alert('কনফিগারেশন সেভ করতে সমস্যা হয়েছে।');
@@ -228,6 +230,19 @@ export default function AdvancedPluginsAdmin({ userRole, orders = [], onRefreshO
           >
             <Code className="h-4 w-4 shrink-0" />
             <span>৪. পিক্সেল ও ট্র্যাকিং এপিআই</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('site-identity')}
+            className={`w-full text-left py-2.5 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2.5 shrink-0 ${
+              activeSubTab === 'site-identity'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-200/60 hover:text-slate-900'
+            }`}
+          >
+            <Globe className="h-4 w-4 shrink-0" />
+            <span>৫. সাইট পরিচিতি ও থিম</span>
           </button>
         </div>
 
@@ -460,8 +475,9 @@ export default function AdvancedPluginsAdmin({ userRole, orders = [], onRefreshO
                 <div className="flex justify-between items-center">
                   <span className="text-xs font-bold text-slate-700">এক্সিট অফার পপ-আপ চালু করুন</span>
                   <button 
+                    type="button"
                     onClick={() => handleSaveSettings({ exit_intent_enabled: !settings.exit_intent_enabled })}
-                    className={`w-12 h-6.5 rounded-full p-1 transition-all duration-300 cursor-pointer ${settings.exit_intent_enabled ? 'bg-indigo-600 flex justify-end' : 'bg-slate-350 flex justify-start'}`}
+                    className={`w-12 h-6.5 rounded-full p-1 transition-all duration-300 cursor-pointer ${settings.exit_intent_enabled ? 'bg-indigo-600 flex justify-end' : 'bg-slate-300 flex justify-start'}`}
                   >
                     <span className="w-4.5 h-4.5 bg-white rounded-full block shadow-md" />
                   </button>
@@ -601,6 +617,105 @@ export default function AdvancedPluginsAdmin({ userRole, orders = [], onRefreshO
                     </label>
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* SECTION 5: SITE IDENTITY & DETAILS */}
+          {activeSubTab === 'site-identity' && (
+            <div className="space-y-6">
+              <div>
+                <h4 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                  <Globe className="h-4 w-4 text-emerald-600" />
+                  ৫. সাইট পরিচিতি, ফেভিকন ও ব্র্যান্ড লোগো (Site Identity & Favicon Branding)
+                </h4>
+                <p className="text-xs text-slate-400 mt-1">
+                  আপনার অনলাইন স্টোরের টাইটেল, ব্রাউজারের ফেভিকন এবং লোগো টেক্সট অথবা ইমেজ কাস্টমাইজ করুন।
+                </p>
+              </div>
+
+              <div className="p-5 bg-slate-50 border border-slate-200 rounded-xl space-y-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  
+                  {/* Site Title Input */}
+                  <div className="col-span-1 sm:col-span-2">
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      সাইট টাইটেল (Site Browser Tab Title)
+                    </label>
+                    <input 
+                      type="text" 
+                      value={settings.site_title || ''}
+                      placeholder="যেমন: Premium Raincoat Shop BD | সর্বসেরা ওয়াটারপ্রুফ রেনকোট"
+                      onChange={(e) => setSettings({ ...settings, site_title: e.target.value })}
+                      onBlur={(e) => handleSaveSettings({ site_title: e.target.value })}
+                      className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg text-slate-800 focus:ring-1 focus:ring-blue-500 outline-none"
+                    />
+                    <span className="text-[10px] text-slate-400 mt-1 block">
+                      গ্রাহকদের ব্রাউজারে ট্যাব টাইটেল এবং গুগল সার্চ ইঞ্জিনে এটি প্রদর্শিত হবে।
+                    </span>
+                  </div>
+
+                  {/* Site Favicon Icon */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      ব্রাউজার ফেভিকন আইকন (Emoji অথবা Image URL)
+                    </label>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        value={settings.site_favicon || ''}
+                        placeholder="যেমন: 🌧️ বা https://example.com/logo.png"
+                        onChange={(e) => setSettings({ ...settings, site_favicon: e.target.value })}
+                        onBlur={(e) => handleSaveSettings({ site_favicon: e.target.value })}
+                        className="flex-1 text-xs p-2.5 bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none"
+                      />
+                      <div className="w-10 h-10 shrink-0 bg-white border border-slate-200 rounded-lg flex items-center justify-center text-lg select-none">
+                        {settings.site_favicon && settings.site_favicon.length < 5 ? settings.site_favicon : '☔'}
+                      </div>
+                    </div>
+                    
+                    {/* Quick Emojis Selection */}
+                    <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[9px] text-slate-400 font-bold shrink-0">জনপ্রিয় ইমোজি:</span>
+                      {['🌧️', '🧥', '🏍️', '🌂', '🛒', '📦', '🎁', '⚡'].map(emoji => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => {
+                            setSettings({ ...settings, site_favicon: emoji });
+                            handleSaveSettings({ site_favicon: emoji });
+                          }}
+                          className="w-6 h-6 rounded-md bg-white border border-slate-200 text-xs hover:border-blue-500 transition cursor-pointer flex items-center justify-center"
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                    <span className="text-[10px] text-slate-400 mt-1.5 block">
+                      ইমোজি দিলে তা স্বয়ংক্রিয়ভাবে SVG বানিয়ে ব্রাউজারে ফেভিকন আইকন হিসেবে ড্র করা হবে!
+                    </span>
+                  </div>
+
+                  {/* Site Logo (Image URL or Title) */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      ব্র্যান্ড লোগো লেখা (Site Header Logo text)
+                    </label>
+                    <input 
+                      type="text" 
+                      value={settings.site_logo_url || ''}
+                      placeholder="যেমন: Premium Raincoat Shop BD"
+                      onChange={(e) => setSettings({ ...settings, site_logo_url: e.target.value })}
+                      onBlur={(e) => handleSaveSettings({ site_logo_url: e.target.value })}
+                      className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg text-slate-800 focus:ring-1 focus:ring-blue-500 outline-none font-bold"
+                    />
+                    <span className="text-[10px] text-slate-400 mt-1 block">
+                      স্টোরের হেডার এবং ফুটার অংশে এই মূল ব্র্যান্ডিং শব্দটি প্রদর্শিত হবে।
+                    </span>
+                  </div>
+
+                </div>
+
               </div>
             </div>
           )}

@@ -4,7 +4,7 @@ import {
   RefreshCw, X, ShieldCheck, CheckSquare, Globe, Database, Sparkles, 
   Check, ExternalLink, HelpCircle, Flame, ChevronDown, ChevronUp,
   Lock, Key, LogOut, Settings, ListTodo, AlertOctagon, Layers, Users, Calendar, Phone,
-  Edit, CheckCircle
+  Edit, CheckCircle, Printer
 } from 'lucide-react';
 import { RaincoatOrder, Size, ProductColor, IncompleteOrder } from '../types';
 import { 
@@ -47,6 +47,64 @@ import CourierAdmin from './admin/CourierAdmin';
 import ReviewsAdmin from './admin/ReviewsAdmin';
 import DailyOrdersChart from './admin/DailyOrdersChart';
 
+const getEnglishDistrictName = (order: any): string => {
+  const districtValue = order.district ? order.district.trim() : '';
+  const villageValue = order.village ? order.village.trim() : '';
+
+  const strToSearch = `${districtValue} ${villageValue}`.toLowerCase();
+
+  const districtsMap: { [key: string]: string } = {
+    'dhaka': 'Dhaka',
+    'chittagong': 'Chittagong',
+    'sylhet': 'Sylhet',
+    'khulna': 'Khulna',
+    'rajshahi': 'Rajshahi',
+    'barisal': 'Barisal',
+    'rangpur': 'Rangpur',
+    'mymensingh': 'Mymensingh',
+    'comilla': 'Comilla',
+    'gazipur': 'Gazipur',
+    'narayanganj': 'Narayanganj',
+    'bogura': 'Bogura',
+    'bogra': 'Bogura',
+    'jessore': 'Jessore',
+    'feni': 'Feni',
+    'noakhali': 'Noakhali'
+  };
+
+  for (const [key, val] of Object.entries(districtsMap)) {
+    if (strToSearch.includes(key)) {
+      return val;
+    }
+  }
+
+  const bengaliDistrictsMap: { [key: string]: string } = {
+    'ঢাকা': 'Dhaka',
+    'চট্টগ্রাম': 'Chittagong',
+    'সিলেট': 'Sylhet',
+    'খুলনা': 'Khulna',
+    'রাজশাহী': 'Rajshahi',
+    'বরিশাল': 'Barisal',
+    'রংপুর': 'Rangpur',
+    'ময়মনসিংহ': 'Mymensingh',
+    'কুমিল্লা': 'Comilla',
+    'গাজীপুর': 'Gazipur',
+    'নারায়ণগঞ্জ': 'Narayanganj',
+    'বগুড়া': 'Bogura',
+    'যশোর': 'Jessore',
+    'ফেনী': 'Feni',
+    'নোয়াখালী': 'Noakhali'
+  };
+
+  for (const [key, val] of Object.entries(bengaliDistrictsMap)) {
+    if (strToSearch.includes(key)) {
+      return val;
+    }
+  }
+
+  return 'Other';
+};
+
 interface AdminPanelProps {
   onClose: () => void;
   onRefreshOrdersCount: () => void;
@@ -63,10 +121,13 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   const [activeTab, setActiveTab] = useState<'completed' | 'incomplete' | 'pages' | 'products' | 'banners' | 'inventory' | 'integrations' | 'users' | 'blocking' | 'media' | 'live-visitors' | 'fraud' | 'advanced_addons' | 'courier_hub' | 'reviews_hub'>('completed');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSize, setFilterSize] = useState<string>('All');
+  const [filterStatus, setFilterStatus] = useState<string>('All');
+  const [filterDistrict, setFilterDistrict] = useState<string>('All');
   const [dateFilter, setDateFilter] = useState<string>('all');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
   const [copiedMessage, setCopiedMessage] = useState('');
+  const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   
   // Anti-fraud local/synced blacklist state
   const [blacklist, setBlacklist] = useState<any[]>(() => {
@@ -286,7 +347,15 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   const loadOrders = async () => {
     // Stage 1: Load immediately from local offline cache
     const listJson = localStorage.getItem('raincoat_orders') || '[]';
-    setOrders(JSON.parse(listJson));
+    let currentLocal: RaincoatOrder[] = [];
+    try {
+      currentLocal = JSON.parse(listJson);
+      if (!Array.isArray(currentLocal)) currentLocal = [];
+      currentLocal.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setOrders(currentLocal);
+    } catch (_) {
+      setOrders([]);
+    }
     loadIncompleteOrders();
     onRefreshOrdersCount();
 
@@ -294,14 +363,30 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     try {
       const fbOrders = await getOrdersFromFirestore();
       if (fbOrders && fbOrders.length > 0) {
-        setOrders(fbOrders);
-        localStorage.setItem('raincoat_orders', JSON.stringify(fbOrders));
+        const mergedMap = new Map<string, RaincoatOrder>();
+        currentLocal.forEach(o => mergedMap.set(o.id, { ...o }));
+        fbOrders.forEach(o => mergedMap.set(o.id, { ...o, synced: true }));
+        const merged = Array.from(mergedMap.values());
+        merged.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setOrders(merged);
+        localStorage.setItem('raincoat_orders', JSON.stringify(merged));
       }
       
       const fbIncompletes = await getIncompleteOrdersFromFirestore();
       if (fbIncompletes && fbIncompletes.length > 0) {
-        setIncompleteOrders(fbIncompletes);
-        localStorage.setItem('raincoat_incomplete_orders', JSON.stringify(fbIncompletes));
+        const incompleteJson = localStorage.getItem('raincoat_incomplete_orders') || '[]';
+        let localIncompletes: IncompleteOrder[] = [];
+        try {
+          localIncompletes = JSON.parse(incompleteJson) || [];
+          if (!Array.isArray(localIncompletes)) localIncompletes = [];
+        } catch (_) {}
+        const mergedIncompleteMap = new Map<string, IncompleteOrder>();
+        localIncompletes.forEach(i => mergedIncompleteMap.set(i.id, i));
+        fbIncompletes.forEach(i => mergedIncompleteMap.set(i.id, i));
+        const mergedIncompletes = Array.from(mergedIncompleteMap.values());
+        mergedIncompletes.sort((a, b) => new Date(b.lastUpdatedAt || b.createdAt).getTime() - new Date(a.lastUpdatedAt || a.createdAt).getTime());
+        setIncompleteOrders(mergedIncompletes);
+        localStorage.setItem('raincoat_incomplete_orders', JSON.stringify(mergedIncompletes));
       }
       onRefreshOrdersCount();
     } catch (err) {
@@ -324,10 +409,25 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       snapshot.forEach((doc) => {
         fbOrders.push(doc.data() as RaincoatOrder);
       });
-      // Sort newest first
-      fbOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      setOrders(fbOrders);
-      localStorage.setItem('raincoat_orders', JSON.stringify(fbOrders));
+      
+      // Load current local orders right before merging
+      const listJson = localStorage.getItem('raincoat_orders') || '[]';
+      let localOrders: RaincoatOrder[] = [];
+      try {
+        localOrders = JSON.parse(listJson);
+        if (!Array.isArray(localOrders)) localOrders = [];
+      } catch (_) {}
+
+      // Keep both local/offline and server-side orders
+      const mergedMap = new Map<string, RaincoatOrder>();
+      localOrders.forEach(o => mergedMap.set(o.id, { ...o }));
+      fbOrders.forEach(o => mergedMap.set(o.id, { ...o, synced: true }));
+      
+      const merged = Array.from(mergedMap.values());
+      merged.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      
+      setOrders(merged);
+      localStorage.setItem('raincoat_orders', JSON.stringify(merged));
       onRefreshOrdersCount();
     }, (error) => {
       console.warn("Real-time orders sync error:", error);
@@ -340,10 +440,23 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       snapshot.forEach((doc) => {
         fbIncompletes.push(doc.data() as IncompleteOrder);
       });
-      // Sort newest first
-      fbIncompletes.sort((a, b) => new Date(b.lastUpdatedAt || b.createdAt).getTime() - new Date(a.lastUpdatedAt || a.createdAt).getTime());
-      setIncompleteOrders(fbIncompletes);
-      localStorage.setItem('raincoat_incomplete_orders', JSON.stringify(fbIncompletes));
+      
+      const incompleteJson = localStorage.getItem('raincoat_incomplete_orders') || '[]';
+      let localIncompletes: IncompleteOrder[] = [];
+      try {
+        localIncompletes = JSON.parse(incompleteJson);
+        if (!Array.isArray(localIncompletes)) localIncompletes = [];
+      } catch (_) {}
+
+      const mergedMap = new Map<string, IncompleteOrder>();
+      localIncompletes.forEach(i => mergedMap.set(i.id, i));
+      fbIncompletes.forEach(i => mergedMap.set(i.id, i));
+      
+      const merged = Array.from(mergedMap.values());
+      merged.sort((a, b) => new Date(b.lastUpdatedAt || b.createdAt).getTime() - new Date(a.lastUpdatedAt || a.createdAt).getTime());
+      
+      setIncompleteOrders(merged);
+      localStorage.setItem('raincoat_incomplete_orders', JSON.stringify(merged));
       onRefreshOrdersCount();
     }, (error) => {
       console.warn("Real-time incomplete orders sync error:", error);
@@ -723,6 +836,139 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     }
   };
 
+  const handleBulkUpdateStatus = (newStatus: any) => {
+    if (!perms.canEdit) {
+      alert('দুঃখিত, আপনার অ্যাকাউন্টে স্ট্যাটাস এডিট বা পরিবর্তন (Edit) করার অনুমতি নেই!');
+      return;
+    }
+    if (selectedOrderIds.length === 0) return;
+    
+    const updated = orders.map(o => {
+      if (selectedOrderIds.includes(o.id)) {
+        return { ...o, status: newStatus };
+      }
+      return o;
+    });
+    localStorage.setItem('raincoat_orders', JSON.stringify(updated));
+    setOrders(updated);
+
+    // Update status in Firestore for each selected ID
+    selectedOrderIds.forEach(id => {
+      updateOrderInFirestore(id, { status: newStatus }).catch((err) => {
+        console.warn(`Failed to update status in Cloud Firestore database for ${id}:`, err);
+      });
+
+      // Send delivery status change data to Facebook, Google, and TikTok
+      const targetOrder = updated.find(o => o.id === id);
+      if (targetOrder) {
+        const orderPrice = targetOrder.price || 0;
+        
+        // Google Analytics
+        if (typeof (window as any).gtag === 'function') {
+          (window as any).gtag('event', 'delivery_status_change', {
+            value: orderPrice,
+            currency: 'BDT',
+            order_id: id,
+            status: newStatus
+          });
+        }
+
+        // Facebook Meta Pixel (Server + Browser proxy)
+        trackPixelEvent('DeliveryStatusUpdate', {
+          value: orderPrice,
+          currency: 'BDT',
+          content_name: 'Delivery Status Update',
+          order_id: id,
+          status: newStatus
+        }, { name: targetOrder.name, phone: targetOrder.phone });
+
+        // TikTok Pixel
+        trackTikTokEvent('DeliveryStatusUpdate', {
+          value: orderPrice,
+          currency: 'BDT',
+          content_name: 'Delivery Status Update',
+          order_id: id,
+          status: newStatus
+        });
+      }
+    });
+
+    // Auto Google Sheets sync on update
+    const sheetToken = getAccessToken();
+    const sheetsSettings = getSheetsConfig();
+    if (sheetsSettings.autoSync && sheetsSettings.spreadsheetId && sheetToken) {
+      syncAllOrdersToSheet(sheetToken, sheetsSettings.spreadsheetId, updated).catch(err => {
+        console.warn("Auto-sync update failed during bulk status change:", err);
+      });
+    }
+
+    alert(`সফলভাবে ${selectedOrderIds.length} টি অর্ডারের ডেলিভারি স্থিতি '${newStatus}' এ পরিবর্তন করা হয়েছে।`);
+    setSelectedOrderIds([]);
+  };
+
+  const handleBulkSetConfirmed = (confirmed: boolean) => {
+    if (!perms.canEdit) {
+      alert('দুঃখিত, আপনার অ্যাকাউন্টে অর্ডার কনফার্মেশন এডিট বা পরিবর্তন (Edit) করার অনুমতি নেই!');
+      return;
+    }
+    if (selectedOrderIds.length === 0) return;
+
+    const updated = orders.map(o => {
+      if (selectedOrderIds.includes(o.id)) {
+        return { ...o, isConfirmed: confirmed };
+      }
+      return o;
+    });
+    localStorage.setItem('raincoat_orders', JSON.stringify(updated));
+    setOrders(updated);
+
+    // Update confirmation status in Firestore for each selected ID
+    selectedOrderIds.forEach(id => {
+      updateOrderInFirestore(id, { isConfirmed: confirmed }).catch((err) => {
+        console.warn(`Failed to update confirmation status in Cloud Firestore database for ${id}:`, err);
+      });
+    });
+
+    // Auto Google Sheets sync on confirmation change
+    const sheetToken = getAccessToken();
+    const sheetsSettings = getSheetsConfig();
+    if (sheetsSettings.autoSync && sheetsSettings.spreadsheetId && sheetToken) {
+      syncAllOrdersToSheet(sheetToken, sheetsSettings.spreadsheetId, updated).catch(err => {
+        console.warn("Auto-sync update failed during bulk confirmation toggle:", err);
+      });
+    }
+
+    alert(`সফলভাবে ${selectedOrderIds.length} টি অর্ডার ${confirmed ? 'কনফার্ম' : 'কনফার্মেশন বাতিল'} করা হয়েছে।`);
+    setSelectedOrderIds([]);
+  };
+
+  const handleBulkDelete = () => {
+    if (!perms.canDelete) {
+      alert('দুঃখিত, আপনার অ্যাকাউন্টে কোনো ডেটা মুছে ফেলার (Delete) অনুমতি দেওয়া হয়নি!');
+      return;
+    }
+    if (selectedOrderIds.length === 0) return;
+
+    if (!confirm(`আপনি কি নিশ্চিতভাবে নির্বাচিত ${selectedOrderIds.length} টি অর্ডার মুছে ফেলতে চান? এটি আর ফিরিয়ে আনা যাবে না!`)) {
+      return;
+    }
+
+    const updated = orders.filter(o => !selectedOrderIds.includes(o.id));
+    localStorage.setItem('raincoat_orders', JSON.stringify(updated));
+    setOrders(updated);
+    onRefreshOrdersCount();
+
+    // Delete each from Firestore
+    selectedOrderIds.forEach(id => {
+      deleteOrderFromFirestore(id).catch((err) => {
+        console.warn(`Failed to delete order ${id} from Cloud Firestore database:`, err);
+      });
+    });
+
+    setSelectedOrderIds([]);
+    alert(`সফলভাবে ${selectedOrderIds.length} টি অর্ডার মুছে ফেলা হয়েছে।`);
+  };
+
   const handleStartEditOrder = (order: RaincoatOrder) => {
     if (!perms.canEdit) {
       alert('দুঃখিত, আপনার অ্যাকাউন্টে কাস্টমারের অর্ডার ডিটেইলস পরিবর্তন (Edit) করার অনুমতি নেই!');
@@ -878,6 +1124,22 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     }
   };
 
+  const handleBulkPrintLabels = () => {
+    if (selectedOrderIds.length === 0) {
+      alert('অনুগ্রহ করে অন্তত ১টি অর্ডার সিলেক্ট করুন!');
+      return;
+    }
+    window.print();
+  };
+
+  const getProductNameFirstWord = (order: RaincoatOrder) => {
+    // If order ID contains "bike", it's a bike cover, otherwise raincoat
+    if (order.id.toLowerCase().includes('bike')) {
+      return 'Bike';
+    }
+    return 'Raincoat';
+  };
+
   // Convert Gregorian ISO to detailed Bengali Date & Time representation in real-time
   const formatBanglaDate = (isoString: string) => {
     try {
@@ -1008,8 +1270,17 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       o.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (o.village && o.village.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchSize = filterSize === 'All' || o.size === filterSize;
+    const matchStatus = filterStatus === 'All' || 
+      (filterStatus === 'Canceled' 
+        ? (o.status === 'Canceled' || o.status === 'Cancelled' || o.status === 'Canceled Fake Order')
+        : o.status === filterStatus);
+    const matchDistrict = filterDistrict === 'All' || getEnglishDistrictName(o) === filterDistrict;
     const matchDate = isDateInSelectedRange(o.createdAt);
-    return matchSearch && matchSize && matchDate;
+    return matchSearch && matchSize && matchStatus && matchDistrict && matchDate;
+  }).sort((a, b) => {
+    const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return timeB - timeA;
   });
 
   const filteredIncompleteOrders = incompleteOrders.filter(o => {
@@ -1019,8 +1290,13 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       o.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (o.village && o.village.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchSize = filterSize === 'All' || o.size === filterSize;
+    const matchDistrict = filterDistrict === 'All' || getEnglishDistrictName(o) === filterDistrict;
     const matchDate = isDateInSelectedRange(o.createdAt);
-    return matchSearch && matchSize && matchDate;
+    return matchSearch && matchSize && matchDistrict && matchDate;
+  }).sort((a, b) => {
+    const timeA = (a.lastUpdatedAt || a.createdAt) ? new Date(a.lastUpdatedAt || a.createdAt).getTime() : 0;
+    const timeB = (b.lastUpdatedAt || b.createdAt) ? new Date(b.lastUpdatedAt || b.createdAt).getTime() : 0;
+    return timeB - timeA;
   });
 
   const totalRevenue = orders.reduce((sum, o) => sum + o.price, 0);
@@ -1884,7 +2160,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                 />
               </div>
 
-              {/* Status filtering */}
+              {/* Size filtering */}
               <select
                 className="w-full sm:w-auto px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-600 focus:outline-none"
                 value={filterSize}
@@ -1895,6 +2171,44 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                 <option value="XXL">XXL</option>
                 <option value="3XL">3XL</option>
                 <option value="4XL">4XL</option>
+              </select>
+
+              {/* Status filtering */}
+              <select
+                className="w-full sm:w-auto px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-600 focus:outline-none font-sans"
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+              >
+                <option value="All">সকল স্থিতি (All Statuses)</option>
+                <option value="Pending">🕒 অপেক্ষমান (Pending)</option>
+                <option value="Shipped">🚚 পাঠানো হয়েছে (Shipped)</option>
+                <option value="Delivered">✅ ডেলিভারড (Delivered)</option>
+                <option value="Canceled">❌ বাতিল/ফেইক (Canceled/Fake)</option>
+              </select>
+
+              {/* District filtering */}
+              <select
+                className="w-full sm:w-auto px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-600 focus:outline-none font-sans"
+                value={filterDistrict}
+                onChange={(e) => setFilterDistrict(e.target.value)}
+              >
+                <option value="All">সকল জেলা (All Districts)</option>
+                <option value="Dhaka">Dhaka (ঢাকা)</option>
+                <option value="Chittagong">Chittagong (চট্টগ্রাম)</option>
+                <option value="Sylhet">Sylhet (সিলেট)</option>
+                <option value="Khulna">Khulna (খুলনা)</option>
+                <option value="Rajshahi">Rajshahi (রাজশাহী)</option>
+                <option value="Barisal">Barisal (বরিশাল)</option>
+                <option value="Rangpur">Rangpur (রংপুর)</option>
+                <option value="Mymensingh">Mymensingh (ময়মনসিংহ)</option>
+                <option value="Comilla">Comilla (কুমিল্লা)</option>
+                <option value="Gazipur">Gazipur (গাজীপুর)</option>
+                <option value="Narayanganj">Narayanganj (নারায়ণগঞ্জ)</option>
+                <option value="Bogura">Bogura (বগুড়া)</option>
+                <option value="Jessore">Jessore (যশোর)</option>
+                <option value="Feni">Feni (ফেনী)</option>
+                <option value="Noakhali">Noakhali (নোয়াখালী)</option>
+                <option value="Other">Other (অন্যান্য)</option>
               </select>
 
               {/* Date / Calendar Preset Selector */}
@@ -1921,22 +2235,49 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
 
               {/* Custom Date Picker Inputs when Custom is Selected */}
               {dateFilter === 'custom' && (
-                <div className="flex items-center gap-1.5 w-full sm:w-auto font-sans bg-white border border-slate-250 p-1 rounded-lg">
-                  <input
-                    type="date"
-                    className="px-2 py-1 bg-transparent text-[11px] text-slate-600 focus:outline-none outline-none"
-                    value={customStartDate}
-                    onChange={(e) => setCustomStartDate(e.target.value)}
-                    title="শুরুর তারিখ"
-                  />
-                  <span className="text-slate-400 text-[10px] font-bold">হতে</span>
-                  <input
-                    type="date"
-                    className="px-2 py-1 bg-transparent text-[11px] text-slate-600 focus:outline-none outline-none"
-                    value={customEndDate}
-                    onChange={(e) => setCustomEndDate(e.target.value)}
-                    title="শেষের তারিখ"
-                  />
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto font-sans">
+                  <div className="flex items-center gap-1.5 bg-gradient-to-r from-indigo-50 to-white border border-indigo-155 p-1 rounded-lg shadow-sm">
+                    <div className="flex items-center gap-1 pl-1.5 text-indigo-700">
+                      <Calendar className="h-3 w-3 shrink-0" />
+                      <span className="text-[10px] font-bold tracking-wider uppercase shrink-0">From:</span>
+                    </div>
+                    <input
+                      type="date"
+                      className="px-2 py-1 bg-transparent text-[11px] text-indigo-900 font-bold focus:outline-none outline-none cursor-pointer border-0 ring-0 focus:ring-0"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      title="শুরুর তারিখ"
+                    />
+                    <span className="text-indigo-400 text-[10px] font-bold px-1 select-none">To:</span>
+                    <input
+                      type="date"
+                      className="px-2 py-1 bg-transparent text-[11px] text-indigo-900 font-bold focus:outline-none outline-none cursor-pointer border-0 ring-0 focus:ring-0"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      title="শেষের তারিখ"
+                    />
+                  </div>
+                  
+                  {/* Quick clear tool or errors */}
+                  <div className="flex items-center gap-1.5">
+                    {customStartDate && customEndDate && new Date(customStartDate) > new Date(customEndDate) && (
+                      <span className="text-[10px] text-red-600 bg-red-50 border border-red-100 py-1 px-2 rounded-lg font-bold">
+                        ⚠️ শুরুর তারিখ শেষের চেয়ে বড়!
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomStartDate('');
+                        setCustomEndDate('');
+                        setDateFilter('all');
+                      }}
+                      className="p-1 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-705 border border-slate-200 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer"
+                      title="তারিখ ফিল্টার রিসেট করুন"
+                    >
+                      <X className="h-2.5 w-2.5" /> রিসেট
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -1985,12 +2326,94 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
             </div>
           )}
 
+          {/* Selection control block */}
+          {selectedOrderIds.length > 0 && activeTab === 'completed' && (
+            <div className="mb-4 p-3 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center justify-between shadow-xs text-xs font-semibold animate-fade-in flex-wrap gap-2.5">
+              <div className="flex items-center gap-2">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-black text-white">
+                  {selectedOrderIds.length}
+                </span>
+                <span className="text-slate-700 font-sans">টি অর্ডার নির্বাচিত করা হয়েছে।</span>
+                <button
+                  onClick={() => setSelectedOrderIds([])}
+                  className="text-indigo-600 hover:text-indigo-850 underline ml-2 text-[11px] cursor-pointer"
+                >
+                  সব সিলেকশন বাতিল করুন
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <button
+                  onClick={handleBulkPrintLabels}
+                  className="py-1.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition flex items-center justify-center gap-1.5 text-xs font-bold shadow-md cursor-pointer"
+                >
+                  <Printer className="h-4 w-4" /> বারকোড স্টিকার প্রিন্ট করুন (35mm x 35mm)
+                </button>
+
+                <span className="text-indigo-200 hidden md:inline">|</span>
+
+                <div className="flex items-center gap-2 bg-white px-2.5 py-1 rounded-lg border border-indigo-100 shadow-2xs">
+                  <span className="text-slate-500 font-sans text-[11px] font-semibold">বাল্ক অ্যাকশন (Bulk):</span>
+                  <select
+                    className="bg-transparent border-0 text-[11px] font-bold text-indigo-950 focus:ring-0 focus:outline-none cursor-pointer pr-8 font-sans"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (!val) return;
+                      if (val === 'Confirmed') {
+                        handleBulkSetConfirmed(true);
+                      } else if (val === 'Unconfirmed') {
+                        handleBulkSetConfirmed(false);
+                      } else if (val === 'Delete') {
+                        handleBulkDelete();
+                      } else {
+                        handleBulkUpdateStatus(val);
+                      }
+                      e.target.value = ''; // Reset select back to placeholder
+                    }}
+                    defaultValue=""
+                  >
+                    <option value="" disabled>অ্যাকশন নির্বাচন করুন...</option>
+                    <optgroup label="কনফার্মেশন">
+                      <option value="Confirmed">✅ অর্ডার কনফার্ম করুন (Set Confirmed)</option>
+                      <option value="Unconfirmed">❌ কনফার্মেশন বাতিল (Set Unconfirmed)</option>
+                    </optgroup>
+                    <optgroup label="ডেলিভারি স্থিতি">
+                      <option value="Pending">🕒 অপেক্ষমান সেট করুন (Set Pending)</option>
+                      <option value="Shipped">🚚 পাঠানো হয়েছে সেট করুন (Set Shipped)</option>
+                      <option value="Delivered">✅ ডেলিভারড সেট করুন (Set Delivered)</option>
+                      <option value="Canceled">❌ বাতিল সেট করুন (Set Canceled)</option>
+                    </optgroup>
+                    <optgroup label="অন্যান্য">
+                      <option value="Delete">🗑️ অর্ডার মুছে ফেলুন (Delete Selected)</option>
+                    </optgroup>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Orders log table */}
           <div className="overflow-x-auto rounded-xl border border-slate-200 max-h-[450px]">
             {activeTab === 'completed' ? (
               <table className="w-full text-xs text-left text-slate-500">
                 <thead className="bg-slate-100 text-slate-700 uppercase font-mono text-[10px] tracking-wider sticky top-0 z-10 border-b border-slate-200">
                   <tr>
+                    <th scope="col" className="px-3 py-3 text-center w-10">
+                      <input 
+                        type="checkbox"
+                        className="rounded border-slate-300 text-indigo-600 focus:ring-0 cursor-pointer h-3.5 w-3.5"
+                        checked={filteredOrders.length > 0 && filteredOrders.every(o => selectedOrderIds.includes(o.id))}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            const newSelected = Array.from(new Set([...selectedOrderIds, ...filteredOrders.map(o => o.id)]));
+                            setSelectedOrderIds(newSelected);
+                          } else {
+                            const filteredIds = filteredOrders.map(o => o.id);
+                            setSelectedOrderIds(selectedOrderIds.filter(id => !filteredIds.includes(id)));
+                          }
+                        }}
+                      />
+                    </th>
                     <th scope="col" className="px-4 py-3">গ্রাহক ও ফোন</th>
                     <th scope="col" className="px-4 py-3">ঠিকানা</th>
                     <th scope="col" className="px-3 py-3 text-center">সাইজ/কালার</th>
@@ -2004,13 +2427,27 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                 <tbody className="divide-y divide-slate-100 font-sans">
                   {filteredOrders.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-6 py-12 text-center text-slate-400 text-xs font-sans">
+                      <td colSpan={9} className="px-6 py-12 text-center text-slate-400 text-xs font-sans">
                         কোনো কাস্টমার বা সাকসেসফুল অর্ডার ডাটাবেসে পাওয়া যায়নি!
                       </td>
                     </tr>
                   ) : (
                     filteredOrders.map((order) => (
                       <tr key={order.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-3 py-3.5 text-center">
+                          <input 
+                            type="checkbox"
+                            className="rounded border-slate-300 text-indigo-600 focus:ring-0 cursor-pointer h-3.5 w-3.5"
+                            checked={selectedOrderIds.includes(order.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedOrderIds([...selectedOrderIds, order.id]);
+                              } else {
+                                setSelectedOrderIds(selectedOrderIds.filter(id => id !== order.id));
+                              }
+                            }}
+                          />
+                        </td>
                         <td className="px-4 py-3.5">
                           <div className="font-extrabold text-slate-900">{order.name}</div>
                           <div className="font-mono text-[11px] text-slate-600 mt-0.5 flex items-center gap-1.5 flex-wrap">
@@ -2037,11 +2474,64 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                           </div>
                           <div className="text-[9px] text-slate-400 font-mono mt-0.5">অর্ডার আইডি: {order.id}</div>
                           <div className="text-[9px] text-indigo-500 mt-0.5 italic">{formatBanglaDate(order.createdAt)}</div>
+                          
+                          {/* কাস্টমার অর্ডার হিস্টোরি ও ডাবল অর্ডার চেকার */}
+                          {(() => {
+                            const currentCleanPhone = order.phone.replace(/\D/g, '').slice(-11);
+                            if (!currentCleanPhone) return null;
+
+                            // Filter all orders matching this customer phone
+                            const customerHistory = orders.filter(o => o.phone.replace(/\D/g, '').slice(-11) === currentCleanPhone);
+                            const totalPreviousCount = customerHistory.length;
+
+                            // Parse current order creation time
+                            const currentOrderTime = new Date(order.createdAt).getTime();
+
+                            // Duplicate order check within three days (+ / - 3 days from this order)
+                            const repeatOrdersIn3Days = customerHistory.filter(o => {
+                              if (o.id === order.id) return false;
+                              const otherOrderTime = new Date(o.createdAt).getTime();
+                              const diffInMs = Math.abs(currentOrderTime - otherOrderTime);
+                              return diffInMs <= (3 * 24 * 60 * 60 * 1000); // 3 days in milliseconds
+                            });
+
+                            const hasRepeatOrder = repeatOrdersIn3Days.length > 0;
+
+                            return (
+                              <div className="mt-2.5 space-y-1.5 border-t border-slate-100 pt-2">
+                                <div className="text-[10px] font-bold flex items-center gap-1 text-slate-700">
+                                  <span>👤 বিগত অর্ডার সংখ্যা:</span>
+                                  <span className={`px-1.5 py-0.2 rounded font-mono font-black ${totalPreviousCount > 1 ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-600'}`}>
+                                    {totalPreviousCount} টি
+                                  </span>
+                                </div>
+                                {totalPreviousCount > 1 && (
+                                  <div className="text-[9px] text-slate-500 font-semibold max-w-[200px] leading-tight">
+                                    ইতিহাস: {customerHistory.map(h => `${h.size}(${h.color === 'Black' ? 'কালো' : 'ব্লু'})`).join(', ')}
+                                  </div>
+                                )}
+                                {hasRepeatOrder && (
+                                  <div className="mt-1 flex items-start gap-1 p-1 bg-red-50 border border-red-200 text-red-800 rounded-lg text-[9px] font-extrabold animate-pulse max-w-[220px]">
+                                    <ShieldAlert className="h-3 w-3 text-red-600 shrink-0 mt-0.5" />
+                                    <div>
+                                      <div className="text-red-700 font-black">⚠️ ৩ দিনের মধ্যে ডাবল অর্ডার!</div>
+                                      <div className="font-semibold mt-0.5 text-slate-600">আইডি: {repeatOrdersIn3Days.map(r => r.id.replace('ord-', '#')).join(', ')}</div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="px-4 py-3.5 max-w-[180px]">
                           <div className="text-slate-800 block leading-tight font-medium">{order.village}</div>
-                          <div className="text-[10px] text-slate-500 mt-1">
-                            {[order.policeStation, order.district].filter(Boolean).join(', ') || <span className="text-slate-400 italic">ঠিকানা</span>}
+                          <div className="text-[10px] text-slate-500 mt-1 flex flex-wrap gap-1 items-center">
+                            {[order.policeStation, order.district].filter(Boolean).join(', ') ? (
+                              <span>{[order.policeStation, order.district].filter(Boolean).join(', ')}</span>
+                            ) : null}
+                            <span className="bg-amber-100 text-amber-800 border border-amber-200 py-0.5 px-1.5 rounded-sm text-[9px] font-bold font-mono tracking-wide uppercase shrink-0">
+                              📍 {getEnglishDistrictName(order)}
+                            </span>
                           </div>
                           {order.orderNotes && (
                             <div className="mt-1.5 p-1 rounded-lg bg-blue-50 border border-blue-100/50 text-[10px] text-blue-800 font-semibold leading-relaxed">
@@ -2214,9 +2704,16 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                           </div>
                         </td>
                         <td className="px-4 py-3.5 max-w-[180px]">
-                          <div className="text-slate-700 block leading-tight">
+                          <div className="text-slate-700 block leading-tight font-medium">
                             {draft.village ? draft.village : <span className="text-slate-350 italic">ঠিকানা উল্লেখ করেনি</span>}
                           </div>
+                          {draft.village && (
+                            <div className="mt-1 flex flex-wrap gap-1 items-center">
+                              <span className="bg-amber-100 text-amber-850 border border-amber-205 py-0.5 px-1.5 rounded-sm text-[9px] font-bold font-mono tracking-wide uppercase shrink-0">
+                                📍 {getEnglishDistrictName(draft)}
+                              </span>
+                            </div>
+                          )}
                           {draft.orderNotes && (
                             <div className="mt-1.5 p-1 rounded-lg bg-blue-50 border border-blue-100/50 text-[10px] text-blue-800 font-semibold leading-relaxed">
                               📝 <span className="text-slate-500 font-bold">নোট:</span> {draft.orderNotes}
@@ -2592,6 +3089,87 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
             </div>
           </div>
         )}
+
+      {/* 35mm x 35mm Thermal Label Print Element */}
+      {selectedOrderIds.length > 0 && (
+        <div id="print-area-wrapper" className="hidden print:block">
+          <style dangerouslySetInnerHTML={{ __html: `
+            /* Hide absolute everything else during print */
+            @media print {
+              body {
+                visibility: hidden !important;
+              }
+              #print-area-wrapper, #print-area-wrapper * {
+                visibility: visible !important;
+              }
+              #print-area-wrapper {
+                display: block !important;
+                position: absolute !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 35mm !important;
+                height: auto !important;
+                background: white !important;
+                padding: 0 !important;
+                margin: 0 !important;
+              }
+              @page {
+                size: 35mm 35mm !important;
+                margin: 0 !important;
+              }
+              .print-label-item {
+                width: 35.0mm !important;
+                height: 35.0mm !important;
+                max-width: 35.0mm !important;
+                max-height: 35.0mm !important;
+                padding: 2.0mm !important;
+                box-sizing: border-box !important;
+                page-break-after: always !important;
+                break-after: page !important;
+                display: flex !important;
+                flex-direction: column !important;
+                justify-content: space-between !important;
+                align-items: center !important;
+                text-align: center !important;
+                font-family: Arial, sans-serif !important;
+                background: white !important;
+                color: black !important;
+                border: 1px dashed #444 !important;
+                border-radius: 4px !important;
+                page-break-inside: avoid !important;
+                margin: 0 !important;
+                overflow: hidden !important;
+              }
+            }
+          `}} />
+          {orders
+            .filter((o) => selectedOrderIds.includes(o.id))
+            .map((order) => (
+              <div key={order.id} className="print-label-item">
+                <div style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', borderBottom: '1.5px solid black', width: '100%', paddingBottom: '2.5px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                  {getProductNameFirstWord(order)}
+                </div>
+                
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '2px', width: '100%', margin: '2px 0' }}>
+                  <div style={{ fontSize: '9px', fontWeight: 900, fontFamily: 'monospace', letterSpacing: '0.1px' }}>
+                    {order.phone}
+                  </div>
+                  
+                  <div style={{ fontSize: '8.5px', fontWeight: 800, marginTop: '1px' }}>
+                    Size: <span style={{ fontSize: '9.5px', fontWeight: 950 }}>{order.size}</span>
+                  </div>
+                  <div style={{ fontSize: '7.5px', fontWeight: 700, color: '#111' }}>
+                    Color: {order.color === 'Black' ? 'কালো' : 'ব্লু'}
+                  </div>
+                </div>
+
+                <div style={{ fontSize: '6.5px', fontWeight: 600, width: '100%', borderTop: '1px solid #ddd', paddingTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  #{order.id.replace('ord-', '')} • {order.name.slice(0, 10)}
+                </div>
+              </div>
+            ))}
+        </div>
+      )}
 
       </div>
     </div>

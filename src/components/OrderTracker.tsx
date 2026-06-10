@@ -245,6 +245,27 @@ export default function OrderTracker() {
           </div>
         </form>
 
+        {/* Order History Link Callout Card */}
+        <div className="bg-orange-50 border border-orange-150 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <h4 className="text-xs font-black text-orange-950 flex items-center gap-1.5">
+              📋 আপনার কি একাধিক পূর্ববর্তী অর্ডার রয়েছে?
+            </h4>
+            <p className="text-[10px] text-slate-650 leading-relaxed font-semibold">
+              আপনার মোবাইল নাম্বার দিয়ে বিগত সফল কাস্টমার পেমেন্ট, পণ্যের সাইজ ও রঙের বিস্তারিত আর্কাইভ এবং ডেলিভারি রসিদ এক নজরে চেক করুন।
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              window.location.hash = '#/order-history';
+            }}
+            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-[11px] rounded-xl transition duration-200 shrink-0 shadow-xs cursor-pointer text-center md:self-center"
+          >
+            অর্ডার হিস্টোরি দেখুন ➜
+          </button>
+        </div>
+
         {/* Results Area */}
         {searched && !isLoading && (
           <div className="pt-4 border-t border-slate-150 animate-fade-in">

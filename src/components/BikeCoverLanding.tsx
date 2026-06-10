@@ -147,7 +147,15 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
     if (!name.trim()) return setErrorMessage('অনুগ্রহ করে আপনার নাম লিখুন।');
     if (!village.trim()) return setErrorMessage('অনুগ্রহ করে আপনার সম্পূর্ণ ঠিকানা (গ্রাম/পাড়া/থানা) লিখুন।');
     
-    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    let cleanPhone = phone.replace(/[^0-9]/g, '');
+    if (cleanPhone.startsWith('88')) {
+      cleanPhone = cleanPhone.substring(2);
+    }
+    if (!cleanPhone.startsWith('01')) {
+      if (cleanPhone.startsWith('1') && cleanPhone.length === 10) {
+        cleanPhone = '0' + cleanPhone;
+      }
+    }
     if (!cleanPhone.startsWith('01') || cleanPhone.length !== 11) {
       return setErrorMessage('অনুগ্রহ করে একটি সঠিক ১১ ডিজিটের বাংলাদেশী মোবাইল নাম্বার দিন (যেমন: 017XXXXXXXX)।');
     }
@@ -169,31 +177,33 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
       status: 'Pending',
       isConfirmed: false,
       createdAt: new Date().toISOString(),
+      synced: false,
     };
 
     try {
       await addOrderToFirestore(newOrder);
-      // Sync local raincoat_orders cache as well
-      const listJson = localStorage.getItem('raincoat_orders') || '[]';
-      const list = JSON.parse(listJson);
-      list.unshift(newOrder);
-      localStorage.setItem('raincoat_orders', JSON.stringify(list));
-
-      setSubmittedOrder(newOrder);
-      onOrderSuccess(newOrder);
-
-      trackPixelEvent('Purchase', {
-        value: 600,
-        currency: 'BDT',
-        content_name: 'Premium Bike Cover',
-        content_category: 'Automotive Accessories'
-      });
+      newOrder.synced = true;
     } catch (err) {
-      console.error(err);
-      setErrorMessage('অর্ডার করার সময় সিস্টেমে ত্রুটি হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন!');
-    } finally {
-      setIsSubmitting(false);
+      console.warn("Direct addOrderToFirestore failed, fallback using local storage syncing:", err);
     }
+
+    // Sync local raincoat_orders cache as well
+    const listJson = localStorage.getItem('raincoat_orders') || '[]';
+    const list = JSON.parse(listJson);
+    list.unshift(newOrder);
+    localStorage.setItem('raincoat_orders', JSON.stringify(list));
+
+    setSubmittedOrder(newOrder);
+    onOrderSuccess(newOrder);
+
+    trackPixelEvent('Purchase', {
+      value: 600,
+      currency: 'BDT',
+      content_name: 'Premium Bike Cover',
+      content_category: 'Automotive Accessories'
+    });
+    
+    setIsSubmitting(false);
   };
 
   const getEmbedUrl = (url: string) => {

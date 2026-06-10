@@ -2,20 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { 
   Star, 
   MessageSquare, 
-  ShieldCheck, 
   CheckCheck, 
   Sparkles, 
   Smartphone, 
   Award, 
   ThumbsUp, 
-  Camera, 
-  Upload, 
-  CheckCircle,
-  FileText
+  Camera
 } from 'lucide-react';
 import { CUSTOMER_REVIEWS } from '../data';
 import { CustomerReview } from '../types';
-import { getCustomReviewsFromFirestore, saveReviewToFirestore } from '../lib/firebase';
+import { getCustomReviewsFromFirestore } from '../lib/firebase';
 
 export default function ReviewsList() {
   const [activeReviewId, setActiveReviewId] = useState<string>('rev-1');
@@ -31,16 +27,6 @@ export default function ReviewsList() {
     }
     return CUSTOMER_REVIEWS;
   });
-  
-  // User review form states
-  const [writerName, setWriterName] = useState('');
-  const [writerPhone, setWriterPhone] = useState('');
-  const [writerRating, setWriterRating] = useState(5);
-  const [writerText, setWriterText] = useState('');
-  const [writerPhotoBase64, setWriterPhotoBase64] = useState<string>('');
-  const [formSuccess, setFormSuccess] = useState('');
-  const [formError, setFormError] = useState('');
-  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
 
   // Fetch approved custom reviews from Firestore on mount
   useEffect(() => {
@@ -69,71 +55,6 @@ export default function ReviewsList() {
   });
 
   const selectedReview = filteredReviews.find(r => r.id === activeReviewId) || filteredReviews[0] || CUSTOMER_REVIEWS[0];
-
-  // Convert uploaded image file to Base64 String
-  const handlePhotoUploadChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 2 * 1024 * 1024) {
-      alert("দুঃখিত, ২ মেগাবাইটের চেয়ে ছোট সাইজের ছবি আপলোড করুন!");
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setWriterPhotoBase64(reader.result as string);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleReviewSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormSuccess('');
-    setFormError('');
-
-    if (!writerName.trim()) return setFormError('দয়া করে আপনার নাম লিখুন!');
-    if (!writerPhone.trim()) return setFormError('আপনার সচল মোবাইল নম্বর লিখুন!');
-    if (!writerText.trim()) return setFormError('আপনার রিভিউ মন্তব্যটি টাইপ করুন!');
-
-    setIsSubmittingReview(true);
-
-    try {
-      const maskedPhone = writerPhone.length >= 11 
-        ? `${writerPhone.slice(0, 4)}XXXXX${writerPhone.slice(-2)}` 
-        : writerPhone;
-
-      const newReview: CustomerReview = {
-        id: `rev-client-${Date.now()}`,
-        customerName: writerName,
-        phoneNumberMasked: maskedPhone,
-        avatarUrl: '', // generated dynamically inside dashboard based on first initials
-        reviewDate: 'আজকে',
-        rating: writerRating,
-        messages: [
-          { id: 'm-1', sender: 'client', text: writerText, time: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }) },
-          { id: 'm-2', sender: 'admin', text: 'অসংখ্য ধন্যবাদ আপনাদের সুন্দর পজিটিভ ফিডব্যাকের জন্য! গুণগত মান সুনিশ্চিত করাই আমাদের প্রধাণ উদ্দেশ্য।', time: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }) }
-        ],
-        productPhoto: writerPhotoBase64 || undefined,
-        verifiedPurchase: false // starts false, moderator reviews and approves in Advanced Plugins panel!
-      };
-
-      await saveReviewToFirestore(newReview);
-
-      setFormSuccess('ধন্যবাদ! আপনার ফটো রিভিউটি এডমিন মডারেশনের জন্য সফলভাবে জমা হয়েছে। রিভিউটি রিভিউ তালিকায় শীঘ্রই দৃশ্যমান হবে!');
-      
-      // Clear inputs
-      setWriterName('');
-      setWriterPhone('');
-      setWriterText('');
-      setWriterPhotoBase64('');
-      setWriterRating(5);
-    } catch (err: any) {
-      setFormError('দুঃখিত, রিভিউটি সেভ করা যায়নি। আবার চেষ্টা করুন।');
-    } finally {
-      setIsSubmittingReview(false);
-    }
-  };
 
   return (
     <div className="bg-slate-900 text-white rounded-3xl p-4 sm:p-8 border border-slate-800 shadow-2xl relative overflow-hidden" id="customer-reviews">
@@ -247,12 +168,12 @@ export default function ReviewsList() {
                       {/* Interactive star ratings indicator */}
                       <span className="flex text-amber-400 text-[8px] gap-0.5 font-sans">
                         {Array.from({ length: review.rating }).map((_, i) => (
-                          <Star key={i} className="h-2 w-2 fill-current" />
+                           <Star key={i} className="h-2 w-2 fill-current" />
                         ))}
                       </span>
                     </div>
                     {review.productPhoto && (
-                      <span className="text-[8.5px] text-indigo-400 flex items-center gap-0.5 mt-0.5 font-sans shrink-0">
+                      <span className="text-[8.5px] text-indigo-400 flex items-center gap-0.5 mt-0.5 font-sans shrink-0 block">
                         <Camera className="h-2 w-2" /> ফটো সংযুক্ত
                       </span>
                     )}
@@ -374,117 +295,20 @@ export default function ReviewsList() {
         </div>
       </div>
 
-      {/* CLIENT FEEDBACK SUBMISSION WRITER WITH IMAGE UPLOAD BOX */}
-      <div className="mt-8 pt-8 border-t border-slate-800 max-w-4xl mx-auto font-sans">
-        <div className="text-center space-y-1.5 mb-6">
-          <h4 className="text-lg font-black text-white flex items-center justify-center gap-2">
-            <Camera className="h-5 w-5 text-orange-400" /> কাস্টমার রিভিউ ও প্রোডাক্ট ছবি দিন
-          </h4>
-          <p className="text-xs text-slate-400 leading-normal">
-            আপনি কি ইতিমধ্যে আমাদের প্রিমিয়াম রেনকোট ব্যবহার করছেন? আপনার জাদুকরী ফিডব্যাক ও রিয়েল ছবি আমাদের সাথে শেয়ার করুন!
-          </p>
-        </div>
-
-        {formSuccess && (
-          <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-400 text-xs font-bold font-sans flex items-center gap-2 mb-4 animate-bounce">
-            <CheckCircle className="h-5 w-5" />
-            <div>
-              <p>{formSuccess}</p>
-            </div>
-          </div>
-        )}
-
-        {formError && (
-          <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-500/30 text-rose-400 text-xs font-bold flex items-center gap-2 mb-4">
-            <span>⚠️ {formError}</span>
-          </div>
-        )}
-
-        <form onSubmit={handleReviewSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-950/40 p-5 rounded-2xl border border-slate-800">
-          <div>
-            <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">আপনার নাম (Full Name)</label>
-            <input 
-              type="text" 
-              placeholder="যেমন: শামীম রেজা"
-              value={writerName}
-              onChange={(e) => setWriterName(e.target.value)}
-              className="w-full text-xs p-2.5 bg-slate-900 border border-slate-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 text-white" 
-            />
-          </div>
-
-          <div>
-            <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">মোবাইল নম্বর (11 digit mobile)</label>
-            <input 
-              type="tel" 
-              placeholder="017XXXXXXXX"
-              value={writerPhone}
-              onChange={(e) => setWriterPhone(e.target.value)}
-              className="w-full text-xs p-2.5 bg-slate-900 border border-slate-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 text-white" 
-            />
-          </div>
-
-          <div>
-            <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">রেটিং স্টার নির্ধারণ করুন</label>
-            <div className="flex gap-1 bg-slate-900 border border-slate-800 rounded-xl p-2 justify-center">
-              {[1, 2, 3, 4, 5].map((num) => (
-                <button
-                  type="button"
-                  key={num}
-                  onClick={() => setWriterRating(num)}
-                  className="p-1 hover:scale-110 transition duration-150 cursor-pointer"
-                >
-                  <Star className={`h-4.5 w-4.5 ${num <= writerRating ? 'fill-current text-amber-400' : 'text-slate-650'}`} />
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="md:col-span-2">
-            <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">আপনার মন্তব্য (What do you like about our Raincoats?)</label>
-            <textarea 
-              rows={2.5}
-              placeholder="রেনকোটের কালার ও কাপড় নিয়ে আপনার চ্যাট স্টাইল মন্তব্য এখানে লিখুন..."
-              value={writerText}
-              onChange={(e) => setWriterText(e.target.value)}
-              className="w-full text-xs p-2.5 bg-slate-900 border border-slate-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 text-white leading-normal" 
-            />
-          </div>
-
-          <div>
-            <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">রিয়েল প্রোডাক্ট ছবি সংযুক্তি (Max 2MB File)</label>
-            <div className="relative border border-dashed border-slate-800 rounded-xl p-3 text-center bg-slate-900/50 flex flex-col items-center justify-center min-h-[70px]">
-              {writerPhotoBase64 ? (
-                <div className="flex items-center gap-1.5 text-xs text-emerald-400">
-                  <Camera className="h-4 w-4 shrink-0" />
-                  <span className="truncate max-w-[120px]">মোবাইল রিভিউর ছবি যুক্ত!</span>
-                  <button type="button" onClick={() => setWriterPhotoBase64('')} className="text-[10px] text-rose-500 block ml-1 hover:underline">রিমুভ</button>
-                </div>
-              ) : (
-                <label className="cursor-pointer flex flex-col items-center gap-1.5">
-                  <Upload className="h-4.5 w-4.5 text-slate-500" />
-                  <span className="text-[10px] text-slate-400">ছবি বাছাই করুন (Upload)</span>
-                  <input 
-                    type="file" 
-                    accept="image/*" 
-                    onChange={handlePhotoUploadChange}
-                    className="hidden" 
-                  />
-                </label>
-              )}
-            </div>
-          </div>
-
-          <div className="md:col-span-3 flex justify-center pt-2">
-            <button
-              type="submit"
-              disabled={isSubmittingReview}
-              className="px-6 py-2.5 bg-orange-500 hover:bg-orange-600 active:scale-95 text-white font-black text-xs rounded-xl flex items-center gap-2 cursor-pointer transition shadow-lg shrink-0"
-            >
-              <ThumbsUp className="h-4 w-4" />
-              {isSubmittingReview ? 'সাবমিট হচ্ছে...' : 'হোয়াটসঅ্যাপ রিভিউ সাবমিট করুন'}
-            </button>
-          </div>
-        </form>
+      {/* CLIENT FEEDBACK SUBMISSION BANNER LINK */}
+      <div className="mt-8 pt-8 border-t border-slate-800 max-w-4xl mx-auto font-sans text-center space-y-3">
+        <p className="text-xs text-slate-400 leading-normal">
+          আপনি কি ইতিমধ্যে আমাদের রেনকোট ব্যবহার করছেন? আপনার জাদুকরী ফিডব্যাকের ছবি ও বিস্তারিত রিভিউ শেয়ার করতে এখানে কাস্টম পেইজে যান।
+        </p>
+        <button
+          onClick={() => {
+            window.history.pushState(null, '', '/write-review');
+            window.dispatchEvent(new Event('popstate'));
+          }}
+          className="px-6 py-2.5 bg-orange-500 hover:bg-orange-600 active:scale-95 text-white font-black text-xs rounded-xl flex items-center gap-2 cursor-pointer transition shadow-lg inline-flex"
+        >
+          <Camera className="h-4 w-4" /> কাস্টমার রিভিউ ও ছবি সরাসরি আপলোড করুন
+        </button>
       </div>
     </div>
   );

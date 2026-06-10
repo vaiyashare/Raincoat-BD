@@ -58,6 +58,7 @@ export interface RaincoatOrder {
   courierName?: string;
   trackingId?: string;
   whatsappConsent?: boolean;
+  synced?: boolean;
 }
 
 export interface IncompleteOrder {
@@ -79,6 +80,7 @@ export interface IncompleteOrder {
   fraudReason?: string;
   orderNotes?: string;
   whatsappConsent?: boolean;
+  synced?: boolean;
 }
 
 export interface InventoryItem {
@@ -210,6 +212,11 @@ export interface AdvancedAddonsSettings {
   track_lead: boolean;
   track_purchase: boolean;
   track_initiate_checkout: boolean;
+
+  // Site Configuration Customization
+  site_title?: string;
+  site_favicon?: string;
+  site_logo_url?: string;
 }
 
 
