@@ -365,7 +365,15 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       if (fbOrders && fbOrders.length > 0) {
         const mergedMap = new Map<string, RaincoatOrder>();
         currentLocal.forEach(o => mergedMap.set(o.id, { ...o }));
-        fbOrders.forEach(o => mergedMap.set(o.id, { ...o, synced: true }));
+        fbOrders.forEach(o => {
+          const existing = mergedMap.get(o.id);
+          mergedMap.set(o.id, {
+            ...existing,
+            ...o,
+            isConfirmed: o.isConfirmed !== undefined ? o.isConfirmed : (existing?.isConfirmed ?? false),
+            synced: true
+          });
+        });
         const merged = Array.from(mergedMap.values());
         merged.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         setOrders(merged);
@@ -421,7 +429,15 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       // Keep both local/offline and server-side orders
       const mergedMap = new Map<string, RaincoatOrder>();
       localOrders.forEach(o => mergedMap.set(o.id, { ...o }));
-      fbOrders.forEach(o => mergedMap.set(o.id, { ...o, synced: true }));
+      fbOrders.forEach(o => {
+        const existing = mergedMap.get(o.id);
+        mergedMap.set(o.id, {
+          ...existing,
+          ...o,
+          isConfirmed: o.isConfirmed !== undefined ? o.isConfirmed : (existing?.isConfirmed ?? false),
+          synced: true
+        });
+      });
       
       const merged = Array.from(mergedMap.values());
       merged.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -2889,7 +2905,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
         <div className="bg-slate-100 p-4 px-6 text-slate-600 text-[10px] sm:text-xs font-sans flex flex-col sm:flex-row justify-between items-center gap-2 shrink-0 border-t border-slate-200">
           <span className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse" />
-            লাইভ ডেটা মনিটরিং অ্যাক্টিভ আছে (Local Storage Engine)
+            লাইভ ডেটা ক্লাউড মনিটরিং সচল আছে (Firebase Cloud Database)
           </span>
           <span className="flex items-center gap-1 text-slate-700 font-extrabold">
             <CheckSquare className="h-4 w-4 text-emerald-600" /> ১০০০+ সন্তুষ্ট গ্রাহকদের রিভিউ প্রসেসড
