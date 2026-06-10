@@ -350,6 +350,14 @@ export default function OrderHistory() {
                                 {order.district && `, জেলা: ${order.district}`}
                               </span>
                             </div>
+                            {order.orderNotes && (
+                              <div className="flex flex-col gap-1 border-t border-dashed border-slate-200 pt-1.5 mt-1">
+                                <span className="text-slate-500 font-bold block text-[10px]">বিশেষ ডেলিভারি নির্দেশ:</span>
+                                <span className="text-blue-800 bg-blue-50/50 p-1.5 rounded-lg border border-blue-100/40 font-medium text-[11px] leading-relaxed block text-left">
+                                  📝 {order.orderNotes}
+                                </span>
+                              </div>
+                            )}
                             <div className="flex justify-between border-t border-slate-200/60 pt-1.5">
                               <span className="text-slate-550">পেমেন্ট মেথড:</span>
                               <strong className="text-emerald-700 font-bold text-[11px]">ক্যাশ অন ডেলিভারি (COD)</strong>

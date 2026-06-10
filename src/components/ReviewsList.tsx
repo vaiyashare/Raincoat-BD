@@ -1,13 +1,67 @@
-import React, { useState } from 'react';
-import { Star, MessageSquare, ShieldCheck, CheckCheck, Sparkles, Smartphone, Award, ThumbsUp } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { 
+  Star, 
+  MessageSquare, 
+  ShieldCheck, 
+  CheckCheck, 
+  Sparkles, 
+  Smartphone, 
+  Award, 
+  ThumbsUp, 
+  Camera, 
+  Upload, 
+  CheckCircle,
+  FileText
+} from 'lucide-react';
 import { CUSTOMER_REVIEWS } from '../data';
 import { CustomerReview } from '../types';
+import { getCustomReviewsFromFirestore, saveReviewToFirestore } from '../lib/firebase';
 
 export default function ReviewsList() {
   const [activeReviewId, setActiveReviewId] = useState<string>('rev-1');
   const [filterRating, setFilterRating] = useState<'all' | '5'>('all');
+  
+  // Custom Firestore Reviews backing state
+  const [customReviews, setCustomReviews] = useState<CustomerReview[]>(() => {
+    const cached = localStorage.getItem('raincoat_custom_reviews_fallback');
+    if (cached) {
+      try {
+        return JSON.parse(cached).filter((r: any) => r.verifiedPurchase);
+      } catch (_) {}
+    }
+    return CUSTOMER_REVIEWS;
+  });
+  
+  // User review form states
+  const [writerName, setWriterName] = useState('');
+  const [writerPhone, setWriterPhone] = useState('');
+  const [writerRating, setWriterRating] = useState(5);
+  const [writerText, setWriterText] = useState('');
+  const [writerPhotoBase64, setWriterPhotoBase64] = useState<string>('');
+  const [formSuccess, setFormSuccess] = useState('');
+  const [formError, setFormError] = useState('');
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
 
-  const filteredReviews = CUSTOMER_REVIEWS.filter(r => {
+  // Fetch approved custom reviews from Firestore on mount
+  useEffect(() => {
+    async function loadReviews() {
+      try {
+        const res = await getCustomReviewsFromFirestore();
+        if (res) {
+          // Merge only approved reviews to client side visible array
+          setCustomReviews(res.filter(r => r.verifiedPurchase));
+        }
+      } catch (err) {
+        console.warn("Could not load custom client reviews:", err);
+      }
+    }
+    loadReviews();
+  }, []);
+
+  // Merge custom + static reviews
+  const allReviews = customReviews;
+
+  const filteredReviews = allReviews.filter(r => {
     if (filterRating === '5') {
       return r.rating === 5;
     }
@@ -15,6 +69,71 @@ export default function ReviewsList() {
   });
 
   const selectedReview = filteredReviews.find(r => r.id === activeReviewId) || filteredReviews[0] || CUSTOMER_REVIEWS[0];
+
+  // Convert uploaded image file to Base64 String
+  const handlePhotoUploadChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      alert("দুঃখিত, ২ মেগাবাইটের চেয়ে ছোট সাইজের ছবি আপলোড করুন!");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setWriterPhotoBase64(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleReviewSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormSuccess('');
+    setFormError('');
+
+    if (!writerName.trim()) return setFormError('দয়া করে আপনার নাম লিখুন!');
+    if (!writerPhone.trim()) return setFormError('আপনার সচল মোবাইল নম্বর লিখুন!');
+    if (!writerText.trim()) return setFormError('আপনার রিভিউ মন্তব্যটি টাইপ করুন!');
+
+    setIsSubmittingReview(true);
+
+    try {
+      const maskedPhone = writerPhone.length >= 11 
+        ? `${writerPhone.slice(0, 4)}XXXXX${writerPhone.slice(-2)}` 
+        : writerPhone;
+
+      const newReview: CustomerReview = {
+        id: `rev-client-${Date.now()}`,
+        customerName: writerName,
+        phoneNumberMasked: maskedPhone,
+        avatarUrl: '', // generated dynamically inside dashboard based on first initials
+        reviewDate: 'আজকে',
+        rating: writerRating,
+        messages: [
+          { id: 'm-1', sender: 'client', text: writerText, time: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }) },
+          { id: 'm-2', sender: 'admin', text: 'অসংখ্য ধন্যবাদ আপনাদের সুন্দর পজিটিভ ফিডব্যাকের জন্য! গুণগত মান সুনিশ্চিত করাই আমাদের প্রধাণ উদ্দেশ্য।', time: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }) }
+        ],
+        productPhoto: writerPhotoBase64 || undefined,
+        verifiedPurchase: false // starts false, moderator reviews and approves in Advanced Plugins panel!
+      };
+
+      await saveReviewToFirestore(newReview);
+
+      setFormSuccess('ধন্যবাদ! আপনার ফটো রিভিউটি এডমিন মডারেশনের জন্য সফলভাবে জমা হয়েছে। রিভিউটি রিভিউ তালিকায় শীঘ্রই দৃশ্যমান হবে!');
+      
+      // Clear inputs
+      setWriterName('');
+      setWriterPhone('');
+      setWriterText('');
+      setWriterPhotoBase64('');
+      setWriterRating(5);
+    } catch (err: any) {
+      setFormError('দুঃখিত, রিভিউটি সেভ করা যায়নি। আবার চেষ্টা করুন।');
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
 
   return (
     <div className="bg-slate-900 text-white rounded-3xl p-4 sm:p-8 border border-slate-800 shadow-2xl relative overflow-hidden" id="customer-reviews">
@@ -26,7 +145,7 @@ export default function ReviewsList() {
         <span className="px-2.5 py-0.5 bg-orange-500/10 text-orange-400 text-[10px] sm:text-xs font-semibold rounded-full border border-orange-500/20 uppercase tracking-wider inline-flex items-center gap-1 font-sans">
           <Award className="h-3 w-3" /> শতভাগ কাস্টমার সন্তুষ্টি
         </span>
-        <h3 className="text-lg sm:text-2xl font-extrabold text-white mt-2 font-sans">
+        <h3 className="text-lg sm:text-2xl font-extrabold text-white mt-1.5 font-sans">
           আমাদের গ্রাহকদের মনকাড়া অভিজ্ঞতা (WhatsApp Reviews)
         </h3>
         <p className="text-slate-400 text-[11px] sm:text-sm mt-1 sm:mt-2 font-sans">
@@ -59,7 +178,7 @@ export default function ReviewsList() {
           </div>
 
           {/* Bengali Ratings Toggle Filter Bar */}
-          <div className="flex bg-slate-950/70 p-1 rounded-xl border border-slate-800/80 mb-3 gap-1">
+          <div className="flex bg-slate-950/70 p-1 rounded-xl border border-slate-800/85 mb-3 gap-1">
             <button
               onClick={() => setFilterRating('all')}
               className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] sm:text-xs transition-all font-bold text-center flex items-center justify-center gap-1 cursor-pointer ${
@@ -68,7 +187,7 @@ export default function ReviewsList() {
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/20'
               }`}
             >
-              সবগুলো রিভিউ ({CUSTOMER_REVIEWS.length})
+              সবগুলো রিভিউ ({allReviews.length})
             </button>
             <button
               onClick={() => setFilterRating('5')}
@@ -79,37 +198,45 @@ export default function ReviewsList() {
               }`}
             >
               <Star className="h-3 w-3 fill-current text-white inline-block -mt-0.5" />
-              ৫-স্টার ({CUSTOMER_REVIEWS.filter(r => r.rating === 5).length})
+              ৫-স্টার ({allReviews.filter(r => r.rating === 5).length})
             </button>
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-1 gap-1.5 sm:gap-2">
+          <div className="grid grid-cols-2 lg:grid-cols-1 gap-1.5 sm:gap-2 max-h-[300px] lg:max-h-[360px] overflow-y-auto pr-1">
             {filteredReviews.map((review) => {
               const isActive = review.id === selectedReview.id;
+              // Safe initial characters extractor
+              const initials = review.customerName ? review.customerName.charAt(0) : 'K';
               return (
                 <button
                   key={review.id}
                   onClick={() => setActiveReviewId(review.id)}
-                  className={`flex items-center gap-1.5 sm:gap-3 p-1.5 sm:p-3 rounded-lg sm:rounded-xl transition-all duration-300 text-left border cursor-pointer ${
+                  className={`flex items-center gap-1.5 sm:gap-3 p-1.5 sm:p-2.5 rounded-lg sm:rounded-xl transition-all duration-300 text-left border cursor-pointer ${
                     isActive
                       ? 'bg-gradient-to-r from-blue-900/40 to-indigo-900/40 border-blue-500/50 shadow-md shadow-blue-500/5'
                       : 'bg-slate-800/30 hover:bg-slate-800/60 border-slate-800/80 hover:border-slate-700'
                   }`}
                   id={`review-toggle-${review.id}`}
                 >
-                  <img
-                    src={review.avatarUrl}
-                    alt={review.customerName}
-                    className="w-7 h-7 sm:w-11 sm:h-11 rounded-full object-cover border border-slate-700 shrink-0"
-                    referrerPolicy="no-referrer"
-                    loading="lazy"
-                  />
+                  {review.avatarUrl ? (
+                    <img
+                      src={review.avatarUrl}
+                      alt={review.customerName}
+                      className="w-7 h-7 sm:w-10 sm:h-10 rounded-full object-cover border border-slate-700 shrink-0"
+                      referrerPolicy="no-referrer"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="w-7 h-7 sm:w-10 sm:h-10 rounded-full bg-slate-700 text-slate-350 flex items-center justify-center font-black text-xs shrink-0 font-mono">
+                      {initials}
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] sm:text-sm font-bold truncate font-sans text-slate-200">
+                      <span className="text-[10px] sm:text-xs font-bold truncate font-sans text-slate-200">
                         {review.customerName}
                       </span>
-                      <span className="text-[9px] text-slate-500 shrink-0 font-sans hidden sm:inline">
+                      <span className="text-[8px] text-slate-500 shrink-0 font-sans hidden sm:inline">
                         {review.reviewDate}
                       </span>
                     </div>
@@ -124,9 +251,11 @@ export default function ReviewsList() {
                         ))}
                       </span>
                     </div>
-                    <p className="text-[9px] text-emerald-400 flex items-center gap-0.5 mt-0.5 font-sans">
-                      <ShieldCheck className="h-2.5 w-2.5 inline shrink-0" /> ১০০% ভেরিফাইড
-                    </p>
+                    {review.productPhoto && (
+                      <span className="text-[8.5px] text-indigo-400 flex items-center gap-0.5 mt-0.5 font-sans shrink-0">
+                        <Camera className="h-2 w-2" /> ফটো সংযুক্ত
+                      </span>
+                    )}
                   </div>
                 </button>
               );
@@ -155,13 +284,19 @@ export default function ReviewsList() {
             <div className="bg-[#075e54] p-1.5 pt-4 pb-1 sm:p-3 sm:pt-6 sm:pb-2.5 flex items-center justify-between text-white relative z-20 shadow-md">
               <div className="flex items-center gap-1.5 sm:gap-2">
                 <div className="relative">
-                  <img
-                    src={selectedReview.avatarUrl}
-                    alt={selectedReview.customerName}
-                    className="w-7 h-7 sm:w-10 sm:h-10 rounded-full object-cover border border-emerald-600 shrink-0"
-                    referrerPolicy="no-referrer"
-                    loading="lazy"
-                  />
+                  {selectedReview.avatarUrl ? (
+                    <img
+                      src={selectedReview.avatarUrl}
+                      alt={selectedReview.customerName}
+                      className="w-7 h-7 sm:w-10 sm:h-10 rounded-full object-cover border border-emerald-600 shrink-0"
+                      referrerPolicy="no-referrer"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="w-7 h-7 sm:w-10 sm:h-10 rounded-full bg-slate-700 text-slate-300 flex items-center justify-center font-bold text-xs shrink-0 font-mono">
+                      {selectedReview.customerName ? selectedReview.customerName.charAt(0) : 'K'}
+                    </div>
+                  )}
                   <div className="w-2 h-2 sm:w-3 sm:h-3 bg-emerald-400 border-2 border-[#075e54] rounded-full absolute bottom-0 right-0 animate-ping"></div>
                   <div className="w-2 h-2 sm:w-3 sm:h-3 bg-emerald-500 border-2 border-[#075e54] rounded-full absolute bottom-0 right-0"></div>
                 </div>
@@ -187,7 +322,7 @@ export default function ReviewsList() {
             }}>
               {/* Security notice */}
               <div className="mx-auto bg-amber-100/90 border border-amber-200 rounded-lg p-1.5 sm:p-2 max-w-[90%] sm:max-w-[85%] text-slate-800 text-[8px] sm:text-[10px] text-center shadow-sm relative z-10 font-sans leading-tight">
-                🔒 এন্ড-টু-এন্ড এনক্রিপ্টেড। এই চ্যাটটি ব্যবসায়ী দ্বারা অনুমোদিত ও সত্য।
+                🔒 এন্ড-টু-এন্ড এনক্রিপ্টেড। এই চ্যাটটি ব্যবসায়ী দ্বারা অনুমোদিত ও সত্য।
               </div>
 
               {selectedReview.messages.map((msg) => {
@@ -209,6 +344,20 @@ export default function ReviewsList() {
                   </div>
                 );
               })}
+
+              {/* Real Photo Attachment within the Whatsapp Screen! Highly Interactive */}
+              {selectedReview.productPhoto && (
+                <div className="max-w-[80%] self-start bg-white p-1 rounded-xl shadow-md space-y-1">
+                  <div className="relative rounded-lg overflow-hidden border border-slate-100 max-h-36 sm:max-h-48 bg-slate-900 flex items-center justify-center">
+                    <img 
+                      src={selectedReview.productPhoto} 
+                      alt="Product review attach" 
+                      className="object-cover max-h-32 sm:max-h-44 w-full" 
+                    />
+                  </div>
+                  <span className="text-[8px] text-slate-400 px-1 block text-right">গ্রাহক প্রেরিত ছবি</span>
+                </div>
+              )}
             </div>
 
             {/* WA Footer */}
@@ -223,6 +372,119 @@ export default function ReviewsList() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* CLIENT FEEDBACK SUBMISSION WRITER WITH IMAGE UPLOAD BOX */}
+      <div className="mt-8 pt-8 border-t border-slate-800 max-w-4xl mx-auto font-sans">
+        <div className="text-center space-y-1.5 mb-6">
+          <h4 className="text-lg font-black text-white flex items-center justify-center gap-2">
+            <Camera className="h-5 w-5 text-orange-400" /> কাস্টমার রিভিউ ও প্রোডাক্ট ছবি দিন
+          </h4>
+          <p className="text-xs text-slate-400 leading-normal">
+            আপনি কি ইতিমধ্যে আমাদের প্রিমিয়াম রেনকোট ব্যবহার করছেন? আপনার জাদুকরী ফিডব্যাক ও রিয়েল ছবি আমাদের সাথে শেয়ার করুন!
+          </p>
+        </div>
+
+        {formSuccess && (
+          <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-400 text-xs font-bold font-sans flex items-center gap-2 mb-4 animate-bounce">
+            <CheckCircle className="h-5 w-5" />
+            <div>
+              <p>{formSuccess}</p>
+            </div>
+          </div>
+        )}
+
+        {formError && (
+          <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-500/30 text-rose-400 text-xs font-bold flex items-center gap-2 mb-4">
+            <span>⚠️ {formError}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleReviewSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-950/40 p-5 rounded-2xl border border-slate-800">
+          <div>
+            <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">আপনার নাম (Full Name)</label>
+            <input 
+              type="text" 
+              placeholder="যেমন: শামীম রেজা"
+              value={writerName}
+              onChange={(e) => setWriterName(e.target.value)}
+              className="w-full text-xs p-2.5 bg-slate-900 border border-slate-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 text-white" 
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">মোবাইল নম্বর (11 digit mobile)</label>
+            <input 
+              type="tel" 
+              placeholder="017XXXXXXXX"
+              value={writerPhone}
+              onChange={(e) => setWriterPhone(e.target.value)}
+              className="w-full text-xs p-2.5 bg-slate-900 border border-slate-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 text-white" 
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">রেটিং স্টার নির্ধারণ করুন</label>
+            <div className="flex gap-1 bg-slate-900 border border-slate-800 rounded-xl p-2 justify-center">
+              {[1, 2, 3, 4, 5].map((num) => (
+                <button
+                  type="button"
+                  key={num}
+                  onClick={() => setWriterRating(num)}
+                  className="p-1 hover:scale-110 transition duration-150 cursor-pointer"
+                >
+                  <Star className={`h-4.5 w-4.5 ${num <= writerRating ? 'fill-current text-amber-400' : 'text-slate-650'}`} />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="md:col-span-2">
+            <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">আপনার মন্তব্য (What do you like about our Raincoats?)</label>
+            <textarea 
+              rows={2.5}
+              placeholder="রেনকোটের কালার ও কাপড় নিয়ে আপনার চ্যাট স্টাইল মন্তব্য এখানে লিখুন..."
+              value={writerText}
+              onChange={(e) => setWriterText(e.target.value)}
+              className="w-full text-xs p-2.5 bg-slate-900 border border-slate-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 text-white leading-normal" 
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">রিয়েল প্রোডাক্ট ছবি সংযুক্তি (Max 2MB File)</label>
+            <div className="relative border border-dashed border-slate-800 rounded-xl p-3 text-center bg-slate-900/50 flex flex-col items-center justify-center min-h-[70px]">
+              {writerPhotoBase64 ? (
+                <div className="flex items-center gap-1.5 text-xs text-emerald-400">
+                  <Camera className="h-4 w-4 shrink-0" />
+                  <span className="truncate max-w-[120px]">মোবাইল রিভিউর ছবি যুক্ত!</span>
+                  <button type="button" onClick={() => setWriterPhotoBase64('')} className="text-[10px] text-rose-500 block ml-1 hover:underline">রিমুভ</button>
+                </div>
+              ) : (
+                <label className="cursor-pointer flex flex-col items-center gap-1.5">
+                  <Upload className="h-4.5 w-4.5 text-slate-500" />
+                  <span className="text-[10px] text-slate-400">ছবি বাছাই করুন (Upload)</span>
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    onChange={handlePhotoUploadChange}
+                    className="hidden" 
+                  />
+                </label>
+              )}
+            </div>
+          </div>
+
+          <div className="md:col-span-3 flex justify-center pt-2">
+            <button
+              type="submit"
+              disabled={isSubmittingReview}
+              className="px-6 py-2.5 bg-orange-500 hover:bg-orange-600 active:scale-95 text-white font-black text-xs rounded-xl flex items-center gap-2 cursor-pointer transition shadow-lg shrink-0"
+            >
+              <ThumbsUp className="h-4 w-4" />
+              {isSubmittingReview ? 'সাবমিট হচ্ছে...' : 'হোয়াটসঅ্যাপ রিভিউ সাবমিট করুন'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

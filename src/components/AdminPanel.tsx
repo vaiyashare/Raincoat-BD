@@ -3,7 +3,8 @@ import {
   Eye, ShieldAlert, Trash2, ClipboardCopy, FileSpreadsheet, Search, 
   RefreshCw, X, ShieldCheck, CheckSquare, Globe, Database, Sparkles, 
   Check, ExternalLink, HelpCircle, Flame, ChevronDown, ChevronUp,
-  Lock, Key, LogOut, Settings, ListTodo, AlertOctagon, Layers, Users, Calendar
+  Lock, Key, LogOut, Settings, ListTodo, AlertOctagon, Layers, Users, Calendar, Phone,
+  Edit, CheckCircle
 } from 'lucide-react';
 import { RaincoatOrder, Size, ProductColor, IncompleteOrder } from '../types';
 import { 
@@ -22,8 +23,14 @@ import {
   deleteOrderFromFirestore, 
   deleteIncompleteOrderFromFirestore, 
   updateOrderInFirestore,
-  sendFirebasePasswordReset
+  addOrderToFirestore,
+  sendFirebasePasswordReset,
+  db
 } from '../lib/firebase';
+import { collection, query, onSnapshot } from 'firebase/firestore';
+
+import { trackPixelEvent, trackTikTokEvent } from '../lib/tracking';
+import { normalizeWhatsAppPhone } from '../lib/whatsapp';
 
 import PagesAdmin from './admin/PagesAdmin';
 import ProductsAdmin from './admin/ProductsAdmin';
@@ -32,6 +39,13 @@ import UsersAdmin from './admin/UsersAdmin';
 import BlockingAdmin from './admin/BlockingAdmin';
 import InventoryAdmin from './admin/InventoryAdmin';
 import MediaAdmin from './admin/MediaAdmin';
+import BannersAdmin from './admin/BannersAdmin';
+import LiveVisitorsAdmin from './LiveVisitorsAdmin';
+import FraudAdmin from './admin/FraudAdmin';
+import AdvancedPluginsAdmin from './admin/AdvancedPluginsAdmin';
+import CourierAdmin from './admin/CourierAdmin';
+import ReviewsAdmin from './admin/ReviewsAdmin';
+import DailyOrdersChart from './admin/DailyOrdersChart';
 
 interface AdminPanelProps {
   onClose: () => void;
@@ -43,7 +57,10 @@ interface AdminPanelProps {
 export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPages, onRefreshProducts }: AdminPanelProps) {
   const [orders, setOrders] = useState<RaincoatOrder[]>([]);
   const [incompleteOrders, setIncompleteOrders] = useState<IncompleteOrder[]>([]);
-  const [activeTab, setActiveTab] = useState<'completed' | 'incomplete' | 'pages' | 'products' | 'inventory' | 'integrations' | 'users' | 'blocking' | 'media'>('completed');
+  const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
+  const [deletingIncompleteId, setDeletingIncompleteId] = useState<string | null>(null);
+  const [editingOrder, setEditingOrder] = useState<RaincoatOrder | null>(null);
+  const [activeTab, setActiveTab] = useState<'completed' | 'incomplete' | 'pages' | 'products' | 'banners' | 'inventory' | 'integrations' | 'users' | 'blocking' | 'media' | 'live-visitors' | 'fraud' | 'advanced_addons' | 'courier_hub' | 'reviews_hub'>('completed');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSize, setFilterSize] = useState<string>('All');
   const [dateFilter, setDateFilter] = useState<string>('all');
@@ -51,6 +68,128 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   const [customEndDate, setCustomEndDate] = useState<string>('');
   const [copiedMessage, setCopiedMessage] = useState('');
   
+  // Anti-fraud local/synced blacklist state
+  const [blacklist, setBlacklist] = useState<any[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('raincoat_fraud_blacklist') || '[]');
+    } catch (e) {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    // Silent background Firestore synchronization for current scam numbers
+    const syncBlacklist = async () => {
+      try {
+        const { getDocs, collection } = await import('firebase/firestore');
+        const { db } = await import('../lib/firebase');
+        const querySnapshot = await getDocs(collection(db, 'blacklist'));
+        const entries: any[] = [];
+        querySnapshot.forEach((doc) => {
+          entries.push(doc.data());
+        });
+        if (entries.length > 0) {
+          setBlacklist(entries);
+          localStorage.setItem('raincoat_fraud_blacklist', JSON.stringify(entries));
+        }
+      } catch (e) {}
+    };
+    syncBlacklist();
+  }, [activeTab]);
+
+  const getWhatsAppUrlCompleted = (order: RaincoatOrder) => {
+    const formattedPhone = normalizeWhatsAppPhone(order.phone);
+    const colorBn = order.color === 'Black' ? 'কালো (Premium Black)' : 'নেভি ব্লু (Classic Navy Blue)';
+    const message = `প্রিয় ${order.name},
+আপনার রেইনকোটের অর্ডারটি সফলভাবে গৃহীত হয়েছে! 🎉
+
+🛍️ অর্ডার বিবরণ:
+- অর্ডার আইডি: #${order.id.replace('ord-', '')}
+- সাইজ: ${order.size}
+- কালার: ${colorBn}
+- পরিশোধযোগ্য সর্বমোট মূল্য: ${order.price} TK (ক্যাশ অন ডেলিভারি, সম্পূর্ণ ফ্রি ডেলিভারি)
+- ঠিকানা: ${order.village || ''} ${order.policeStation ? ', থানা: ' + order.policeStation : ''} ${order.district ? ', জেলা: ' + order.district : ''}
+
+পরবর্তী ১২ ঘণ্টার মধ্যে আমাদের প্রতিনিধি আপনার মোবাইল নাম্বারে কল করে অর্ডারটি নিশ্চিত করবেন। অনুগ্রহ করে মোবাইল ফোনটি সচল রাখুন। ধন্যবাদ! 😊`;
+    return `https://api.whatsapp.com/send?phone=${formattedPhone}&text=${encodeURIComponent(message)}`;
+  };
+
+  const getWhatsAppUrlDraft = (draft: IncompleteOrder) => {
+    const formattedPhone = normalizeWhatsAppPhone(draft.phone || '');
+    const colorBn = draft.color === 'Black' ? 'কালো (Premium Black)' : 'নেভি ব্লু (Classic Navy Blue)';
+    const message = `প্রিয় ${draft.name || 'গ্রাহক'},
+আপনার রেইনকোটের রূপরেখাটি ড্রাফট (ইনকমপ্লিট) হিসেবে আমাদের কাছে সংরক্ষিত রয়েছে। 🛍️
+
+আমাদের ডাবল পার্ট প্রিমিয়াম ওয়াটারপ্রুফ রেইনকোটটি আপনার ঠিকানায় ক্যাশ অন ডেলিভারিতে সম্পূর্ণ ফ্রি ডেলিভারি পেতে আপনার ঠিকানা ও সাইজ কনফার্ম করুন।
+
+- সাইজ: ${draft.size || 'XL'}
+- কালার: ${colorBn}
+- স্পেশাল অফার প্রাইজ: ${draft.price || 550} TK
+
+আপনি যদি অর্ডারটি কনফার্ম করতে চান, অনুগ্রহ করে আমাদের জানান। ধন্যবাদ! 😊`;
+    return `https://api.whatsapp.com/send?phone=${formattedPhone}&text=${encodeURIComponent(message)}`;
+  };
+
+  const getPhoneRiskBadge = (phone: string | undefined, order?: any) => {
+    if (!phone) return null;
+    const clean = phone.replace(/[-\s+]/g, '');
+    
+    // Check if order has API-derived fraud characteristics stored
+    if (order && order.fraudScore !== undefined) {
+      const score = order.fraudScore;
+      let scoreBadgeColor = 'bg-emerald-55 bg-emerald-50 text-emerald-700 border-emerald-250 border';
+      if (score >= 75) {
+        scoreBadgeColor = 'bg-rose-50 text-rose-700 border-rose-300 animate-pulse border';
+      } else if (score >= 45) {
+        scoreBadgeColor = 'bg-amber-50 text-amber-705 text-amber-800 border-amber-300 border';
+      } else if (score >= 20) {
+        scoreBadgeColor = 'bg-indigo-50 text-indigo-705 text-indigo-700 border-indigo-200 border';
+      }
+      return (
+        <span 
+          className={`inline-flex flex-col items-start gap-0.5 px-2 py-1 rounded-xl text-[9px] font-sans font-extrabold leading-tight ${scoreBadgeColor}`}
+          title={order.fraudReason || 'Verified via Fraud API'}
+        >
+          <span>🛡️ এপিআই রিস্ক স্কোর: {score}%</span>
+          <span className="text-[7.5px] font-normal text-slate-500 italic inline-block">{order.fraudReason || 'নিরাপদ কাস্টমার'}</span>
+        </span>
+      );
+    }
+    
+    const isBlacklisted = blacklist.some((b: any) => b.phone === clean);
+    if (isBlacklisted) {
+      return (
+        <span className="inline-flex items-center gap-1 text-[9px] font-black px-1.5 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 animate-pulse uppercase">
+          🚨 ফ্রাড (Blocklisted)
+        </span>
+      );
+    }
+    
+    const isValidFormat = /^(?:\+88|88)?(01[3-9]\d{8})$/.test(clean);
+    if (!isValidFormat) {
+      return (
+        <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-rose-50 text-rose-600 border border-rose-150">
+          ⚠️ ভুয়া নাম্বার (Fake/Wrong Size)
+        </span>
+      );
+    }
+    
+    const count = orders.filter(o => o.phone.replace(/[-\s+]/g, '') === clean).length;
+    if (count > 2) {
+      return (
+        <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200">
+          ⚠️ বারবার অর্ডার ({count} বার)
+        </span>
+      );
+    }
+    
+    return (
+      <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100">
+        🛡️ নিরাপদ (Safe)
+      </span>
+    );
+  };
+
   // Custom multi-user support
   const [currentUser, setCurrentUser] = useState(() => {
     return sessionStorage.getItem('admin_user_name') || 'admin';
@@ -177,7 +316,44 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     if (config.connectedEmail || config.spreadsheetId) {
       setShowSheetsSection(true);
     }
-  }, []);
+
+    // Set up real-time listener for orders in Firestore
+    const qOrders = query(collection(db, 'orders'));
+    const unsubscribeOrders = onSnapshot(qOrders, (snapshot) => {
+      const fbOrders: RaincoatOrder[] = [];
+      snapshot.forEach((doc) => {
+        fbOrders.push(doc.data() as RaincoatOrder);
+      });
+      // Sort newest first
+      fbOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setOrders(fbOrders);
+      localStorage.setItem('raincoat_orders', JSON.stringify(fbOrders));
+      onRefreshOrdersCount();
+    }, (error) => {
+      console.warn("Real-time orders sync error:", error);
+    });
+
+    // Set up real-time listener for incomplete draft orders in Firestore
+    const qIncompletes = query(collection(db, 'incompleteOrders'));
+    const unsubscribeIncompletes = onSnapshot(qIncompletes, (snapshot) => {
+      const fbIncompletes: IncompleteOrder[] = [];
+      snapshot.forEach((doc) => {
+        fbIncompletes.push(doc.data() as IncompleteOrder);
+      });
+      // Sort newest first
+      fbIncompletes.sort((a, b) => new Date(b.lastUpdatedAt || b.createdAt).getTime() - new Date(a.lastUpdatedAt || a.createdAt).getTime());
+      setIncompleteOrders(fbIncompletes);
+      localStorage.setItem('raincoat_incomplete_orders', JSON.stringify(fbIncompletes));
+      onRefreshOrdersCount();
+    }, (error) => {
+      console.warn("Real-time incomplete orders sync error:", error);
+    });
+
+    return () => {
+      unsubscribeOrders();
+      unsubscribeIncompletes();
+    };
+  }, [onRefreshOrdersCount]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -408,17 +584,16 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       alert('দুঃখিত, আপনার অ্যাকাউন্টে কোনো ডেটা মুছে ফেলার (Delete) অনুমতি দেওয়া হয়নি!');
       return;
     }
-    if (confirm('আপনি কি নিশ্চিতভাবেই এই অর্ডারটি মুছে ফেলতে চান?')) {
-      const updated = orders.filter(o => o.id !== id);
-      localStorage.setItem('raincoat_orders', JSON.stringify(updated));
-      setOrders(updated);
-      onRefreshOrdersCount();
+    const updated = orders.filter(o => o.id !== id);
+    localStorage.setItem('raincoat_orders', JSON.stringify(updated));
+    setOrders(updated);
+    onRefreshOrdersCount();
 
-      // Delete from Firestore
-      deleteOrderFromFirestore(id).catch((err) => {
-        console.warn("Failed to delete order from Cloud Firestore database:", err);
-      });
-    }
+    // Delete from Firestore
+    deleteOrderFromFirestore(id).catch((err) => {
+      console.warn("Failed to delete order from Cloud Firestore database:", err);
+    });
+    setDeletingOrderId(null);
   };
 
   const handleDeleteIncomplete = (id: string) => {
@@ -426,16 +601,15 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       alert('দুঃখিত, আপনার অ্যাকাউন্টে ড্রাফট ডেটা মুছে ফেলার (Delete) অনুমতি দেওয়া হয়নি!');
       return;
     }
-    if (confirm('আপনি কি নিশ্চিতভাবেই এই ইনকমপ্লিট ড্রাফটি মুছে ফেলতে চান?')) {
-      const updated = incompleteOrders.filter(o => o.id !== id);
-      localStorage.setItem('raincoat_incomplete_orders', JSON.stringify(updated));
-      setIncompleteOrders(updated);
+    const updated = incompleteOrders.filter(o => o.id !== id);
+    localStorage.setItem('raincoat_incomplete_orders', JSON.stringify(updated));
+    setIncompleteOrders(updated);
 
-      // Delete from Firestore
-      deleteIncompleteOrderFromFirestore(id).catch((err) => {
-        console.warn("Failed to delete incomplete draft from Firestore database:", err);
-      });
-    }
+    // Delete from Firestore
+    deleteIncompleteOrderFromFirestore(id).catch((err) => {
+      console.warn("Failed to delete incomplete draft from Firestore database:", err);
+    });
+    setDeletingIncompleteId(null);
   };
 
   const handleClearAllIncomplete = () => {
@@ -473,6 +647,40 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     updateOrderInFirestore(id, { status: newStatus }).catch((err) => {
       console.warn("Failed to update status in Cloud Firestore database:", err);
     });
+
+    // Send delivery status change data to Facebook, Google, and TikTok
+    const targetOrder = updated.find(o => o.id === id);
+    if (targetOrder) {
+      const orderPrice = targetOrder.price || 0;
+      
+      // Google Analytics
+      if (typeof (window as any).gtag === 'function') {
+        (window as any).gtag('event', 'delivery_status_change', {
+          value: orderPrice,
+          currency: 'BDT',
+          order_id: id,
+          status: newStatus
+        });
+      }
+
+      // Facebook Meta Pixel (Server + Browser proxy)
+      trackPixelEvent('DeliveryStatusUpdate', {
+        value: orderPrice,
+        currency: 'BDT',
+        content_name: 'Delivery Status Update',
+        order_id: id,
+        status: newStatus
+      }, { name: targetOrder.name, phone: targetOrder.phone });
+
+      // TikTok Pixel
+      trackTikTokEvent('DeliveryStatusUpdate', {
+        value: orderPrice,
+        currency: 'BDT',
+        content_name: 'Delivery Status Update',
+        order_id: id,
+        status: newStatus
+      });
+    }
 
     // Auto Google Sheets sync on update
     const token = getAccessToken();
@@ -512,6 +720,106 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       syncAllOrdersToSheet(token, sheetsCfg.spreadsheetId, updated).catch(err => {
         console.warn("Auto-sync update failed during confirmation toggle:", err);
       });
+    }
+  };
+
+  const handleStartEditOrder = (order: RaincoatOrder) => {
+    if (!perms.canEdit) {
+      alert('দুঃখিত, আপনার অ্যাকাউন্টে কাস্টমারের অর্ডার ডিটেইলস পরিবর্তন (Edit) করার অনুমতি নেই!');
+      return;
+    }
+    setEditingOrder({ ...order });
+  };
+
+  const handleSaveEditOrder = async () => {
+    if (!editingOrder) return;
+    try {
+      // 1. Update local state
+      const updatedOrders = orders.map(o => o.id === editingOrder.id ? editingOrder : o);
+      setOrders(updatedOrders);
+      localStorage.setItem('raincoat_orders', JSON.stringify(updatedOrders));
+
+      // 2. Update Firestore
+      await updateOrderInFirestore(editingOrder.id, editingOrder);
+
+      // Auto Google Sheets sync on edit
+      const token = getAccessToken();
+      const sheetsCfg = getSheetsConfig();
+      if (sheetsCfg.autoSync && sheetsCfg.spreadsheetId && token) {
+        syncAllOrdersToSheet(token, sheetsCfg.spreadsheetId, updatedOrders).catch(err => {
+          console.warn("Auto-sync update failed during order edit:", err);
+        });
+      }
+
+      setEditingOrder(null);
+      setCopiedMessage('গ্রাহকের অর্ডার বিবরণী সফলভাবে সংশোধন করে ক্লাউড ডেটাবেজে সংরক্ষণ করা হয়েছে!');
+      setTimeout(() => setCopiedMessage(''), 4000);
+    } catch (err) {
+      console.error(err);
+      alert('তথ্য পরিবর্তন করা যায়নি। আবার চেষ্টা করুন।');
+    }
+  };
+
+  const handleMoveDraftToCompleted = async (draft: IncompleteOrder) => {
+    if (!perms.canEdit) {
+      alert('দুঃখিত, আপনার অ্যাকাউন্টে ড্রাফট এডিট বা পরিবর্তন (Edit) করার অনুমতি নেই!');
+      return;
+    }
+    if (!confirm('আপনি কি এই ইনকমপ্লিট ড্রাফটটি সফল অর্ডার হিসেবে যুক্ত করতে চান?')) return;
+
+    const newOrderId = draft.id.startsWith('sess-') ? 'ord-' + Math.floor(Math.random() * 100000) : draft.id;
+    const successOrder: RaincoatOrder = {
+      id: newOrderId,
+      name: draft.name || 'নামহীন গ্রাহক',
+      village: draft.village || 'অজ্ঞাত এলাকা',
+      policeStation: draft.orderNotes?.includes('থানা:') ? draft.orderNotes.split('থানা:')[1]?.split(',')[0]?.trim() : '',
+      district: draft.orderNotes?.includes('জেলা:') ? draft.orderNotes.split('জেলা:')[1]?.split(',')[0]?.trim() : '',
+      phone: draft.phone ? draft.phone.replace(/[^0-9]/g, '') : '01000000000',
+      size: draft.size || 'XL',
+      color: draft.color || 'Black',
+      weight: draft.weight || 60,
+      heightFeet: draft.heightFeet || 5,
+      heightInches: draft.heightInches || 6,
+      price: draft.price || 550,
+      status: 'Pending',
+      isConfirmed: true, // Auto confirm when manually transferred
+      createdAt: new Date().toISOString(),
+      orderNotes: draft.orderNotes ? draft.orderNotes.trim() + ' (Moved from drafts)' : 'Moved from drafts',
+    };
+
+    try {
+      // 1. Add order to completed orders in DB
+      await addOrderToFirestore(successOrder);
+
+      // 2. Delete incomplete order from DB
+      await deleteIncompleteOrderFromFirestore(draft.id);
+
+      // 3. Update completed local state
+      const updatedCompleted = [successOrder, ...orders];
+      setOrders(updatedCompleted);
+      localStorage.setItem('raincoat_orders', JSON.stringify(updatedCompleted));
+
+      // 4. Update incomplete local state
+      const updatedIncompletes = incompleteOrders.filter(o => o.id !== draft.id);
+      setIncompleteOrders(updatedIncompletes);
+      localStorage.setItem('raincoat_incomplete_orders', JSON.stringify(updatedIncompletes));
+
+      onRefreshOrdersCount();
+
+      // Auto Google Sheets sync on move
+      const token = getAccessToken();
+      const sheetsCfg = getSheetsConfig();
+      if (sheetsCfg.autoSync && sheetsCfg.spreadsheetId && token) {
+        syncAllOrdersToSheet(token, sheetsCfg.spreadsheetId, updatedCompleted).catch(err => {
+          console.warn("Auto-sync update failed during order move:", err);
+        });
+      }
+
+      setCopiedMessage('ড্রাফটটি সফল অর্ডারে মুভ করা সম্পন্ন হয়েছে!');
+      setTimeout(() => setCopiedMessage(''), 4000);
+    } catch (err) {
+      console.error(err);
+      alert('সফল অর্ডারে মুভ করতে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।');
     }
   };
 
@@ -697,6 +1005,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     const matchSearch = 
       o.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       o.phone.includes(searchTerm) ||
+      o.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (o.village && o.village.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchSize = filterSize === 'All' || o.size === filterSize;
     const matchDate = isDateInSelectedRange(o.createdAt);
@@ -707,6 +1016,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     const matchSearch = 
       (o.name && o.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (o.phone && o.phone.includes(searchTerm)) ||
+      o.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (o.village && o.village.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchSize = filterSize === 'All' || o.size === filterSize;
     const matchDate = isDateInSelectedRange(o.createdAt);
@@ -717,6 +1027,17 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   const filteredRevenue = filteredOrders.reduce((sum, o) => sum + o.price, 0);
   const filteredConfirmedCount = filteredOrders.filter(o => o.isConfirmed).length;
   const filteredIncompleteCount = filteredIncompleteOrders.length;
+
+  // Real-time Fraud Checking & Delivery Success Calculations
+  const filteredDeliveredCount = filteredOrders.filter(o => o.status === 'Delivered').length;
+  const filteredCancelledCount = filteredOrders.filter(o => o.status === 'Cancelled' || o.status === 'Canceled' || o.status === 'Canceled Fake Order').length;
+  const filteredFinished = filteredDeliveredCount + filteredCancelledCount;
+  const filteredSuccessRatio = filteredFinished > 0 ? Math.round((filteredDeliveredCount / filteredFinished) * 100) : 100;
+
+  const filteredSafeCount = filteredOrders.filter(o => !o.fraudScore || o.fraudScore < 20).length;
+  const filteredWarningCount = filteredOrders.filter(o => o.fraudScore !== undefined && o.fraudScore >= 20 && o.fraudScore < 45).length;
+  const filteredHighRiskCount = filteredOrders.filter(o => o.fraudScore !== undefined && o.fraudScore >= 45 && o.fraudScore < 75).length;
+  const filteredScammerCount = filteredOrders.filter(o => o.fraudScore !== undefined && o.fraudScore >= 75).length;
 
   const isStandAlone = window.location.pathname === '/admin' || window.location.hash === '#/admin' || window.location.hash === '#admin';
 
@@ -1080,6 +1401,19 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                 🖼️ মিডিয়া স্লাইডার
               </button>
 
+              {/* 5b. হোম স্লাইডার ব্যানার */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('banners')}
+                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 ${
+                  activeTab === 'banners'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10 font-extrabold'
+                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                }`}
+              >
+                🌅 হোম স্লাইডার ব্যানার
+              </button>
+
               {/* 6. স্টক ইনভেন্টরি */}
               <button
                 type="button"
@@ -1131,6 +1465,76 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
               >
                 🛡️ স্প্যাম ডাইরেক্ট
               </button>
+
+              {/* 9b. ফ্রাড চেক ট্র্যাকিং */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('fraud')}
+                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
+                  activeTab === 'fraud'
+                    ? 'bg-rose-600 text-white shadow-md shadow-rose-600/10 font-extrabold'
+                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                }`}
+              >
+                <span className="flex h-1.5 w-1.5 rounded-full bg-orange-400 animate-ping absolute right-2.5 top-2.5" />
+                🛡️ ফ্রাড ফিল্টারিং API
+              </button>
+
+              {/* 10. লাইভ ভিজিটরস */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('live-visitors')}
+                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
+                  activeTab === 'live-visitors'
+                    ? 'bg-rose-600 text-white shadow-md shadow-rose-600/10 font-extrabold'
+                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                }`}
+              >
+                <span className="flex h-1.5 w-1.5 rounded-full bg-rose-500 animate-ping absolute right-2.5 top-2.5" />
+                🔴 লাইভ ভিজিটরস
+              </button>
+
+              {/* 11. অ্যাডভান্সড প্লাগইনস */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('advanced_addons')}
+                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
+                  activeTab === 'advanced_addons'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/10 font-extrabold'
+                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                }`}
+              >
+                <span className="flex h-1.5 w-1.5 rounded-full bg-blue-400 animate-ping absolute right-2.5 top-2.5" />
+                🚀 অ্যাডভান্সড প্লাগইনস
+              </button>
+
+              {/* 12. কুরিয়ার এপিআই ইন্টিগ্রেশন */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('courier_hub')}
+                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
+                  activeTab === 'courier_hub'
+                    ? 'bg-blue-650 text-white shadow-md shadow-blue-650/10 font-extrabold'
+                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                }`}
+              >
+                <span className="flex h-1.5 w-1.5 rounded-full bg-blue-500 animate-ping absolute right-2.5 top-2.5" />
+                🚚 কুরিয়ার বুকিং প্যানেল
+              </button>
+
+              {/* 13. কাস্টমার রিভিউ হাব */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('reviews_hub')}
+                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
+                  activeTab === 'reviews_hub'
+                    ? 'bg-amber-500 text-white shadow-md shadow-amber-500/10 font-extrabold'
+                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                }`}
+              >
+                <span className="flex h-1.5 w-1.5 rounded-full bg-amber-400 animate-ping absolute right-2.5 top-2.5" />
+                📸 কাস্টমার রিভিউজ
+              </button>
             </div>
           </div>
 
@@ -1168,6 +1572,113 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                     <span className="text-2xl font-black text-blue-850 font-mono">{filteredRevenue} TK</span>
                   </div>
                   <span className="text-[10px] text-blue-400 font-bold block mt-1 font-sans">সর্বমোট: {totalRevenue} TK</span>
+                </div>
+              </div>
+
+              {/* 📊 Daily Sales & Marketing Campaign Performance Chart */}
+              <DailyOrdersChart orders={orders} incompleteOrders={incompleteOrders} />
+
+              {/* Fraud and Delivery Success Intelligence Dashboard */}
+              <div ref={undefined} className="bg-slate-900 text-white rounded-2xl p-5 border border-slate-800 shadow-md space-y-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                  <div>
+                    <h4 className="text-sm font-black text-white flex items-center gap-1.5 font-sans">
+                      <ShieldAlert className="h-4.5 w-4.5 text-indigo-400 shrink-0" />
+                      🛡️ কাস্টমার ফ্রড ডিটেকশন ও ডেলিভারি সাকসেস এনালাইজার
+                    </h4>
+                    <p className="text-[10px] text-slate-400 font-sans mt-0.5">
+                      গ্রাহকদের মোবাইল হিস্ট্রি, পূর্ববর্তী রিটার্ন ডাটাবেস ও ক্যান্সেলকৃত অর্ডারের রিয়েল-টাইম ইন্টেলিজেন্ট এনালাইসিস।
+                    </p>
+                  </div>
+                  <div className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-1 font-mono text-[10px] font-bold text-indigo-300 shrink-0 flex items-center gap-1.5 leading-none">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    LIVE COURIER SECURE: ACTIVE
+                  </div>
+                </div>
+
+                {/* Metrics Breakdown Grid */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 font-sans">
+                  {/* Metric 1 */}
+                  <div className="p-3 bg-white/5 border border-white/5 rounded-xl flex flex-col justify-between">
+                    <div>
+                      <span className="text-[9px] text-slate-400 font-extrabold uppercase block font-sans">মোট অর্ডার স্ক্যান</span>
+                      <span className="text-lg font-black font-mono text-white">{filteredOrders.length} টি</span>
+                    </div>
+                    <span className="text-[8.5px] text-slate-500 block mt-1 truncate">সব ইউনিক নম্বর হিস্ট্রি চেকড</span>
+                  </div>
+
+                  {/* Metric 2 */}
+                  <div className="p-3 bg-white/5 border border-white/5 rounded-xl flex flex-col justify-between">
+                    <div>
+                      <span className="text-[9px] text-emerald-400 font-extrabold uppercase block font-sans">সফল ডেলিভারি (Success)</span>
+                      <span className="text-lg font-black font-mono text-emerald-400">{filteredDeliveredCount} টি</span>
+                    </div>
+                    <span className="text-[8.5px] text-slate-500 block mt-1 truncate">ডেলিভারড স্থিতি সম্পন্ন</span>
+                  </div>
+
+                  {/* Metric 3 */}
+                  <div className="p-3 bg-white/5 border border-white/5 rounded-xl flex flex-col justify-between">
+                    <div>
+                      <span className="text-[9px] text-rose-400 font-extrabold uppercase block font-sans">অর্ডার বাতিল (Cancelled)</span>
+                      <span className="text-lg font-black font-mono text-rose-400">{filteredCancelledCount} টি</span>
+                    </div>
+                    <span className="text-[8.5px] text-slate-500 block mt-1 truncate">গ্রাহক/অ্যাডমিন দ্বারা বাতিল</span>
+                  </div>
+
+                  {/* Metric 4 */}
+                  <div className="p-3 bg-indigo-950/40 border border-indigo-500/20 rounded-xl flex flex-col justify-between">
+                    <div>
+                      <span className="text-[9px] text-indigo-300 font-extrabold uppercase block font-sans">ডেলিভারি সাকসেস রেশিও</span>
+                      <span className="text-lg font-black font-mono text-indigo-200">{filteredSuccessRatio}%</span>
+                    </div>
+                    <span className="text-[8.5px] text-indigo-400 block mt-1 truncate">
+                      {filteredSuccessRatio >= 85 ? '🟢 চমৎকার কার্ব' : filteredSuccessRatio >= 65 ? '🟡 মাঝারি ঝুঁকি' : '🔴 উচ্চ ঝুঁকি'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Progress bar representing Success Deliveries vs Cancellations */}
+                <div className="space-y-1.5 bg-white/5 p-3 rounded-xl border border-white/5 font-sans">
+                  <div className="flex justify-between items-center text-[10px]">
+                    <span className="text-slate-350 font-bold flex items-center gap-1 font-sans">
+                      📈 ওভারঅল রিয়েল-টাইম সাকসেস গ্রাফ (Delivery vs Cancel)
+                    </span>
+                    <span className="text-indigo-300 font-extrabold font-mono">{filteredSuccessRatio}% সফল ডেলিভারি</span>
+                  </div>
+                  <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden flex">
+                    <div 
+                      className="bg-emerald-500 h-full transition-all duration-500" 
+                      style={{ width: `${filteredSuccessRatio}%` }}
+                    />
+                    <div 
+                      className="bg-rose-500 h-full transition-all duration-500" 
+                      style={{ width: `${100 - filteredSuccessRatio}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-[8px] sm:text-[9px] text-slate-400 font-sans">
+                    <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-emerald-500 rounded-full inline-block" /> সফল ডেলিভারি ({filteredDeliveredCount})</span>
+                    <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-rose-500 rounded-full inline-block" /> ক্যানসেলকৃত / বাতিল ({filteredCancelledCount})</span>
+                  </div>
+                </div>
+
+                {/* Fraud check statistics categorizations */}
+                <div className="grid grid-cols-4 gap-2 text-center pt-1 font-sans">
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-2">
+                    <span className="text-[8px] text-emerald-400 font-bold uppercase block font-sans">নিরাপদ (Safe)</span>
+                    <span className="text-xs font-mono font-black text-emerald-300 mt-0.5 block">{filteredSafeCount} টি</span>
+                  </div>
+                  <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-lg p-2">
+                    <span className="text-[8px] text-indigo-300 font-bold uppercase block font-sans">সতর্কতা (Warning)</span>
+                    <span className="text-xs font-mono font-black text-indigo-300 mt-0.5 block">{filteredWarningCount} টি</span>
+                  </div>
+                  <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-2">
+                    <span className="text-[8px] text-amber-500 text-amber-300 font-bold uppercase block font-sans">ঝুঁকিপূর্ণ (High Risk)</span>
+                    <span className="text-xs font-mono font-black text-amber-300 mt-0.5 block">{filteredHighRiskCount} টি</span>
+                  </div>
+                  <div className="bg-rose-500/10 border border-rose-500/20 rounded-lg p-2">
+                    <span className="text-[8px] text-rose-300 font-bold uppercase block font-sans">স্প্যামার (Scammer)</span>
+                    <span className="text-xs font-mono font-black text-rose-300 mt-0.5 block">{filteredScammerCount} টি</span>
+                  </div>
                 </div>
               </div>
 
@@ -1502,7 +2013,28 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                       <tr key={order.id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-4 py-3.5">
                           <div className="font-extrabold text-slate-900">{order.name}</div>
-                          <div className="font-mono text-[10px] text-slate-500 mt-0.5">{order.phone}</div>
+                          <div className="font-mono text-[11px] text-slate-600 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                            <span>{order.phone}</span>
+                            <a
+                              href={`tel:${order.phone}`}
+                              className="inline-flex items-center justify-center p-1 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200 transition-all cursor-pointer"
+                              title="সরাসরি কল করুন"
+                            >
+                              <Phone className="h-3 w-3" />
+                            </a>
+                            <a
+                              href={getWhatsAppUrlCompleted(order)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center justify-center p-1 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-150 transition-all cursor-pointer hover:border-emerald-300"
+                              title="WhatsApp এ নিশ্চিতকরণ মেসেজ পাঠান"
+                            >
+                              <svg className="h-3 w-3 fill-emerald-600" viewBox="0 0 24 24">
+                                <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.497-5.73-1.446L0 24zm6.59-4.846c1.6.95 3.188 1.449 4.825 1.451 5.436 0 9.86-4.37 9.864-9.799.002-2.63-1.023-5.101-2.885-6.963C16.588 1.981 14.111.957 11.488.957c-5.43 0-9.85 4.37-9.854 9.799-.001 1.918.52 3.79 1.51 5.4l-.994 3.631 3.907-.98zm11.233-6.983c-.3-.149-1.764-.868-2.038-.967-.272-.098-.471-.148-.669.149-.197.297-.767.966-.94 1.164-.173.199-.347.223-.647.074-.3-.149-1.265-.465-2.41-1.483-.89-.792-1.49-1.77-1.665-2.07-.173-.296-.018-.456.13-.605.134-.133.3-.347.45-.52.149-.174.199-.297.298-.495.1-.2.05-.371-.025-.52-.075-.148-.669-1.611-.916-2.206-.24-.579-.487-.501-.669-.51l-.57-.01c-.197 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.764-.719 2.012-1.412.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m0 0" />
+                              </svg>
+                            </a>
+                            {getPhoneRiskBadge(order.phone, order)}
+                          </div>
                           <div className="text-[9px] text-slate-400 font-mono mt-0.5">অর্ডার আইডি: {order.id}</div>
                           <div className="text-[9px] text-indigo-500 mt-0.5 italic">{formatBanglaDate(order.createdAt)}</div>
                         </td>
@@ -1511,6 +2043,11 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                           <div className="text-[10px] text-slate-500 mt-1">
                             {[order.policeStation, order.district].filter(Boolean).join(', ') || <span className="text-slate-400 italic">ঠিকানা</span>}
                           </div>
+                          {order.orderNotes && (
+                            <div className="mt-1.5 p-1 rounded-lg bg-blue-50 border border-blue-100/50 text-[10px] text-blue-800 font-semibold leading-relaxed">
+                              📝 <span className="text-slate-500 font-bold">নোট:</span> {order.orderNotes}
+                            </div>
+                          )}
                         </td>
                         <td className="px-3 py-3.5 text-center">
                           <span className="bg-indigo-50 border border-indigo-100 text-indigo-700 font-extrabold px-1.5 py-0.5 rounded font-mono block w-fit mx-auto text-[10px]">
@@ -1572,14 +2109,48 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                             <option value="Canceled Fake Order">ফেক বাতিল (Canceled Fake Order)</option>
                           </select>
                         </td>
-                        <td className="px-4 py-3.5 text-center">
-                          <button
-                            onClick={() => handleDelete(order.id)}
-                            className="p-1 hover:bg-rose-50 text-rose-500 rounded-lg hover:text-rose-700 transition cursor-pointer"
-                            title="মুছে ফেলুন"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                        <td className="px-4 py-3.5 text-center min-w-[150px]">
+                          {deletingOrderId === order.id ? (
+                            <div className="flex items-center justify-center gap-1.5 animate-fadeIn">
+                              <button
+                                onClick={() => handleDelete(order.id)}
+                                className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold shadow-sm transition-all"
+                                title="মুছে ফেলা নিশ্চিত করুন"
+                              >
+                                কনফার্ম করুন
+                              </button>
+                              <button
+                                onClick={() => setDeletingOrderId(null)}
+                                className="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[10px] font-bold shadow-sm transition-all"
+                                title="বাতিল করুন"
+                              >
+                                বাতিল
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                onClick={() => handleStartEditOrder(order)}
+                                className="p-1.5 hover:bg-indigo-50 text-indigo-600 hover:text-indigo-800 rounded-lg transition-all cursor-pointer inline-flex items-center justify-center border border-indigo-100/50"
+                                title="অর্ডার সংশোধন (Edit)"
+                              >
+                                <Edit className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (!perms.canDelete) {
+                                    alert('দুঃখিত, আপনার অ্যাকাউন্টে কোনো ডেটা মুছে ফেলার (Delete) অনুমতি দেওয়া হয়নি!');
+                                    return;
+                                  }
+                                  setDeletingOrderId(order.id);
+                                }}
+                                className="p-1.5 hover:bg-rose-50 text-rose-500 hover:text-rose-700 rounded-lg transition-all cursor-pointer inline-flex items-center justify-center border border-rose-100/50"
+                                title="মুছে ফেলুন"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))
@@ -1613,14 +2184,44 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                           <div className="font-extrabold text-slate-900">
                             {draft.name ? draft.name : <span className="text-slate-350 italic">নাম উল্লেখ করেনি</span>}
                           </div>
-                          <div className="font-mono text-[11px] text-orange-650 mt-0.5">
-                            {draft.phone ? draft.phone : <span className="text-slate-300 italic">নাম্বার দেয়নি</span>}
+                          <div className="font-mono text-[11px] text-orange-650 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                            {draft.phone ? (
+                              <>
+                                <span>{draft.phone}</span>
+                                <a
+                                  href={`tel:${draft.phone}`}
+                                  className="inline-flex items-center justify-center p-1 rounded-full bg-orange-50 text-orange-600 hover:bg-orange-100 border border-orange-200 transition-all cursor-pointer"
+                                  title="সরাসরি কল করুন"
+                                >
+                                  <Phone className="h-3 w-3" />
+                                </a>
+                                <a
+                                  href={getWhatsAppUrlDraft(draft)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center justify-center p-1 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-150 transition-all cursor-pointer hover:border-emerald-300"
+                                  title="WhatsApp এ ড্রাফট ফলোআপ ও মেসেজ পাঠান"
+                                >
+                                  <svg className="h-3 w-3 fill-emerald-600" viewBox="0 0 24 24">
+                                    <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.497-5.73-1.446L0 24zm6.59-4.846c1.6.95 3.188 1.449 4.825 1.451 5.436 0 9.86-4.37 9.864-9.799.002-2.63-1.023-5.101-2.885-6.963C16.588 1.981 14.111.957 11.488.957c-5.43 0-9.85 4.37-9.854 9.799-.001 1.918.52 3.79 1.51 5.4l-.994 3.631 3.907-.98zm11.233-6.983c-.3-.149-1.764-.868-2.038-.967-.272-.098-.471-.148-.669.149-.197.297-.767.966-.94 1.164-.173.199-.347.223-.647.074-.3-.149-1.265-.465-2.41-1.483-.89-.792-1.49-1.77-1.665-2.07-.173-.296-.018-.456.13-.605.134-.133.3-.347.45-.52.149-.174.199-.297.298-.495.1-.2.05-.371-.025-.52-.075-.148-.669-1.611-.916-2.206-.24-.579-.487-.501-.669-.51l-.57-.01c-.197 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.764-.719 2.012-1.412.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m0 0" />
+                                  </svg>
+                                </a>
+                                {getPhoneRiskBadge(draft.phone, draft)}
+                              </>
+                            ) : (
+                              <span className="text-slate-300 italic">নাম্বার দেয়নি</span>
+                            )}
                           </div>
                         </td>
                         <td className="px-4 py-3.5 max-w-[180px]">
                           <div className="text-slate-700 block leading-tight">
                             {draft.village ? draft.village : <span className="text-slate-350 italic">ঠিকানা উল্লেখ করেনি</span>}
                           </div>
+                          {draft.orderNotes && (
+                            <div className="mt-1.5 p-1 rounded-lg bg-blue-50 border border-blue-100/50 text-[10px] text-blue-800 font-semibold leading-relaxed">
+                              📝 <span className="text-slate-500 font-bold">নোট:</span> {draft.orderNotes}
+                            </div>
+                          )}
                         </td>
                         <td className="px-3 py-3.5 text-center">
                           <span className="bg-slate-100 text-slate-700 font-extrabold px-1.5 py-0.5 rounded font-mono text-[10px]">
@@ -1646,13 +2247,49 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                         <td className="px-4 py-3.5 text-center text-orange-700 font-semibold font-sans text-[10px]">
                           {formatBanglaDate(draft.lastUpdatedAt || draft.createdAt)}
                         </td>
-                        <td className="px-4 py-3.5 text-center">
-                          <button
-                            onClick={() => handleDeleteIncomplete(draft.id)}
-                            className="p-1 hover:bg-rose-50 text-rose-500 rounded-lg hover:text-rose-700 transition cursor-pointer"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                        <td className="px-4 py-3.5 text-center min-w-[200px]">
+                          {deletingIncompleteId === draft.id ? (
+                            <div className="flex items-center justify-center gap-1.5 animate-fadeIn">
+                              <button
+                                onClick={() => handleDeleteIncomplete(draft.id)}
+                                className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold shadow-sm transition-all"
+                                title="মুছে ফেলা নিশ্চিত করুন"
+                              >
+                                কনফার্ম করুন
+                              </button>
+                              <button
+                                onClick={() => setDeletingIncompleteId(null)}
+                                className="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[10px] font-bold shadow-sm transition-all"
+                                title="বাতিল করুন"
+                              >
+                                বাতিল
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                onClick={() => handleMoveDraftToCompleted(draft)}
+                                className="px-2 py-1.5 bg-emerald-650 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold shadow-xs transition-all flex items-center gap-1 cursor-pointer border border-emerald-500/10"
+                                title="ড্রাফট থেকে সফল অর্ডারে মুভ করুন"
+                              >
+                                <CheckCircle className="h-3.5 w-3.5 text-white" />
+                                সফল অর্ডারে মুভ করুন
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (!perms.canDelete) {
+                                    alert('দুঃখিত, আপনার অ্যাকাউন্টে ড্রাফট ডেটা মুছে ফেলার (Delete) অনুমতি দেওয়া হয়নি!');
+                                    return;
+                                  }
+                                  setDeletingIncompleteId(draft.id);
+                                }}
+                                className="p-1.5 hover:bg-rose-50 text-rose-500 hover:text-rose-700 rounded-lg transition-all cursor-pointer inline-flex items-center justify-center border border-rose-100/50"
+                                title="মুছে ফেলুন"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))
@@ -1684,6 +2321,12 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
         />
       )}
 
+      {activeTab === 'banners' && (
+        <BannersAdmin 
+          userRole={perms.canEdit ? userRole : 'ReadOnly'}
+        />
+      )}
+
       {activeTab === 'inventory' && (
         <InventoryAdmin 
           userRole={perms.canEdit ? userRole : 'ReadOnly'}
@@ -1710,6 +2353,38 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
         />
       )}
 
+      {activeTab === 'fraud' && (
+        <FraudAdmin 
+          userRole={perms.canEdit ? userRole : 'ReadOnly'}
+        />
+      )}
+
+      {activeTab === 'live-visitors' && (
+        <LiveVisitorsAdmin />
+      )}
+
+      {activeTab === 'advanced_addons' && (
+        <AdvancedPluginsAdmin 
+          userRole={perms.canEdit ? userRole : 'ReadOnly'}
+          orders={orders}
+          onRefreshOrders={loadOrders}
+        />
+      )}
+
+      {activeTab === 'courier_hub' && (
+        <CourierAdmin 
+          userRole={perms.canEdit ? userRole : 'ReadOnly'}
+          orders={orders}
+          onRefreshOrders={loadOrders}
+        />
+      )}
+
+      {activeTab === 'reviews_hub' && (
+        <ReviewsAdmin 
+          userRole={perms.canEdit ? userRole : 'ReadOnly'}
+        />
+      )}
+
           </div>
         </div>
 
@@ -1723,6 +2398,200 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
             <CheckSquare className="h-4 w-4 text-emerald-600" /> ১০০০+ সন্তুষ্ট গ্রাহকদের রিভিউ প্রসেসড
           </span>
         </div>
+
+        {/* Edit Order Modal */}
+        {editingOrder && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-55 leading-relaxed font-sans">
+            <div className="bg-white rounded-3xl border border-slate-200 outline-none shadow-2xl w-full max-w-lg overflow-hidden animate-scaleIn">
+              
+              {/* Header */}
+              <div className="bg-slate-900 text-white p-5 flex justify-between items-center">
+                <div>
+                  <h3 className="font-extrabold text-white text-md">অর্ডার সংশোধন / এডিটর প্যানেল</h3>
+                  <p className="text-[10px] text-slate-300">অর্ডার আইডি: #{editingOrder.id}</p>
+                </div>
+                <button 
+                  type="button"
+                  onClick={() => setEditingOrder(null)}
+                  className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-full transition cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Form Body */}
+              <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+                
+                {/* Name & Phone */}
+                <div className="grid grid-cols-2 gap-3.5">
+                  <div className="space-y-1">
+                    <label className="text-slate-700 text-xs font-bold block">কাস্টমারের নাম</label>
+                    <input
+                      type="text"
+                      value={editingOrder.name || ''}
+                      onChange={(e) => setEditingOrder({ ...editingOrder, name: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-800 text-xs focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-slate-700 text-xs font-bold block">মোবাইল নাম্বার</label>
+                    <input
+                      type="text"
+                      value={editingOrder.phone || ''}
+                      onChange={(e) => setEditingOrder({ ...editingOrder, phone: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-800 text-xs focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none font-mono"
+                    />
+                  </div>
+                </div>
+
+                {/* Size & Color */}
+                <div className="grid grid-cols-2 gap-3.5">
+                  <div className="space-y-1">
+                    <label className="text-slate-700 text-xs font-bold block">সাইজ পছন্দ করুন</label>
+                    <select
+                      value={editingOrder.size || 'XL'}
+                      onChange={(e) => setEditingOrder({ ...editingOrder, size: e.target.value as any })}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                    >
+                      <option value="XL">XL (উচ্চতা: ৫’২” - ৫’৬”)</option>
+                      <option value="XXL">XXL (উচ্চতা: ৫’৭” - ৫’১০”)</option>
+                      <option value="3XL">3XL (উচ্চতা: ৫’১১” - ৬’১”)</option>
+                      <option value="4XL">4XL (উচ্চতা: ৬’২”+)</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-slate-700 text-xs font-bold block">কালার পছন্দ করুন</label>
+                    <select
+                      value={editingOrder.color || 'Black'}
+                      onChange={(e) => setEditingOrder({ ...editingOrder, color: e.target.value as any })}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                    >
+                      <option value="Black">কালো (Premium Black)</option>
+                      <option value="Navy Blue">নেভি ব্লু (Premium Navy Blue)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Height & Weight */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-slate-700 text-[11px] font-bold block">ওজন (কেজি)</label>
+                    <input
+                      type="number"
+                      value={editingOrder.weight || 60}
+                      onChange={(e) => setEditingOrder({ ...editingOrder, weight: Number(e.target.value) })}
+                      className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 text-xs focus:ring-1 focus:ring-indigo-500 outline-none font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-slate-700 text-[11px] font-bold block">উচ্চতা (ফুট)</label>
+                    <input
+                      type="number"
+                      value={editingOrder.heightFeet || 5}
+                      onChange={(e) => setEditingOrder({ ...editingOrder, heightFeet: Number(e.target.value) })}
+                      className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 text-xs focus:ring-1 focus:ring-indigo-500 outline-none font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-slate-700 text-[11px] font-bold block">উচ্চতা (ইঞ্চি)</label>
+                    <input
+                      type="number"
+                      value={editingOrder.heightInches || 0}
+                      onChange={(e) => setEditingOrder({ ...editingOrder, heightInches: Number(e.target.value) })}
+                      className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 text-xs focus:ring-1 focus:ring-indigo-500 outline-none font-mono"
+                    />
+                  </div>
+                </div>
+
+                {/* District & PS */}
+                <div className="grid grid-cols-2 gap-3.5">
+                  <div className="space-y-1">
+                    <label className="text-slate-700 text-xs font-bold block">থানা / উপজেলা</label>
+                    <input
+                      type="text"
+                      value={editingOrder.policeStation || ''}
+                      onChange={(e) => setEditingOrder({ ...editingOrder, policeStation: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-800 text-xs focus:ring-1 focus:ring-indigo-500 outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-slate-700 text-xs font-bold block">জেলা</label>
+                    <input
+                      type="text"
+                      value={editingOrder.district || ''}
+                      onChange={(e) => setEditingOrder({ ...editingOrder, district: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-800 text-xs focus:ring-1 focus:ring-indigo-500 outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Delivery Village / Full Address */}
+                <div className="space-y-1">
+                  <label className="text-slate-700 text-xs font-bold block">গ্রাম / রোড / মহল্লা (পূর্ণাঙ্গ ঠিকানা)</label>
+                  <input
+                    type="text"
+                    value={editingOrder.village || ''}
+                    onChange={(e) => setEditingOrder({ ...editingOrder, village: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-800 text-xs focus:ring-1 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+
+                {/* Price & Notes */}
+                <div className="grid grid-cols-2 gap-3.5">
+                  <div className="space-y-1">
+                    <label className="text-slate-700 text-xs font-bold block">অর্ডার মূল্য (TK)</label>
+                    <input
+                      type="number"
+                      value={editingOrder.price || 0}
+                      onChange={(e) => setEditingOrder({ ...editingOrder, price: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 text-xs focus:ring-1 focus:ring-indigo-500 outline-none font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-slate-700 text-xs font-bold block">ডেলিভারি কোম্পানি</label>
+                    <input
+                      type="text"
+                      value={editingOrder.courierName || ''}
+                      onChange={(e) => setEditingOrder({ ...editingOrder, courierName: e.target.value })}
+                      placeholder="যেমন: Pathao, Steadfast, RedX"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-800 text-xs focus:ring-1 focus:ring-indigo-500 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-slate-700 text-xs font-bold block">অর্ডারের বিশেষ নোট</label>
+                  <textarea
+                    value={editingOrder.orderNotes || ''}
+                    onChange={(e) => setEditingOrder({ ...editingOrder, orderNotes: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-800 text-xs h-16 resize-none focus:ring-1 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+
+              </div>
+
+              {/* Form Footer */}
+              <div className="bg-slate-50 px-6 py-4 flex justify-end gap-2 border-t border-slate-150">
+                <button
+                  type="button"
+                  onClick={() => setEditingOrder(null)}
+                  className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
+                >
+                  বাতিল করুন
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveEditOrder}
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition shadow-sm cursor-pointer flex items-center gap-1"
+                >
+                  <Check className="h-3.5 w-3.5" />
+                  সংরক্ষণ করুন (Save Changes)
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
 
       </div>
     </div>

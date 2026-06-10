@@ -5,7 +5,7 @@ import { Size } from '../types';
 
 interface SizingChartProps {
   onSelectSize: (size: Size) => void;
-  selectedSize: Size;
+  selectedSize: Size | null;
 }
 
 export default function SizingChart({ onSelectSize, selectedSize }: SizingChartProps) {

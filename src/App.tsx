@@ -15,24 +15,23 @@ import LivePurchaseNotification from './components/LivePurchaseNotification';
 import PromoCountdown from './components/PromoCountdown';
 import PageRenderer from './components/PageRenderer';
 import OrderTracker from './components/OrderTracker';
-import OrderHistory from './components/OrderHistory';
 import SuccessToast from './components/SuccessToast';
 import FAQSection from './components/FAQSection';
 import ShopView from './components/ShopView';
 import AmazonMarketplace from './components/AmazonMarketplace';
 import BikeCoverLanding from './components/BikeCoverLanding';
 import navyRaincoatImg from './assets/images/navy_raincoat_1780660053988.png';
-import { Size, ProductColor, RaincoatOrder } from './types';
+import { Size, ProductColor, RaincoatOrder, ActiveSession } from './types';
 import { motion, AnimatePresence } from 'motion/react';
 import { getSheetsConfig, getAccessToken, appendOrderToSheet } from './lib/googleSheets';
-import { initMetaPixel, trackPixelEvent } from './lib/tracking';
+import { initMetaPixel, trackPixelEvent, initTikTokPixel } from './lib/tracking';
+import { addOrderToFirestore, saveActiveSessionToFirestore } from './lib/firebase';
 
 export default function App() {
-  const [selectedSize, setSelectedSize] = useState<Size>('XXL');
-  const [selectedColor, setSelectedColor] = useState<ProductColor>('Navy Blue');
+  const [selectedSize, setSelectedSize] = useState<Size | null>(null);
+  const [selectedColor, setSelectedColor] = useState<ProductColor | null>(null);
   const [submittedOrder, setSubmittedOrder] = useState<RaincoatOrder | null>(null);
   const [recentOrderForToast, setRecentOrderForToast] = useState<RaincoatOrder | null>(null);
-  const [activeTrackingTab, setActiveTrackingTab] = useState<'track' | 'history'>('track');
   const [showAdmin, setShowAdmin] = useState(false);
   const [ordersCount, setOrdersCount] = useState(0);
   const [scrollProgress, setScrollProgress] = useState(0);
@@ -62,6 +61,13 @@ export default function App() {
   });
   const [currentHash, setCurrentHash] = useState(window.location.hash);
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
+  const [customPages, setCustomPages] = useState<any[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('raincoat_pages') || '[]');
+    } catch (_) {
+      return [];
+    }
+  });
 
   useEffect(() => {
     const handleNavigationChange = () => {
@@ -75,6 +81,138 @@ export default function App() {
       window.removeEventListener('popstate', handleNavigationChange);
     };
   }, []);
+
+  // Real-time live active visitor session tracking
+  useEffect(() => {
+    let sessId = sessionStorage.getItem('raincoat_visitor_session_id');
+    if (!sessId) {
+      sessId = 'sess_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+      sessionStorage.setItem('raincoat_visitor_session_id', sessId);
+    }
+    const sessionId = sessId;
+
+    // Detect browser and operating system
+    const getBrowserAndOS = () => {
+      const ua = navigator.userAgent;
+      let browser = "Other";
+      let os = "Other";
+      
+      if (ua.indexOf("Firefox") > -1) browser = "Firefox";
+      else if (ua.indexOf("Opera") > -1 || ua.indexOf("OPR") > -1) browser = "Opera";
+      else if (ua.indexOf("Edge") > -1) browser = "Edge";
+      else if (ua.indexOf("Chrome") > -1) browser = "Chrome";
+      else if (ua.indexOf("Safari") > -1) browser = "Safari";
+      
+      if (ua.indexOf("Windows") > -1) os = "Windows";
+      else if (ua.indexOf("Macintosh") > -1) os = "macOS";
+      else if (ua.indexOf("Android") > -1) os = "Android";
+      else if (ua.indexOf("iPhone") > -1 || ua.indexOf("iPad") > -1) os = "iOS";
+      else if (ua.indexOf("Linux") > -1) os = "Linux";
+      
+      return { browser, os };
+    };
+
+    const resolveLocation = async (): Promise<{ city: string; country: string; countryCode: string }> => {
+      try {
+        const res = await fetch('https://ipapi.co/json/', { 
+          signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(3000) : undefined 
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.city && data.country_name) {
+            return {
+              city: data.city,
+              country: data.country_name,
+              countryCode: data.country_code || 'BD'
+            };
+          }
+        }
+      } catch (error) {
+        console.warn("Geo IP lookup skipped or blocked. Using default BD locations.", error);
+      }
+      
+      const bdCities = [
+        "Mirpur (Dhaka)", "Uttara (Dhaka)", "Chittagong", "Sylhet", "Gazipur", "Narayanganj", "Cumilla", 
+        "Khulna", "Rajshahi", "Rangpur", "Barishal", "Mymensingh", "Feni", "Jessore", "Bogra", "Cox's Bazar"
+      ];
+      // Select pseudo-deterministically
+      const index = sessionId.length % bdCities.length;
+      return {
+        city: bdCities[index],
+        country: "Bangladesh",
+        countryCode: "BD"
+      };
+    };
+
+    let isSubscribed = true;
+    let heartbeatInterval: any = null;
+
+    const startTracking = async () => {
+      const { browser, os } = getBrowserAndOS();
+      const loc = await resolveLocation();
+      
+      if (!isSubscribed) return;
+
+      const pageMap: { [key: string]: string } = {
+        'admin': 'এডমিন প্যানেল',
+        '/admin': 'এডমিন প্যানেল',
+        'track-order': 'অর্ডার ট্র্যাকিং পেইজ',
+        '/track-order': 'অর্ডার ট্র্যাকিং পেইজ',
+        'shop': 'শপ পেইজ (সব প্রোডাক্ট)',
+        '/shop': 'শপ পেইজ (সব প্রোডাক্ট)',
+        'bikecover': 'বাইক কভার ল্যান্ডিং পেইজ',
+        '/bikecover': 'বাইক কভার ল্যান্ডিং পেইজ',
+        'raincoat': 'রেইনকোট ল্যান্ডিং পেইজ (হোম)',
+        '/raincoat': 'রেইনকোট ল্যান্ডিং পেইজ (হোম)'
+      };
+
+      const getPageName = () => {
+        const hash = window.location.hash.replace(/^#\//, '').replace(/^#/, '');
+        if (hash) {
+          if (pageMap[hash]) return pageMap[hash];
+          return `কাস্টম ল্যান্ডিং পেজ: #${hash}`;
+        }
+        const path = window.location.pathname.replace(/^\//, '');
+        if (path && pageMap[path]) {
+          return pageMap[path];
+        }
+        return 'রেইনকোট ল্যান্ডিং পেইজ (হোম)';
+      };
+
+      const initialSession: ActiveSession = {
+        id: sessionId,
+        city: loc.city,
+        country: loc.country,
+        countryCode: loc.countryCode,
+        page: getPageName(),
+        browser,
+        os,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      // save initial session
+      await saveActiveSessionToFirestore(initialSession);
+
+      // Periodic heartbeat update (every 45 seconds to keep database write count tiny and avoid free quota exhaust)
+      heartbeatInterval = setInterval(async () => {
+        if (!isSubscribed) return;
+        const updatedSession: ActiveSession = {
+          ...initialSession,
+          page: getPageName(),
+          updatedAt: new Date().toISOString()
+        };
+        await saveActiveSessionToFirestore(updatedSession);
+      }, 45000);
+    };
+
+    startTracking();
+
+    return () => {
+      isSubscribed = false;
+      if (heartbeatInterval) clearInterval(heartbeatInterval);
+    };
+  }, [currentHash, currentPath]);
 
   // Generate rain drops positions
   const [rainDrops, setRainDrops] = useState<{ left: string; delay: string; duration: string }[]>([]);
@@ -115,8 +253,35 @@ export default function App() {
     const listJson = localStorage.getItem('raincoat_orders') || '[]';
     setOrdersCount(JSON.parse(listJson).length);
 
+    // Auto-setup and save Meta Pixel and Conversion API settings from user's request
+    const requestedPixelId = '1145959524284032';
+    const requestedToken = 'EAAMY12ZCBQswBRQAXx2MDdDRSTZAgopaWP81nWqY8JYsRnOZAQOn7Nk6L6ZAKk61oFi278KPubqXpZBurmTGi5e8jWjF8Jp7bOhw5meOfl9C7Nn5PXJLs4xYtxSbAnUoAJdKmOwZA6MZCEXqvlnPqo3qZCToLgydC5EvEUZA7uawlJq5LT2AfpKkIEDuMJZCI9ngZDZD';
+    
+    if (localStorage.getItem('fb_pixel_id') !== requestedPixelId) {
+      localStorage.setItem('fb_pixel_id', requestedPixelId);
+      localStorage.setItem('fb_pixel_enabled', 'true');
+      localStorage.setItem('fb_capi_enabled', 'true');
+      localStorage.setItem('fb_capi_token', requestedToken);
+      window.dispatchEvent(new Event('raincoat_pixel_config_updated'));
+      
+      import('./lib/firebase').then(({ getIntegrationsSettingsFromFirestore, saveIntegrationsSettingsToFirestore }) => {
+        getIntegrationsSettingsFromFirestore().then((existing) => {
+          const updated = {
+            ...existing,
+            fb_pixel_id: requestedPixelId,
+            fb_pixel_enabled: true,
+            fb_capi_enabled: true,
+            fb_capi_token: requestedToken
+          };
+          saveIntegrationsSettingsToFirestore(updated).then(() => {
+            console.log("Successfully auto-configured Meta Pixel & CAPI Settings in Firestore.");
+          }).catch(e => console.warn(e));
+        }).catch(() => {});
+      }).catch(() => {});
+    }
+
     // Sync count asynchronously from Firestore database
-    import('./lib/firebase').then(({ getOrdersFromFirestore, getMediaFromFirestore }) => {
+    import('./lib/firebase').then(({ getOrdersFromFirestore, getMediaFromFirestore, getPagesFromFirestore }) => {
       getOrdersFromFirestore().then((fbOrders) => {
         if (fbOrders && fbOrders.length > 0) {
           localStorage.setItem('raincoat_orders', JSON.stringify(fbOrders));
@@ -124,6 +289,16 @@ export default function App() {
         }
       }).catch((err) => {
         console.warn("Could not sync orders count on startup:", err);
+      });
+
+      // Synchronize custom pages from Firestore to survive updates
+      getPagesFromFirestore().then((fbPages) => {
+        if (fbPages && fbPages.length > 0) {
+          localStorage.setItem('raincoat_pages', JSON.stringify(fbPages));
+          setCustomPages(fbPages);
+        }
+      }).catch((err) => {
+        console.warn("Could not sync custom pages on startup:", err);
       });
 
       // Synchronize custom bundle offer image from Firestore
@@ -148,6 +323,11 @@ export default function App() {
     const handleBundleImageUpdate = () => {
       setBundleOfferImage(localStorage.getItem('raincoat_bundle_offer_image') || navyRaincoatImg);
     };
+    const handlePagesUpdate = () => {
+      try {
+        setCustomPages(JSON.parse(localStorage.getItem('raincoat_pages') || '[]'));
+      } catch (_) {}
+    };
     const handleLiveVideosUpdate = () => {
       const cached = localStorage.getItem('raincoat_live_videos');
       if (cached) {
@@ -160,6 +340,7 @@ export default function App() {
       }
     };
     window.addEventListener('raincoat_bundle_image_updated', handleBundleImageUpdate);
+    window.addEventListener('raincoat_pages_updated', handlePagesUpdate);
     window.addEventListener('raincoat_live_videos_updated', handleLiveVideosUpdate);
 
     // Dynamically inject Facebook SDK script
@@ -177,6 +358,7 @@ export default function App() {
     };
 
      return () => {
+        window.removeEventListener('raincoat_pages_updated', handlePagesUpdate);
        document.body.removeChild(fbScript);
        window.removeEventListener('raincoat_bundle_image_updated', handleBundleImageUpdate);
        window.removeEventListener('raincoat_live_videos_updated', handleLiveVideosUpdate);
@@ -237,12 +419,18 @@ export default function App() {
     };
   }, []);
 
-  // Inject Google Analytics & Facebook Pixel tags dynamically
+    // Inject Google Analytics, Facebook Pixel & TikTok Pixel tags dynamically
   useEffect(() => {
     // Initial run
     initMetaPixel();
+    initTikTokPixel();
 
-    const gaId = localStorage.getItem('ga_track_id');
+    let gaId = localStorage.getItem('ga_track_id');
+    if (!gaId) {
+      gaId = 'G-DPGQ1TX74Z';
+      localStorage.setItem('ga_track_id', 'G-DPGQ1TX74Z');
+    }
+    
     if (gaId) {
       const scriptTag = document.createElement('script');
       scriptTag.async = true;
@@ -264,7 +452,9 @@ export default function App() {
     // Hot config updater (PixelYourSite style real-time reload)
     const handlePixelUpdate = () => {
       document.querySelectorAll('[data-injected-api="fb-pixel-lib"]').forEach(el => el.remove());
+      document.querySelectorAll('[data-injected-api="tiktok-pixel-lib"]').forEach(el => el.remove());
       initMetaPixel();
+      initTikTokPixel();
     };
 
     window.addEventListener('raincoat_pixel_config_updated', handlePixelUpdate);
@@ -284,6 +474,32 @@ export default function App() {
     setSubmittedOrder(order);
     refreshOrdersCount();
     setRecentOrderForToast(order); // Trigger immediate success toast feedback!
+
+    // Save order details directly to Firestore
+    addOrderToFirestore(order)
+      .then(() => {
+        console.log('Successfully saved order details directly to Firestore database!');
+      })
+      .catch((err) => {
+        console.warn('Failed to save order to Firestore (possible quota limit or auth check):', err);
+      });
+
+    // Auto Trigger automated WhatsApp message confirmation immediately after order placement
+    import('./lib/whatsapp').then(({ triggerAutomatedWhatsApp }) => {
+      triggerAutomatedWhatsApp(order)
+        .then((res) => {
+          if (res.success) {
+            console.log(`Automated WhatsApp confirmation message triggered successfully!`);
+          } else {
+            console.log(`Automated WhatsApp trigger resolved: ${res.message}`);
+          }
+        })
+        .catch((err) => {
+          console.warn('Error in WhatsApp trigger flow background runner:', err);
+        });
+    }).catch((err) => {
+      console.warn('Error importing WhatsApp automation module asynchronously:', err);
+    });
 
     // Auto Google Sheets sync if enabled and authenticated
     const sheetsCfg = getSheetsConfig();
@@ -356,13 +572,11 @@ export default function App() {
   const isBikeCoverLandingRoute = currentPath === '/bikecover' || currentHash === '#/bikecover' || currentHash === '#bikecover';
 
   // Check if hash matches a custom page slug from custom landing pages collection
-  const pagesJson = localStorage.getItem('raincoat_pages') || '[]';
   let activeCustomPage = null;
   try {
-    const pages = JSON.parse(pagesJson);
     const cleanHash = currentHash.replace(/^#\//, '').replace(/^#/, '');
     if (cleanHash && cleanHash !== 'home' && cleanHash !== 'features' && cleanHash !== 'live-video' && cleanHash !== 'comparison' && cleanHash !== 'bundle-offer' && cleanHash !== 'delivery-timeline' && cleanHash !== 'size-chart' && cleanHash !== 'checkout-form' && cleanHash !== 'track-order') {
-      activeCustomPage = pages.find((p: any) => p.slug === cleanHash);
+      activeCustomPage = customPages.find((p: any) => p.slug === cleanHash);
     }
   } catch (e) {
     console.error(e);
@@ -427,32 +641,8 @@ export default function App() {
 
         {/* Main Content Area */}
         <div className="flex-1 py-10 px-4 max-w-3xl mx-auto w-full flex flex-col justify-center gap-6">
-          {/* Segmented active Tab Selection switcher */}
-          <div className="flex bg-slate-200/50 p-1 rounded-2xl border border-slate-300 w-full sm:max-w-md mx-auto">
-            <button
-              onClick={() => setActiveTrackingTab('track')}
-              className={`flex-1 py-2.5 text-xs sm:text-xs font-black rounded-xl transition-all duration-200 flex items-center justify-center gap-1.5 cursor-pointer ${
-                activeTrackingTab === 'track'
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-950 hover:bg-slate-250'
-              }`}
-            >
-              🔍 অর্ডারটি ট্র্যাক করুন
-            </button>
-            <button
-              onClick={() => setActiveTrackingTab('history')}
-              className={`flex-1 py-2.5 text-xs sm:text-xs font-black rounded-xl transition-all duration-200 flex items-center justify-center gap-1.5 cursor-pointer ${
-                activeTrackingTab === 'history'
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-950 hover:bg-slate-250'
-              }`}
-            >
-              📊 আমার অর্ডার হিস্টোরি
-            </button>
-          </div>
-
           <div className="w-full">
-            {activeTrackingTab === 'track' ? <OrderTracker /> : <OrderHistory />}
+            <OrderTracker />
           </div>
         </div>
 
@@ -1360,9 +1550,9 @@ export default function App() {
         <div className="flex items-center gap-2.5 text-slate-800 text-xs sm:text-sm font-sans font-semibold">
           <CloudRain className="h-5 w-5 text-orange-500 shrink-0" />
           <span>
-            নির্বাচিত সাইজ: <span className="font-mono bg-slate-100 text-blue-900 px-1.5 py-0.5 rounded font-bold">{selectedSize}</span>, 
-            কালার: <span className="text-blue-900 font-extrabold">{selectedColor === 'Black' ? 'কালো' : 'নেভি ব্লু'}</span>, 
-            দাম: <span className="font-mono text-orange-600 font-extrabold">{selectedSize === '3XL' || selectedSize === '4XL' ? '১০৯০' : '৯৯০'} TK</span>
+            নির্বাচিত সাইজ: <span className="font-mono bg-slate-100 text-blue-900 px-1.5 py-0.5 rounded font-bold">{selectedSize || 'পছন্দ করুন'}</span>, 
+            কালার: <span className="text-blue-900 font-extrabold">{selectedColor ? (selectedColor === 'Black' ? 'কালো' : 'নেভি ব্লু') : 'পছন্দ করুন'}</span>, 
+            দাম: <span className="font-mono text-orange-600 font-extrabold">{selectedSize ? (selectedSize === '3XL' || selectedSize === '4XL' ? '১০৯০' : '৯৯০') : '৯৯০ - ১০৯০'} TK</span>
           </span>
         </div>
         <button

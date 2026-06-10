@@ -2,7 +2,7 @@ import React from 'react';
 import { CloudRain, Star, ShoppingBag, Eye, Heart, MessageSquare, ShieldCheck, Flame, Phone } from 'lucide-react';
 import OrderForm from './OrderForm';
 import ShopView from './ShopView';
-import { RaincoatOrder } from '../types';
+import { RaincoatOrder, Size, ProductColor } from '../types';
 
 interface PageBlock {
   id: string;
@@ -30,6 +30,9 @@ interface PageRendererProps {
 }
 
 export default function PageRenderer({ page, onOrderSuccess }: PageRendererProps) {
+  const [selectedSize, setSelectedSize] = React.useState<Size | null>(null);
+  const [selectedColor, setSelectedColor] = React.useState<ProductColor | null>(null);
+
   const getEmbedUrl = (rawUrl: string) => {
     try {
       if (rawUrl.includes('youtube.com') || rawUrl.includes('youtu.be')) {
@@ -163,22 +166,25 @@ export default function PageRenderer({ page, onOrderSuccess }: PageRendererProps
                 );
 
               case 'form':
+                const formTitle = block.content || "ঝুঁকিমুক্ত উপায়ে ঘরে বসেই রেইনকোটটি বুঝে নিন!";
                 return (
-                  <div key={block.id} style={bgStyle} className={`${paddingClass} bg-slate-50`}>
-                    <div className="container mx-auto max-w-4xl grid grid-cols-1 md:grid-cols-12 gap-8 items-center bg-white border border-slate-200/60 p-6 sm:p-10 rounded-3xl shadow-sm">
+                  <div key={block.id} style={bgStyle} className={`${paddingClass}`}>
+                    <div className="container mx-auto max-w-4xl grid grid-cols-1 md:grid-cols-12 gap-8 items-center bg-white border border-slate-200/60 p-6 sm:p-10 rounded-3xl shadow-sm" style={colorStyle ? { color: block.styles?.color } : undefined}>
                       <div className="md:col-span-5 space-y-4">
-                        <span className="px-3 py-1 bg-amber-50 text-amber-700 text-[10px] font-black rounded-full border border-amber-200 uppercase tracking-widest leading-none">ক্যাশ অন ক্যাশ ডেলিভারি</span>
-                        <h3 className="text-xl sm:text-2xl font-black text-slate-900 leading-tight">ঝুঁকিমুক্ত উপায়ে ঘরে বসেই রেইনকোটটি বুঝে নিন!</h3>
-                        <p className="text-xs sm:text-sm text-slate-500 leading-relaxed">
+                        <span className="px-3 py-1 bg-amber-50 text-amber-700 text-[10px] font-black rounded-full border border-amber-200 uppercase tracking-widest leading-none">ক্যাশ অন কুরিয়ার ডেলিভারি</span>
+                        <h3 className="text-xl sm:text-2xl font-black text-slate-900 leading-tight" style={colorStyle}>
+                          {formTitle}
+                        </h3>
+                        <p className="text-xs sm:text-sm text-slate-500 leading-relaxed" style={colorStyle ? { color: block.styles?.color, opacity: 0.8 } : undefined}>
                           কোনো অগ্রিম এক টাকাও দিতে হবে না। কুরিয়ারের পার্সেল হাতে পেয়ে কোয়ালিটি দেখে তারপর দাম পরিশোধ করুন।
                         </p>
                       </div>
                       <div className="md:col-span-7">
                         <OrderForm
-                          initialSize="XXL"
-                          selectedColor="Navy Blue"
-                          onChangeSize={() => {}}
-                          onChangeColor={() => {}}
+                          initialSize={selectedSize}
+                          selectedColor={selectedColor}
+                          onChangeSize={setSelectedSize}
+                          onChangeColor={setSelectedColor}
                           onOrderSuccess={onOrderSuccess}
                         />
                       </div>
@@ -188,7 +194,14 @@ export default function PageRenderer({ page, onOrderSuccess }: PageRendererProps
 
               case 'shop':
                 return (
-                  <div key={block.id} className="bg-slate-100/50 py-12">
+                  <div key={block.id} style={bgStyle} className={`${paddingClass}`}>
+                    {block.content && (
+                      <div className="container mx-auto max-w-4xl mb-8 text-center">
+                        <h2 className="text-2xl sm:text-4xl font-black text-slate-900" style={colorStyle}>
+                          {block.content}
+                        </h2>
+                      </div>
+                    )}
                     <ShopView onOrderSuccess={onOrderSuccess} />
                   </div>
                 );

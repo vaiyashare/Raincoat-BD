@@ -42,6 +42,99 @@ export function getPixelConfig(): PixelConfig {
   };
 }
 
+interface TikTokConfig {
+  enabled: boolean;
+  pixelId: string;
+}
+
+export function getTikTokConfig(): TikTokConfig {
+  return {
+    enabled: localStorage.getItem('tiktok_pixel_enabled') !== 'false',
+    pixelId: localStorage.getItem('tiktok_pixel_id') || '',
+  };
+}
+
+/**
+ * Initializes standard TikTok pixel if configured and enabled
+ */
+export function initTikTokPixel() {
+  const config = getTikTokConfig();
+  if (!config.enabled || !config.pixelId) {
+    console.log('[PixelTracking] TikTok Pixel is currently disabled or has no Pixel ID.');
+    return;
+  }
+
+  const win = window as any;
+
+  if (!win.ttq) {
+    const ttq = win.ttq = win.ttq || [];
+    ttq.methods = ["page", "track", "identify", "instances", "debug", "on", "off", "once", "ready", "alias", "group", "enableCookie", "disableCookie", "holdConsent", "revokeConsent", "grantConsent"];
+    ttq.setAndDefer = function (t: any, e: any) {
+      t[e] = function () {
+        t.push([e].concat(Array.prototype.slice.call(arguments, 0)));
+      };
+    };
+    for (let i = 0; i < ttq.methods.length; i++) {
+      ttq.setAndDefer(ttq, ttq.methods[i]);
+    }
+    ttq.instance = function (t: any) {
+      const e = ttq._i[t] || [];
+      for (let n = 0; n < ttq.methods.length; n++) {
+        ttq.setAndDefer(e, ttq.methods[n]);
+      }
+      return e;
+    };
+    ttq._i = ttq._i || {};
+    ttq._i[config.pixelId] = [];
+    ttq._i[config.pixelId]._u = "https://analytics.tiktok.com/i18n/pixel/events.js";
+    ttq._t = ttq._t || {};
+    ttq._t[config.pixelId] = +new Date();
+    ttq._o = ttq._o || {};
+    ttq._o[config.pixelId] = {};
+    ttq._n = null;
+
+    const existingScript = document.querySelector('script[data-injected-api="tiktok-pixel-lib"]');
+    if (!existingScript) {
+      const script = document.createElement('script');
+      script.async = true;
+      script.src = "https://analytics.tiktok.com/i18n/pixel/events.js?sdkid=" + config.pixelId + "&lib=ttq";
+      script.setAttribute('data-injected-api', 'tiktok-pixel-lib');
+      const firstScript = document.getElementsByTagName('script')[0];
+      if (firstScript && firstScript.parentNode) {
+        firstScript.parentNode.insertBefore(script, firstScript);
+      } else {
+        document.head.appendChild(script);
+      }
+    }
+  }
+
+  win.ttq.page();
+  console.log(`[PixelTracking] Initialized TikTok Pixel ID: ${config.pixelId}`);
+}
+
+/**
+ * Dispatches a tracking event to TikTok Pixel
+ */
+export function trackTikTokEvent(eventName: string, customData: Record<string, any> = {}) {
+  const config = getTikTokConfig();
+  if (!config.enabled || !config.pixelId) return;
+
+  const win = window as any;
+  if (win.ttq) {
+    let tiktokEvent = eventName;
+    if (eventName === 'Purchase') {
+      tiktokEvent = 'CompletePayment';
+    } else if (eventName === 'InitiateCheckout') {
+      tiktokEvent = 'InitiateCheckout';
+    } else if (eventName === 'PageView') {
+      tiktokEvent = 'PageView';
+    }
+
+    console.log(`[PixelTracking] Tracking TikTok Event: ${tiktokEvent}`, customData);
+    win.ttq.track(tiktokEvent, customData);
+  }
+}
+
 /**
  * Initializes standard browser Facebook pixel if configured and enabled
  */
@@ -52,8 +145,9 @@ export function initMetaPixel() {
     return;
   }
 
-  // Inject Meta Pixel script boilerplate
   const win = window as any;
+
+  // Prevent multiple boilerplates or duplicate fbevents scripts
   if (!win.fbq) {
     win.fbq = function (...args: any[]) {
       win.fbq.callMethod ? win.fbq.callMethod.apply(win.fbq, args) : win.fbq.queue.push(args);
@@ -63,13 +157,27 @@ export function initMetaPixel() {
     win.fbq.loaded = true;
     win.fbq.version = '2.0';
     win.fbq.queue = [];
+  }
 
+  // Dual Check: If script tag is already present in DOM, do NOT append another script tag!
+  const existingScript = document.querySelector('script[data-injected-api="fb-pixel-lib"]');
+  if (!existingScript) {
     const script = document.createElement('script');
     script.async = true;
     script.src = 'https://connect.facebook.net/en_US/fbevents.js';
     script.setAttribute('data-injected-api', 'fb-pixel-lib');
     document.head.appendChild(script);
   }
+
+  // Prevent redundant same-ID initialization
+  win._initialized_pixels = win._initialized_pixels || {};
+  if (win._initialized_pixels[config.pixelId]) {
+    console.log(`[PixelTracking] Meta Pixel ID: ${config.pixelId} is already active/initialized. Skipping redundant setup.`);
+    return;
+  }
+
+  // Mark as initialized
+  win._initialized_pixels[config.pixelId] = true;
 
   // Initialize the tracker
   console.log(`[PixelTracking] Initializing Meta Pixel ID: ${config.pixelId}`);
@@ -88,6 +196,9 @@ export async function trackPixelEvent(
   customData: Record<string, any> = {}, 
   rawUserData: { name?: string; phone?: string; email?: string; address?: string } = {}
 ) {
+  // 1. Dispatch event to TikTok Pixel in parallel
+  trackTikTokEvent(eventName, customData);
+
   const config = getPixelConfig();
   if (!config.enabled || !config.pixelId) return;
 

@@ -6,6 +6,8 @@ import {
   X, Check, AlertCircle, RefreshCw
 } from 'lucide-react';
 import { RaincoatOrder } from '../types';
+import { getProductsFromFirestore, saveAllProductsToFirestore, getBannerSettingsFromFirestore } from '../lib/firebase';
+import { HomepageBannerSlide } from '../types';
 
 interface Product {
   id: string;
@@ -47,70 +49,112 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
   const [activeImage, setActiveImage] = useState<string | null>(null);
 
   const [activeBannerSlide, setActiveBannerSlide] = useState(0);
+  const [banners, setBanners] = useState<HomepageBannerSlide[]>([]);
+  const [isMobile, setIsMobile] = useState(false);
 
-  const bannerSlides = [
+  const defaultBanners: HomepageBannerSlide[] = [
     {
       badge: "Monsoon Flash Deals",
+      badgeColor: "bg-orange-600/15 border-orange-500/20 text-orange-400",
       title: "বর্ষার ধামাকা ২০% থেকে ৫০% সরাসরি ক্যাশ ডিসকাউন্ট!",
       description: "সারা বাংলাদেশে কুরিয়ার চার্জ সম্পূর্ণ ফ্রী। কোন অগ্রিম টাকা দেওয়া ছাড়াই সম্পূর্ণ প্রোডাক্ট হাতে পেয়ে চেক করে মূল্য পরিশোধ করুন! সেরা ওয়াটারপ্রুফ রেইন গিয়ারস।",
-      bgClass: "from-slate-900 via-indigo-950 to-slate-900",
-      badgeColor: "bg-orange-600/15 border-orange-500/20 text-orange-400",
+      bgType: 'gradient',
+      bgGradient: "from-slate-900 via-indigo-950 to-slate-900",
       textColor: "text-white",
       primaryBtnText: "🛒 সম্পূর্ণ শপ ভিউ দেখুন",
-      primaryBtnAction: () => {
-        window.history.pushState(null, '', '/shop');
-        window.dispatchEvent(new Event('popstate'));
-      },
+      primaryBtnLink: "/shop",
       secondaryBtnText: "🌧️ রেইনকোট অর্ডার করুন",
-      secondaryBtnAction: () => {
-        window.history.pushState(null, '', '/raincoat');
-        window.dispatchEvent(new Event('popstate'));
-      }
+      secondaryBtnLink: "/raincoat"
     },
     {
       badge: "জনপ্রিয় কালার (Navy Blue)",
-      title: "প্রিমিয়াম ওয়াটারপ্রুফ নেভি ব্লু বাইক কভার - অফার মূল্য ৬০০/-",
-      description: "ছাতা কাপড়ের তৈরি শতভাগ ওয়াটারপ্রুফ ও ডাস্টপ্রুফ নেভি ব্লু বাইক কভার। রোদ, বৃষ্টি ও ধুলোবালি প্রতিরোধে সিলভার হিট কোটিং যুক্ত দ্বিমুখী অনন্য সুরক্ষা।",
-      bgClass: "from-blue-950 via-indigo-950 to-slate-900",
       badgeColor: "bg-cyan-500/15 border-cyan-400/20 text-cyan-300",
+      title: "প্রিমিয়াম ওয়াটারপ্রুফ নেভি ব্লু বাইক কভার - অফার মূল্য ৬০০/-",
+      description: "ছাতা কাপড়ের তৈরি শতভাগ ওয়াটারপ্রুফ ও ডাস্টপ্রুফ নেভি ব্লু কভার। রোদ, বৃষ্টি ও ধুলোবালি প্রতিরোধে সিলভার হিট কোটিং যুক্ত দ্বিমুখী অনন্য সুরক্ষা।",
+      bgType: 'gradient',
+      bgGradient: "from-blue-950 via-indigo-950 to-slate-900",
       textColor: "text-white",
       primaryBtnText: "🏍️ বাইক কভার অর্ডার করুন",
-      primaryBtnAction: () => {
-        window.history.pushState(null, '', '/bikecover');
-        window.dispatchEvent(new Event('popstate'));
-      },
+      primaryBtnLink: "/bikecover",
       secondaryBtnText: "🛒 সম্পূর্ণ শপ ভিউ",
-      secondaryBtnAction: () => {
-        window.history.pushState(null, '', '/shop');
-        window.dispatchEvent(new Event('popstate'));
-      }
+      secondaryBtnLink: "/shop"
     },
     {
       badge: "শতভাগ প্রিমিয়াম (Jet Black)",
-      title: "প্রিমিয়াম ওয়াটারপ্রুফ জেট ব্ল্যাক বাইক কভার - মাত্র ৬০০/- টাকা!",
-      description: "অভিজাত ব্ল্যাক কালার, ডাস্টপ্রুফ এবং রোদের তাপ প্রতিরোধক সুউচ্চ ফিনিশিং কভার যা পিচ্ছিল কাদা ও ধুলোবালি প্রতিরোধে জ্যাকিং ইলাস্টিক বেল্ট সমৃদ্ধ।",
-      bgClass: "from-neutral-900 via-stone-900 to-neutral-950",
       badgeColor: "bg-amber-500/15 border-amber-400/20 text-amber-300",
+      title: "প্রিমিয়াম ওয়াটারপ্রুফ জেট ব্ল্যাক বাইক কভার - মাত্র ৬০০/- টাকা!",
+      description: " can- fit any outfit perfectly. অভিজাত ব্ল্যাক কালার, ডাস্টপ্রুফ এবং রোদের তাপ প্রতিরোধক সুউচ্চ ফিনিশিং কভার যা পিচ্ছিল কাদা ও ধুলোবালি প্রতিরোধে জ্যাকিং ইলাস্টিক বেল্ট সমৃদ্ধ।",
+      bgType: 'gradient',
+      bgGradient: "from-neutral-900 via-stone-900 to-neutral-950",
       textColor: "text-white",
       primaryBtnText: "🏍️ বাইক কভার অর্ডার করুন",
-      primaryBtnAction: () => {
-        window.history.pushState(null, '', '/bikecover');
-        window.dispatchEvent(new Event('popstate'));
-      },
+      primaryBtnLink: "/bikecover",
       secondaryBtnText: "🛒 সম্পূর্ণ শপ ভিউ",
-      secondaryBtnAction: () => {
-        window.history.pushState(null, '', '/shop');
-        window.dispatchEvent(new Event('popstate'));
-      }
+      secondaryBtnLink: "/shop"
     }
   ];
 
+  const fetchBannersData = async () => {
+    try {
+      const fbBanners = await getBannerSettingsFromFirestore();
+      if (fbBanners && Array.isArray(fbBanners.slides) && fbBanners.slides.length > 0) {
+        setBanners(fbBanners.slides);
+        return;
+      }
+    } catch (e) {
+      console.warn("Error getting Firestore banners on home:", e);
+    }
+    const cached = localStorage.getItem('raincoat_banner_settings_fallback');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (parsed && Array.isArray(parsed.slides) && parsed.slides.length > 0) {
+          setBanners(parsed.slides);
+          return;
+        }
+      } catch (_) {}
+    }
+    setBanners(defaultBanners);
+  };
+
+  const handleButtonAction = (link: string) => {
+    if (!link) return;
+    if (link.startsWith('#')) {
+      const element = document.querySelector(link);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth' });
+      }
+    } else {
+      window.history.pushState(null, '', link);
+      window.dispatchEvent(new Event('popstate'));
+    }
+  };
+
   useEffect(() => {
+    fetchBannersData();
+
+    const handleResize = () => setIsMobile(window.innerWidth < 640);
+    handleResize();
+    window.addEventListener('resize', handleResize);
+
+    const handleUpdate = () => {
+      fetchBannersData();
+    };
+    window.addEventListener('raincoat_banner_settings_updated', handleUpdate);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('raincoat_banner_settings_updated', handleUpdate);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (banners.length === 0) return;
     const sliderInterval = setInterval(() => {
-      setActiveBannerSlide(prev => (prev + 1) % bannerSlides.length);
-    }, 5000);
+      setActiveBannerSlide(prev => (prev + 1) % banners.length);
+    }, 6000);
     return () => clearInterval(sliderInterval);
-  }, [bannerSlides.length]);
+  }, [banners.length]);
 
   useEffect(() => {
     if (selectedProduct) {
@@ -120,14 +164,25 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
     }
   }, [selectedProduct]);
 
-  // Load products from raincoat_shop_products
-  const loadProductsList = () => {
+  // Load products from raincoat_shop_products or Firestore
+  const loadProductsList = async () => {
+    try {
+      const fbProducts = await getProductsFromFirestore();
+      if (fbProducts && fbProducts.length > 0) {
+        setProducts(fbProducts as any);
+        return;
+      }
+    } catch (e) {
+      console.warn("Could not retrieve products from Firestore on AmazonMarketplace initialization:", e);
+    }
+
     const list = localStorage.getItem('raincoat_shop_products');
     if (list) {
       try {
         const parsed = JSON.parse(list);
-        if (parsed && parsed.length >= 14) {
+        if (parsed && parsed.length > 0) {
           setProducts(parsed);
+          await saveAllProductsToFirestore(parsed as any);
           return;
         }
       } catch (e) {
@@ -135,7 +190,7 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
       }
     }
     
-    // If not present or stale (<14 products), define the complete defaults
+    // If not present or empty, define the completeDefaults
     const fullDefaults = [
       {
         id: 'p-1',
@@ -179,7 +234,7 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
       },
       {
         id: 'p-5',
-        title: 'প্রিমিয়াম সেলফ-লকিং ওয়াটারপ্রুফ বাইক মোবাইল হোলডার',
+        title: 'প্রিমিয়াম সেলফ-লকিং ওয়াটারপ্রুফ বাইক মোবাইল হোল্ডার',
         description: 'যেকোনো সাইকেল বা মোটরসাইকেল হ্যান্ডেলে সহজে ফিট করা যায়। সম্পূর্ণ ওয়াটারপ্রুফ কভার সহ টাচ স্ক্রিন সাপোর্টেড।',
         price: 590,
         image: 'https://images.unsplash.com/photo-1584438784894-089d6a128f3e?auto=format&fit=crop&q=80&w=600',
@@ -279,8 +334,8 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
         addDeliveryCharge: false
       }
     ];
-    localStorage.setItem('raincoat_shop_products', JSON.stringify(fullDefaults));
     setProducts(fullDefaults);
+    await saveAllProductsToFirestore(fullDefaults as any);
   };
 
   useEffect(() => {
@@ -509,45 +564,72 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
 
       {/* 🌟 Amazon-Style Carousel Banner / Hero Section */}
       <section className="max-w-7xl mx-auto px-4 mt-6">
-        <div className="relative min-h-[300px] sm:min-h-[350px] w-full rounded-3xl overflow-hidden shadow-xl border border-slate-800">
-          {bannerSlides.map((slide, idx) => {
+        <div className="relative min-h-[220px] sm:min-h-[350px] w-full rounded-2xl sm:rounded-3xl overflow-hidden shadow-xl border border-slate-800 bg-slate-950">
+          {(banners.length > 0 ? banners : defaultBanners).map((slide, idx) => {
             const isActive = idx === activeBannerSlide;
+            
+            // Resolve custom background styles
+            let bgStyle: React.CSSProperties = {};
+            let gradientClass = '';
+            
+            if (slide.bgType === 'color') {
+              bgStyle = { backgroundColor: slide.bgColor || '#1e1b4b' };
+            } else if (slide.bgType === 'image') {
+              const bgImgUrl = isMobile && slide.bgImageMobile ? slide.bgImageMobile : (slide.bgImage || slide.bgImageMobile || '');
+              if (bgImgUrl) {
+                bgStyle = {
+                  backgroundImage: `url(${bgImgUrl})`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                };
+              } else {
+                // fallback gradient if image selection is active but empty
+                gradientClass = 'bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900';
+              }
+            } else {
+              // gradient
+              gradientClass = `bg-gradient-to-r ${slide.bgGradient || 'from-slate-900 via-indigo-950 to-slate-900'}`;
+            }
+
             return (
               <div
                 key={idx}
-                className={`absolute inset-0 bg-gradient-to-r ${slide.bgClass} p-8 sm:p-12 flex flex-col justify-center text-left transition-all duration-700 ease-in-out ${
-                  isActive ? 'opacity-100 z-10 scale-100 pointer-events-auto' : 'opacity-0 z-0 scale-95 pointer-events-none'
+                style={bgStyle}
+                className={`absolute inset-0 ${gradientClass} p-5 sm:p-12 flex flex-col justify-center text-left transition-all duration-700 ease-in-out ${
+                  isActive ? 'opacity-100 z-10 scale-100 pointer-events-auto shadow-inner' : 'opacity-0 z-0 scale-95 pointer-events-none'
                 }`}
               >
                 {/* Neon absolute decorative elements */}
                 <div className="absolute right-0 top-0 w-80 h-80 bg-orange-500/10 rounded-full blur-3xl pointer-events-none" />
                 <div className="absolute left-1/3 bottom-0 w-60 h-60 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
                 
-                <div className="max-w-xl relative z-10 space-y-4">
-                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 border text-xs font-black rounded-full font-mono uppercase tracking-wider ${slide.badgeColor}`}>
-                    <Percent className="h-3 w-3 animate-spin" /> {slide.badge}
+                <div className="max-w-xl relative z-10 space-y-2 sm:space-y-4">
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 sm:px-3 sm:py-1 border text-[9px] sm:text-xs font-black rounded-full font-mono uppercase tracking-wider ${slide.badgeColor || 'bg-orange-600/15 border-orange-500/20 text-orange-400'}`}>
+                    <Percent className="h-2.5 w-2.5 sm:h-3 sm:w-3 animate-spin" /> {slide.badge}
                   </span>
-                  <h2 className="text-2xl sm:text-4xl font-black text-white leading-tight">
+                  <h2 className="text-base sm:text-2xl md:text-4xl font-black text-white leading-tight sm:leading-tight">
                     {slide.title}
                   </h2>
-                  <p className="text-slate-200 font-medium text-xs sm:text-sm leading-relaxed max-w-lg">
+                  <p className="text-slate-200 font-medium text-[10px] sm:text-xs md:text-sm leading-relaxed max-w-lg line-clamp-2 sm:line-clamp-none">
                     {slide.description}
                   </p>
-                  <div className="flex flex-wrap items-center gap-3 pt-2">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 pt-1 sm:pt-2">
                     <button 
-                      onClick={slide.primaryBtnAction}
-                      className="px-6 py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-slate-950 font-black text-xs sm:text-sm rounded-xl shadow-lg shadow-orange-950/40 transform hover:scale-[1.02] active:scale-[0.98] transition cursor-pointer flex items-center gap-1.5"
+                      onClick={() => handleButtonAction(slide.primaryBtnLink)}
+                      className="px-3.5 py-1.8 sm:px-6 sm:py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-slate-950 font-black text-[10px] sm:text-[13px] rounded-lg sm:rounded-xl shadow-lg shadow-orange-950/40 transform hover:scale-[1.02] active:scale-[0.98] transition cursor-pointer flex items-center gap-1 sm:gap-1.5"
                     >
                       <span>{slide.primaryBtnText}</span>
-                      <ArrowUpRight className="h-4 w-4 shrink-0" />
+                      <ArrowUpRight className="h-3.5 w-3.5 shrink-0" />
                     </button>
                     
-                    <button 
-                      onClick={slide.secondaryBtnAction}
-                      className="px-5 py-3 bg-slate-850 hover:bg-slate-800 text-slate-100 font-extrabold text-xs sm:text-sm rounded-xl border border-slate-700/80 transition cursor-pointer"
-                    >
-                      {slide.secondaryBtnText}
-                    </button>
+                    {slide.secondaryBtnText && (
+                      <button 
+                        onClick={() => handleButtonAction(slide.secondaryBtnLink)}
+                        className="px-3 py-1.8 sm:px-5 sm:py-3 bg-slate-850 hover:bg-slate-800 text-slate-100 font-extrabold text-[10px] sm:text-[13px] rounded-lg sm:rounded-xl border border-slate-700/80 transition cursor-pointer"
+                      >
+                        {slide.secondaryBtnText}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -555,13 +637,13 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
           })}
 
           {/* Navigation Dots on the bottom */}
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 z-20">
-            {bannerSlides.map((_, idx) => (
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-20">
+            {(banners.length > 0 ? banners : defaultBanners).map((_, idx) => (
               <button
                 key={idx}
                 onClick={() => setActiveBannerSlide(idx)}
-                className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${
-                  idx === activeBannerSlide ? 'bg-orange-500 w-6' : 'bg-white/45 hover:bg-white/80'
+                className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                  idx === activeBannerSlide ? 'bg-orange-550 bg-orange-500 w-5 sm:w-6' : 'bg-white/45 hover:bg-white/80'
                 }`}
               />
             ))}

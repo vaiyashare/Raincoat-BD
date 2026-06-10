@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingBag, Truck, BadgePercent, CheckCircle, Flame, MapPin, Phone, User, ShieldCheck, Scale, Ruler } from 'lucide-react';
+import { ShoppingBag, Truck, BadgePercent, CheckCircle, Flame, MapPin, Phone, User, ShieldCheck, Scale, Ruler, FileText } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Size, ProductColor, RaincoatOrder, InventoryItem } from '../types';
 import { 
@@ -12,8 +12,8 @@ import {
 import { trackPixelEvent } from '../lib/tracking';
 
 interface OrderFormProps {
-  initialSize: Size;
-  selectedColor: ProductColor;
+  initialSize: Size | null;
+  selectedColor: ProductColor | null;
   onChangeSize: (size: Size) => void;
   onChangeColor: (color: ProductColor) => void;
   onOrderSuccess: (order: RaincoatOrder) => void;
@@ -47,6 +47,7 @@ export default function OrderForm({
   const [name, setName] = useState('');
   const [village, setVillage] = useState('');
   const [phone, setPhone] = useState('');
+  const [orderNotes, setOrderNotes] = useState('');
   const [weight, setWeight] = useState<number>(65);
   const [heightFeet, setHeightFeet] = useState<number>(5);
   const [heightInches, setHeightInches] = useState<number>(6);
@@ -54,6 +55,7 @@ export default function OrderForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [agreedTerms, setAgreedTerms] = useState(true);
+  const [whatsappConsent, setWhatsappConsent] = useState(true);
 
   // Load Inventory state for stock-aware validation
   const [inventoryList, setInventoryList] = useState<InventoryItem[]>([]);
@@ -114,7 +116,8 @@ export default function OrderForm({
   }, [phone]);
 
   // Dynamic price calculation
-  const getPrice = (sz: Size) => {
+  const getPrice = (sz: Size | null) => {
+    if (!sz) return 990;
     return (sz === '3XL' || sz === '4XL') ? 1090 : 990;
   };
   
@@ -135,7 +138,7 @@ export default function OrderForm({
 
   // Save draft details when any field changes
   useEffect(() => {
-    if (!name.trim() && !phone.trim() && !village.trim()) {
+    if (!name.trim() && !phone.trim() && !village.trim() && !orderNotes.trim()) {
       return;
     }
 
@@ -143,21 +146,24 @@ export default function OrderForm({
     if (name.trim()) fieldsFilledCount++;
     if (phone.trim()) fieldsFilledCount++;
     if (village.trim()) fieldsFilledCount++;
+    if (orderNotes.trim()) fieldsFilledCount++;
 
     const draftOrder = {
       id: sessionId,
       name,
       phone,
       village,
-      size: initialSize,
-      color: selectedColor,
+      size: (initialSize || 'XXL') as Size,
+      color: (selectedColor || 'Navy Blue') as ProductColor,
       weight,
       heightFeet,
       heightInches,
       price,
       createdAt: new Date().toISOString(),
       lastUpdatedAt: new Date().toISOString(),
-      fieldsFilledCount
+      fieldsFilledCount,
+      orderNotes: orderNotes.trim() || undefined,
+      whatsappConsent,
     };
 
     const incompleteJson = localStorage.getItem('raincoat_incomplete_orders') || '[]';
@@ -178,22 +184,7 @@ export default function OrderForm({
     addIncompleteOrderToFirestore(draftOrder).catch((err) => {
       console.warn("Failed to sync incomplete draft to Cloud Firestore:", err);
     });
-  }, [name, phone, village, initialSize, selectedColor, weight, heightFeet, heightInches, price, sessionId]);
-
-  // Sync size when weight changes roughly
-  useEffect(() => {
-    let computedSize: Size = 'XL';
-    if (weight <= 60) {
-      computedSize = 'XL';
-    } else if (weight <= 80) {
-      computedSize = 'XXL';
-    } else if (weight <= 95) {
-      computedSize = '3XL';
-    } else {
-      computedSize = '4XL';
-    }
-    onChangeSize(computedSize);
-  }, [weight]);
+  }, [name, phone, village, initialSize, selectedColor, weight, heightFeet, heightInches, price, sessionId, orderNotes, whatsappConsent]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -207,6 +198,14 @@ export default function OrderForm({
     const cleanPhone = phone.replace(/[^0-9]/g, '');
     if (!cleanPhone.startsWith('01') || cleanPhone.length !== 11) {
       return setErrorMessage('অনুগ্রহ করে একটি সঠিক ১১ ডিজিটের বাংলাদেশী মোবাইল নাম্বার দিন (যেমন: 017XXXXXXXX)।');
+    }
+
+    if (!selectedColor) {
+      return setErrorMessage('অনুগ্রহ করে রেইনকোটের কালার পছন্দ করুন।');
+    }
+
+    if (!initialSize) {
+      return setErrorMessage('অনুগ্রহ করে রেইনকোটের সাইজ পছন্দ করুন।');
     }
 
     // Stock inventory check
@@ -226,8 +225,8 @@ export default function OrderForm({
       name,
       village,
       phone: cleanPhone,
-      size: initialSize,
-      color: selectedColor,
+      size: initialSize!,
+      color: selectedColor!,
       weight,
       heightFeet,
       heightInches,
@@ -235,13 +234,15 @@ export default function OrderForm({
       status: 'Pending',
       isConfirmed: false, // Default unconfirmed status until authorized from panel
       createdAt: new Date().toISOString(),
+      orderNotes: orderNotes.trim() || undefined,
+      whatsappConsent,
     };
 
     // Save of final order, delete of incomplete draft, and decrement of stock
     Promise.all([
       addOrderToFirestore(newOrder),
       deleteIncompleteOrderFromFirestore(sessionId),
-      decrementInventoryItemInFirestore(selectedColor, initialSize)
+      decrementInventoryItemInFirestore(selectedColor!, initialSize!)
     ]).then(() => {
       console.log("Successfully connected order to database Firestore and decremented stock!");
     }).catch((err) => {
@@ -294,6 +295,7 @@ export default function OrderForm({
     setName('');
     setVillage('');
     setPhone('');
+    setOrderNotes('');
   };
 
   return (
@@ -466,8 +468,13 @@ export default function OrderForm({
             </div>
           </div>
           
-          <p className="text-[10px] text-slate-500 italic leading-relaxed">
-            * আপনার ওজন অনুযায়ী নিচের ৬ নম্বর ধাপে সঠিক রেইনকোট সাইজটি স্বয়ংক্রিয়ভাবে পরিবর্তিত হবে।
+          <p className="text-[10px] text-blue-800 bg-blue-50/50 p-2 rounded-lg font-semibold leading-relaxed">
+            📍 আপনার ওজনের জন্য উপযুক্ত রেইনকোট সাইজ হচ্ছে: <strong className="font-mono text-xs">{(() => {
+              if (weight <= 60) return 'XL';
+              if (weight <= 80) return 'XXL';
+              if (weight <= 95) return '3XL';
+              return '4XL';
+            })()}</strong>। অনুগ্রহ করে নিচে ৬ নম্বর ধাপে ক্লিক করে সাইজটি ম্যানুয়ালি সিলেক্ট করুন।
           </p>
         </div>
 
@@ -482,7 +489,7 @@ export default function OrderForm({
               { name: 'Navy Blue', label: 'নেভি ব্লু (Navy Blue)', activeBg: 'bg-blue-900 text-white border-blue-900', colorDot: 'bg-blue-800' }
             ].map((col) => {
               const isSelected = selectedColor === col.name;
-              const hasQty = inventoryList.find(i => i.id === `${col.name}-${initialSize}`)?.quantity ?? 50;
+              const hasQty = initialSize ? (inventoryList.find(i => i.id === `${col.name}-${initialSize}`)?.quantity ?? 50) : 50;
               const isOut = hasQty <= 0;
               return (
                 <button
@@ -514,7 +521,7 @@ export default function OrderForm({
           <div className="grid grid-cols-4 gap-2">
             {(['XL', 'XXL', '3XL', '4XL'] as Size[]).map((sz) => {
               const isSelected = initialSize === sz;
-              const hasQty = inventoryList.find(i => i.id === `${selectedColor}-${sz}`)?.quantity ?? 50;
+              const hasQty = selectedColor ? (inventoryList.find(i => i.id === `${selectedColor}-${sz}`)?.quantity ?? 50) : 50;
               const isOut = hasQty <= 0;
               return (
                 <button
@@ -542,6 +549,39 @@ export default function OrderForm({
               );
             })}
           </div>
+        </div>
+
+        {/* Order Notes (Optional Delivery Instructions) */}
+        <div>
+          <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans" htmlFor="order-notes">
+            ৭. বিশেষ ডেলিভারি নির্দেশনাবলী (ঐচ্ছিক - যেমন: ল্যান্ডমার্ক বা পছন্দের সময়)
+          </label>
+          <div className="relative">
+            <FileText className="h-4.5 w-4.5 text-slate-400 absolute left-3 top-3" />
+            <textarea
+              id="order-notes"
+              placeholder="যেমন: ৩য় তলার ফ্ল্যাট-বি, ৫টার পর ডেলিভারি দিন, অথবা কোনো বিশিষ্ট ল্যান্ডমার্ক।"
+              value={orderNotes}
+              onChange={(e) => setOrderNotes(e.target.value)}
+              rows={2}
+              className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white text-slate-800 transition-all font-sans resize-none"
+            />
+          </div>
+        </div>
+
+        {/* WhatsApp consent checkbox */}
+        <div className="bg-emerald-50/45 border border-emerald-100 rounded-xl p-3 flex items-start gap-2.5">
+          <input
+            type="checkbox"
+            id="whatsapp-consent"
+            checked={whatsappConsent}
+            onChange={(e) => setWhatsappConsent(e.target.checked)}
+            className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500 bg-white border-slate-300 h-4 w-4 cursor-pointer"
+          />
+          <label htmlFor="whatsapp-consent" className="text-[11px] sm:text-xs text-slate-700 font-bold cursor-pointer font-sans leading-normal">
+            হোয়াটসঅ্যাপে আমার অর্ডারের আপডেট পাঠান (Send me status updates via WhatsApp)
+            <span className="block text-[10px] text-slate-400 font-medium mt-0.5">আমরা আপনার পার্সেলে বুকিং বিবরণ, ট্র্যাকিং আইডি ও অর্ডার আপডেট হোয়াটসঅ্যাপে লাইভ পাঠাব।</span>
+          </label>
         </div>
 
         {/* Dynamic checkout price calculator */}

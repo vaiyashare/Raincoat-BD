@@ -1,11 +1,16 @@
-import React, { useState } from 'react';
-import { Search, Package, MapPin, Calendar, CreditCard, Check, AlertTriangle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Search, Package, MapPin, Calendar, CreditCard, Check, AlertTriangle, Loader2 } from 'lucide-react';
 import { RaincoatOrder, Size, ProductColor } from '../types';
+import { getOrdersFromFirestore, updateOrderInFirestore } from '../lib/firebase';
 
 export default function OrderTracker() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [searched, setSearched] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [foundOrders, setFoundOrders] = useState<RaincoatOrder[]>([]);
+  const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState('ভুল সাইজ ডিক্লেয়ার করেছি');
+  const [isSubmittingCancel, setIsSubmittingCancel] = useState(false);
 
   const normalizePhone = (p: string) => {
     // Keep only digits and slice last 11 characters to support flexible leading prefixes
@@ -13,8 +18,10 @@ export default function OrderTracker() {
     return clean.slice(-11);
   };
 
-  const handleTrack = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleTrack = async (e?: React.FormEvent) => {
+    if (e) {
+      e.preventDefault();
+    }
     setSearched(true);
 
     if (!phoneNumber.trim()) {
@@ -28,12 +35,35 @@ export default function OrderTracker() {
       return;
     }
 
+    setIsLoading(true);
+
     try {
-      const allOrdersJson = localStorage.getItem('raincoat_orders') || '[]';
-      const allOrders: RaincoatOrder[] = JSON.parse(allOrdersJson);
-      
-      const matched = allOrders.filter(order => {
-        const cleanOrderPhone = normalizePhone(order.phone);
+      // 1. Fetch live orders from Firestore (which has fallback cache inside getOrdersFromFirestore)
+      const allOrders = await getOrdersFromFirestore();
+
+      // 2. Load custom user orders list from client-side localStorage raincoat_orders (placed in caller session)
+      const localJson = localStorage.getItem('raincoat_orders') || '[]';
+      let localOrders: RaincoatOrder[] = [];
+      try {
+        localOrders = JSON.parse(localJson);
+      } catch (err) {
+        console.warn("Could not parse local raincoat_orders array:", err);
+      }
+
+      // Merge both sets to guarantee that even if a guest places an order offline, it shows up
+      const orderMap = new Map<string, RaincoatOrder>();
+      localOrders.forEach(o => {
+        if (o && o.id) orderMap.set(o.id, o);
+      });
+      allOrders.forEach(o => {
+        if (o && o.id) orderMap.set(o.id, o);
+      });
+
+      const combinedList = Array.from(orderMap.values());
+
+      // Filter by normalized telephone number match
+      const matched = combinedList.filter(order => {
+        const cleanOrderPhone = normalizePhone(order.phone || '');
         return cleanOrderPhone === cleanInput;
       });
 
@@ -41,8 +71,68 @@ export default function OrderTracker() {
       matched.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       setFoundOrders(matched);
     } catch (err) {
-      console.error('Error tracking order:', err);
-      setFoundOrders([]);
+      console.error('Error tracking order from combined datasets:', err);
+      // Absolute direct fallback purely using localstorage array
+      try {
+        const localJson = localStorage.getItem('raincoat_orders') || '[]';
+        const localOrders: RaincoatOrder[] = JSON.parse(localJson);
+        const matched = localOrders.filter(order => normalizePhone(order.phone || '') === cleanInput);
+        matched.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setFoundOrders(matched);
+      } catch (e) {
+        setFoundOrders([]);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Automatically refresh tracking details if user enters a number and status updates
+  const handleCancelOrder = async (orderId: string) => {
+    if (!orderId) return;
+
+    setIsSubmittingCancel(true);
+    try {
+      const reasonText = `গ্রাহক কর্তৃক ডিরেক্ট বাতিল: ${cancelReason}`;
+
+      // 1. Update status to 'Cancelled' in Firestore
+      try {
+        await updateOrderInFirestore(orderId, { 
+          status: 'Cancelled',
+          fraudReason: reasonText
+        });
+      } catch (err) {
+        console.warn("Could not update order status in Firestore (quota exceeded or offline?), modifying locally:", err);
+      }
+
+      // 2. Proactively update local storage caches so they match the cancelled status
+      const localCaches = ['raincoat_orders', 'raincoat_orders_fallback'];
+      localCaches.forEach((key) => {
+        try {
+          const listJson = localStorage.getItem(key) || '[]';
+          const list: RaincoatOrder[] = JSON.parse(listJson);
+          const updated = list.map(o => {
+            if (o.id === orderId) {
+              return { 
+                ...o, 
+                status: 'Cancelled' as const,
+                fraudReason: reasonText
+              };
+            }
+            return o;
+          });
+          localStorage.setItem(key, JSON.stringify(updated));
+        } catch (_) {}
+      });
+
+      setCancellingOrderId(null);
+      // Re-trigger order lookup to refresh visual state immediately
+      await handleTrack();
+    } catch (err) {
+      console.error("Order cancel failed:", err);
+      alert('অর্ডার বাতিল করতে সমস্যা হয়েছে। অনুগ্রহ করে আমাদের হেল্পলাইন নাম্বারে যোগাযোগ করুন।');
+    } finally {
+      setIsSubmittingCancel(false);
     }
   };
 
@@ -52,7 +142,7 @@ export default function OrderTracker() {
         return 'অর্ডার প্রক্রিয়াধীন (Pending)';
       case 'Canceled':
       case 'Cancelled':
-        return 'অর্ডার বাতিল (Canceled)';
+        return 'অর্ডার বাতিল (Cancelled)';
       case 'Shipped':
         return 'কুরিয়ারে পাঠানো হয়েছে (Shipped)';
       case 'Delivered':
@@ -139,15 +229,24 @@ export default function OrderTracker() {
             </div>
             <button
               type="submit"
-              className="px-6 py-3 bg-orange-500 hover:bg-orange-600 active:scale-98 text-white font-black text-xs sm:text-sm rounded-2xl transition duration-300 shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+              disabled={isLoading}
+              className="px-6 py-3 bg-orange-500 hover:bg-orange-600 active:scale-98 text-white font-black text-xs sm:text-sm rounded-2xl transition duration-300 shadow-md flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-75"
             >
-              <Search className="h-4 w-4" /> অর্ডার খোঁজেন
+              {isLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" /> লোড হচ্ছে...
+                </>
+              ) : (
+                <>
+                  <Search className="h-4 w-4" /> অর্ডার খোঁজেন
+                </>
+              )}
             </button>
           </div>
         </form>
 
         {/* Results Area */}
-        {searched && (
+        {searched && !isLoading && (
           <div className="pt-4 border-t border-slate-150 animate-fade-in">
             {foundOrders.length === 0 ? (
               <div className="p-6 bg-slate-50 rounded-2xl text-center border border-dashed border-slate-200">
@@ -242,6 +341,14 @@ export default function OrderTracker() {
                               <strong>গ্রাহক:</strong> {order.name}
                             </span>
                           </div>
+                          {order.orderNotes && (
+                            <div className="flex items-start gap-2 text-slate-700">
+                              <span className="w-4 h-4 rounded bg-blue-100 text-blue-750 text-center flex items-center justify-center font-bold text-[9px] shrink-0">📝</span>
+                              <span>
+                                <strong>ডেলিভারি নোট:</strong> <span className="text-blue-800 bg-blue-50/70 border border-blue-150/40 px-2 py-0.5 rounded-lg text-[11px] font-semibold">{order.orderNotes}</span>
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -283,7 +390,7 @@ export default function OrderTracker() {
                               </div>
                               <div className="text-left md:text-center mt-0.5">
                                 <span className="block text-xs font-extrabold text-slate-800">প্যাকিং ও প্রসেসিং</span>
-                                <span className="block text-[9px] text-slate-500">गुणগত মান নির্ধারণ ও প্যাকেট সম্পন্ন</span>
+                                <span className="block text-[9px] text-slate-500">গুণগত মান নির্ধারণ ও প্যাকেট সম্পন্ন</span>
                               </div>
                             </div>
 
@@ -315,8 +422,82 @@ export default function OrderTracker() {
                           </div>
                         </div>
                       ) : (
-                        <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 font-medium">
-                          🚫 কাস্টমার রিকোয়েস্ট বা অন্য কোনো কারণে এই অর্ডারটি বাতিল বা রিফান্ড সম্পন্ন হয়েছে। সাহায্যকারী নাম্বার কলার ট্র্যাকে যোগাযোগ করুন।
+                        <div className="p-3.5 bg-rose-50 border border-rose-250 rounded-2xl text-xs text-rose-800 font-medium">
+                          🚫 {order.fraudReason ? `বাতিলের কারণ: ${order.fraudReason}` : 'এই অর্ডারটি সফলভাবে বাতিল বা রিফান্ড করা হয়েছে। যেকোনো তথ্যের জন্য আমাদের কাস্টমার সার্ভিসের সাথে যোগাযোগ করতে পারেন।'}
+                        </div>
+                      )}
+
+                      {/* Interactive Customer Cancel Order Request Portal */}
+                      {isPending && !isCancelled && (
+                        <div className="pt-4 border-t border-slate-200/80 flex flex-col gap-3">
+                          {cancellingOrderId === order.id ? (
+                            <div className="bg-rose-50/70 border border-rose-150 rounded-2xl p-4 space-y-3.5 animate-in slide-in-from-top-3 duration-200">
+                              <div className="space-y-1">
+                                <h5 className="text-rose-900 font-extrabold text-xs">অর্ডারটি কেন বাতিল করতে চাচ্ছেন?</h5>
+                                <p className="text-[10px] text-slate-500 font-medium">সঠিক কারণটি জানালে আমাদের কাস্টমার সার্ভিস উন্নত করতে সহজ হবে:</p>
+                              </div>
+                              
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                {[
+                                  'ভুল সাইজ ডিক্লেয়ার করেছি',
+                                  'অন্য কোনো রঙ লাগবে',
+                                  'ভুলবশত বা ডাবল অর্ডার ছিল',
+                                  'অন্য শপ থেকে অর্ডার করেছি',
+                                  'ডেলিভারি চার্জ বা বাজেট সমস্যা'
+                                ].map((reason) => (
+                                  <label key={reason} className="flex items-center gap-2 p-2.5 bg-white rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-50 transition font-medium text-slate-700">
+                                    <input 
+                                      type="radio" 
+                                      name={`cancel-reason-${order.id}`}
+                                      checked={cancelReason === reason} 
+                                      onChange={() => setCancelReason(reason)} 
+                                      className="text-rose-600 focus:ring-rose-500 h-3.5 w-3.5"
+                                    />
+                                    <span>{reason}</span>
+                                  </label>
+                                ))}
+                              </div>
+
+                              <div className="flex flex-col sm:flex-row gap-2 pt-2 justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => setCancellingOrderId(null)}
+                                  className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold text-[11px] rounded-xl transition cursor-pointer"
+                                  disabled={isSubmittingCancel}
+                                >
+                                  না, ফিরে যান
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCancelOrder(order.id)}
+                                  className="px-4 py-2 bg-rose-650 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-black text-[11px] rounded-xl transition shadow-md flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-70"
+                                  disabled={isSubmittingCancel}
+                                >
+                                  {isSubmittingCancel ? (
+                                    <>
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" /> বাতিল করা হচ্ছে...
+                                    </>
+                                  ) : (
+                                    'বাতিলের অনুরোধ নিশ্চিত করুন'
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-100 p-3 rounded-2xl border border-slate-200 gap-2">
+                              <span className="text-[10px] text-slate-600 font-bold">অর্ডার সংক্রান্ত কোনো ভুল সংশোধনের জন্য এটি কি বাতিল করতে চান?</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCancelReason('ভুল সাইজ ডিক্লেয়ার করেছি');
+                                  setCancellingOrderId(order.id);
+                                }}
+                                className="px-3.5 py-1.5 bg-rose-100/80 hover:bg-rose-100 text-rose-650 text-rose-700 border border-rose-200 rounded-xl text-[11px] font-black transition cursor-pointer flex items-center gap-1 shrink-0"
+                              >
+                                ❌ অর্ডার বাতিল করুন
+                              </button>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -324,6 +505,13 @@ export default function OrderTracker() {
                 })}
               </div>
             )}
+          </div>
+        )}
+
+        {searched && isLoading && (
+          <div className="flex flex-col items-center justify-center py-12 text-slate-550 border-t border-slate-150">
+            <Loader2 className="h-8 w-8 text-orange-500 animate-spin mb-3" />
+            <p className="text-xs font-bold animate-pulse">আপনার মোবাইল নাম্বারের অর্ডার বিবরণী খোঁজা হচ্ছে...</p>
           </div>
         )}
       </div>

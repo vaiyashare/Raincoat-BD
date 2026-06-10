@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Tag, ShoppingBag, Edit, Save, RefreshCw, Star, Upload, X } from 'lucide-react';
+import { getProductsFromFirestore, saveProductToFirestore, deleteProductFromFirestore, saveAllProductsToFirestore } from '../../lib/firebase';
+import { compressImage } from '../../lib/imageCompressor';
 
 interface Product {
   id: string;
@@ -43,9 +45,15 @@ export default function ProductsAdmin({ onRefreshProducts, userRole }: ProductsA
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
+      reader.onloadend = async () => {
         if (typeof reader.result === 'string') {
-          setImage(reader.result);
+          try {
+            const compressed = await compressImage(reader.result);
+            setImage(compressed);
+          } catch (e) {
+            console.error("Compression failed:", e);
+            setImage(reader.result);
+          }
         }
       };
       reader.readAsDataURL(file);
@@ -64,9 +72,14 @@ export default function ProductsAdmin({ onRefreshProducts, userRole }: ProductsA
 
       filesToProcess.forEach(file => {
         const reader = new FileReader();
-        reader.onloadend = () => {
+        reader.onloadend = async () => {
           if (typeof reader.result === 'string') {
-            updated.push(reader.result);
+            try {
+              const compressed = await compressImage(reader.result);
+              updated.push(compressed);
+            } catch (err) {
+              updated.push(reader.result);
+            }
             processedCount++;
             if (processedCount === filesToProcess.length) {
               setAdditionalImages(updated.slice(0, 8));
@@ -91,13 +104,24 @@ export default function ProductsAdmin({ onRefreshProducts, userRole }: ProductsA
     setAdditionalImages(prev => prev.filter((_, i) => i !== index));
   };
 
-  const loadProducts = () => {
+  const loadProducts = async () => {
+    try {
+      const fbProducts = await getProductsFromFirestore();
+      if (fbProducts && fbProducts.length > 0) {
+        setProducts(fbProducts as any);
+        return;
+      }
+    } catch (e) {
+      console.warn("Could not retrieve products from Firestore, looking for local storage fallback...", e);
+    }
+
     const list = localStorage.getItem('raincoat_shop_products');
     if (list) {
       try {
         const parsed = JSON.parse(list);
-        if (parsed && parsed.length >= 14) {
+        if (parsed && parsed.length > 0) {
           setProducts(parsed);
+          await saveAllProductsToFirestore(parsed as any);
           return;
         }
       } catch (e) {}
@@ -246,8 +270,8 @@ export default function ProductsAdmin({ onRefreshProducts, userRole }: ProductsA
         addDeliveryCharge: false
       }
     ];
-    localStorage.setItem('raincoat_shop_products', JSON.stringify(defaults));
     setProducts(defaults);
+    await saveAllProductsToFirestore(defaults as any);
   };
 
   useEffect(() => {
@@ -269,7 +293,7 @@ export default function ProductsAdmin({ onRefreshProducts, userRole }: ProductsA
     setAddDeliveryCharge(true);
   };
 
-  const handleAddProduct = (e: React.FormEvent) => {
+  const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
@@ -291,26 +315,26 @@ export default function ProductsAdmin({ onRefreshProducts, userRole }: ProductsA
 
     if (editingProductId) {
       // Dynamic updates for existing products
-      const updated = products.map(p => {
-        if (p.id === editingProductId) {
-          return {
-            ...p,
-            title: title.trim(),
-            slug: cleanSlug,
-            description: description.trim(),
-            price: Number(price) || 0,
-            image: image.trim() || p.image,
-            category: category,
-            sizes: sizes.split(',').map(s => s.trim()).filter(Boolean),
-            colors: colors.split(',').map(c => c.trim()).filter(Boolean),
-            images: additionalImages,
-            addDeliveryCharge: addDeliveryCharge,
-          };
-        }
-        return p;
-      });
-      localStorage.setItem('raincoat_shop_products', JSON.stringify(updated));
+      const match = products.find(p => p.id === editingProductId);
+      if (!match) return;
+
+      const updatedProduct = {
+        ...match,
+        title: title.trim(),
+        slug: cleanSlug,
+        description: description.trim(),
+        price: Number(price) || 0,
+        image: image.trim() || match.image,
+        category: category,
+        sizes: sizes.split(',').map(s => s.trim()).filter(Boolean),
+        colors: colors.split(',').map(c => c.trim()).filter(Boolean),
+        images: additionalImages,
+        addDeliveryCharge: addDeliveryCharge,
+      };
+
+      const updated = products.map(p => p.id === editingProductId ? updatedProduct : p);
       setProducts(updated);
+      await saveProductToFirestore(updatedProduct as any);
       setSuccessMsg('প্রোডাক্ট সফলভাবে আপডেট (WordPress-Style) সম্পন্ন হয়েছে!');
       onRefreshProducts();
       resetForm();
@@ -333,8 +357,8 @@ export default function ProductsAdmin({ onRefreshProducts, userRole }: ProductsA
     };
 
     const updated = [...products, newProduct];
-    localStorage.setItem('raincoat_shop_products', JSON.stringify(updated));
     setProducts(updated);
+    await saveProductToFirestore(newProduct as any);
 
     setSuccessMsg('প্রোডাক্ট সফলভাবে শপ ক্যাটালগে যুক্ত হয়েছে!');
     onRefreshProducts();
@@ -356,7 +380,7 @@ export default function ProductsAdmin({ onRefreshProducts, userRole }: ProductsA
     setAddDeliveryCharge(p.addDeliveryCharge !== false);
   };
 
-  const handleDeleteProduct = (id: string) => {
+  const handleDeleteProduct = async (id: string) => {
     if (userRole === 'ReadOnly') {
       alert('দুঃখিত! রিড-অনলি এক্সেস দিয়ে এটি ড্রপ করা সম্ভব নয়।');
       return;
@@ -365,8 +389,8 @@ export default function ProductsAdmin({ onRefreshProducts, userRole }: ProductsA
     if (!window.confirm('আপনি কি নিশ্চিতভাবে এই প্রোডাক্টটি চিরতরে ডিলিট করতে চান?')) return;
 
     const updated = products.filter(p => p.id !== id);
-    localStorage.setItem('raincoat_shop_products', JSON.stringify(updated));
     setProducts(updated);
+    await deleteProductFromFirestore(id);
     onRefreshProducts();
   };
 

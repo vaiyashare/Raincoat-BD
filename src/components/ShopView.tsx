@@ -1,9 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-  ShoppingBag, CheckCircle, Smartphone, MapPin, Sparkles, 
+  ShoppingBag, CheckCircle, Smartphone, MapPin, Sparkles, Check, CreditCard,
   Trash2, Plus, Minus, ShieldCheck, Heart, Star, Phone, MessageSquare
 } from 'lucide-react';
 import { RaincoatOrder } from '../types';
+import { 
+  getProductsFromFirestore, 
+  addOrderToFirestore, 
+  getAdvancedAddonsSettingsFromFirestore,
+  AdvancedAddonsSettings
+} from '../lib/firebase';
 
 interface Product {
   id: string;
@@ -24,7 +30,7 @@ interface ShopViewProps {
 
 export default function ShopView({ onOrderSuccess }: ShopViewProps) {
   // Load products dynamically
-  const [products] = useState<Product[]>(() => {
+  const [products, setProducts] = useState<Product[]>(() => {
     const fullDefaults = [
       {
         id: 'p-1',
@@ -173,7 +179,7 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
     if (list) {
       try {
         const parsed = JSON.parse(list);
-        if (parsed && parsed.length >= 14) {
+        if (parsed && parsed.length > 0) {
           return parsed;
         }
       } catch (e) {}
@@ -183,6 +189,21 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
     localStorage.setItem('raincoat_shop_products', JSON.stringify(fullDefaults));
     return fullDefaults;
   });
+
+  // Keep products dynamically in sync with Firestore
+  useEffect(() => {
+    const syncProductsWithFirestore = async () => {
+      try {
+        const fbProducts = await getProductsFromFirestore();
+        if (fbProducts && fbProducts.length > 0) {
+          setProducts(fbProducts as any);
+        }
+      } catch (err) {
+        console.warn("Could not load products from Firestore on ShopView load, using local cache.", err);
+      }
+    };
+    syncProductsWithFirestore();
+  }, []);
 
   // State for shopping cart
   const [cart, setCart] = useState<{ product: Product; quantity: number; size: string; color: string }[]>([]);
@@ -195,6 +216,52 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successOrder, setSuccessOrder] = useState<RaincoatOrder | null>(null);
+
+  // Advanced plugins and tracking states
+  const [addons, setAddons] = useState<AdvancedAddonsSettings | null>(null);
+  const [orderNotes, setOrderNotes] = useState('');
+  const [partialPaymentSender, setPartialPaymentSender] = useState('');
+  const [partialPaymentTxnId, setPartialPaymentTxnId] = useState('');
+  const [couponDiscountPercent, setCouponDiscountPercent] = useState(0);
+  const [couponCodeApplied, setCouponCodeApplied] = useState('');
+  const [showExitModal, setShowExitModal] = useState(false);
+
+  useEffect(() => {
+    async function loadAddons() {
+      try {
+        const res = await getAdvancedAddonsSettingsFromFirestore();
+        if (res) {
+          setAddons(res);
+          // Auto-trigger Pixel InitiateCheckout if configured
+          if (res.pixel_ids && res.track_initiate_checkout) {
+            console.log(`[Facebook Pixel Event] Initiating Checkout for multi-pixels: ${res.pixel_ids}`);
+          }
+        }
+      } catch (err) {
+        console.warn("Could not load advanced addons settings on ShopView mount", err);
+      }
+    }
+    loadAddons();
+  }, []);
+
+  // Detect exit intent (when mouse moves out of viewport near the top)
+  useEffect(() => {
+    if (!addons || !addons.exit_intent_enabled) return;
+    
+    // Track if already dismissed/closed/used so it only appears once per session
+    const hasSeenExitCoupon = sessionStorage.getItem('raincoat_seen_exit_coupon');
+    if (hasSeenExitCoupon) return;
+
+    const handleMouseLeave = (e: MouseEvent) => {
+      if (e.clientY < 20 && cart.length > 0) { 
+        setShowExitModal(true);
+        sessionStorage.setItem('raincoat_seen_exit_coupon', 'true');
+      }
+    };
+
+    document.addEventListener('mouseleave', handleMouseLeave);
+    return () => document.removeEventListener('mouseleave', handleMouseLeave);
+  }, [addons, cart.length]);
 
   const addToCart = (product: Product, size: string, color: string) => {
     // Check if duplicate item with same config in cart
@@ -234,7 +301,8 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
   const hasDeliveryCharge = cart.some(item => item.product.addDeliveryCharge !== false);
 
   const deliveryFee = hasDeliveryCharge ? (district === 'ঢাকা' ? courierInside : courierOutside) : 0;
-  const grandTotal = cartTotal + deliveryFee;
+  const discountAmount = Math.round(cartTotal * (couponDiscountPercent / 100));
+  const grandTotal = Math.max(0, cartTotal - discountAmount) + deliveryFee;
 
   const handleCheckout = (e: React.FormEvent) => {
     e.preventDefault();
@@ -284,9 +352,16 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
       }
     }
 
+    if (addons?.partial_payment_enabled) {
+      if (!partialPaymentSender.trim() || !partialPaymentTxnId.trim()) {
+        setErrorMessage('অনুগ্রহ করে আমাদের কুরিয়ার ভেরিফিকেশন সম্পন্ন করতে আপনার বিকাশ/নগদ নম্বর এবং ট্রানজেকশন আইডি দিন!');
+        return;
+      }
+    }
+
     setIsSubmitting(true);
 
-    setTimeout(() => {
+    setTimeout(async () => {
       // Build order description
       const details = cart.map(item => `${item.product.title} (সাইজ: ${item.size || 'N/A'}, কালার: ${item.color || 'N/A'}) - কক: ${item.quantity}টি`).join(', ');
       
@@ -304,9 +379,20 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
         status: 'Pending',
         isConfirmed: false,
         createdAt: new Date().toISOString(),
+        orderNotes: orderNotes.trim() || undefined,
+        partialPaymentSender: partialPaymentSender.trim() || undefined,
+        partialPaymentTxnId: partialPaymentTxnId.trim() || undefined,
+        partialPaymentAmount: addons?.partial_payment_enabled ? addons.partial_payment_amount : undefined
       };
 
-      // Save to raincoat_orders
+      try {
+        // Direct cloud persistence
+        await addOrderToFirestore(newOrder);
+      } catch (err) {
+        console.warn("Direct addOrderToFirestore failed, fallback using localStorage syncing:", err);
+      }
+
+      // Save to raincoat_orders list
       const existingOrdersJson = localStorage.getItem('raincoat_orders') || '[]';
       const existingOrders = JSON.parse(existingOrdersJson);
       existingOrders.unshift(newOrder);
@@ -314,6 +400,11 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
 
       // Mark timestamp for duplicate submission blocker
       localStorage.setItem('raincoat_last_placed_timestamp', Date.now().toString());
+
+      // Fire analytics conversion trackers
+      if (addons?.pixel_ids && addons?.track_purchase) {
+        console.log(`[Facebook Pixel Event] Fired Purchase event on ${addons.pixel_ids} with Value: ${grandTotal} BDT`);
+      }
 
       setIsSubmitting(false);
       setSuccessOrder(newOrder);
@@ -571,6 +662,67 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
                         required
                       />
                     </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">অর্ডার নোট / ডেলিভারি নির্দেশনা (যেমন: ল্যান্ডমার্ক বা প্রিয় সময় - Optional)</label>
+                      <textarea 
+                        rows={1.5}
+                        placeholder="যেমন: বাড়ির পাশে বায়তুল মামুর মসজিদ, বা বিকাল ৪ টার পর ডেলিভারি দিন।"
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none"
+                        value={orderNotes}
+                        onChange={(e) => setOrderNotes(e.target.value)}
+                      />
+                    </div>
+
+                    {addons?.partial_payment_enabled && (
+                      <div className="p-3.5 bg-gradient-to-r from-pink-50 to-orange-50/50 border border-pink-150 rounded-2xl space-y-3 font-sans">
+                        <div className="flex items-center gap-1.5 text-pink-850 font-extrabold text-xs">
+                          <Check className="h-4 w-4 text-pink-600 bg-pink-100 rounded-full p-0.5" />
+                          <span>সহজ বুকিং নিশ্চিতকরণ (অগ্রিম {addons.partial_payment_amount}৳):</span>
+                        </div>
+                        <p className="text-[11px] text-slate-600 leading-normal">{addons.partial_payment_instructions}</p>
+                        
+                        <div className="grid grid-cols-2 gap-2 text-[11px] font-sans">
+                          {addons.partial_payment_bkash && (
+                            <div className="p-2 bg-white border border-pink-100 rounded-xl">
+                              <span className="text-[8.5px] text-pink-600 block font-bold">bKash (Send Money)</span>
+                              <strong className="text-slate-800 font-mono text-[11.5px]">{addons.partial_payment_bkash}</strong>
+                            </div>
+                          )}
+                          {addons.partial_payment_nagad && (
+                            <div className="p-2 bg-white border border-orange-100 rounded-xl">
+                              <span className="text-[8.5px] text-orange-600 block font-bold">Nagad (Send Money)</span>
+                              <strong className="text-slate-800 font-mono text-[11.5px]">{addons.partial_payment_nagad}</strong>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2.5 pt-2 border-t border-slate-200/50">
+                          <div>
+                            <label className="block text-[9px] font-black text-slate-550 mb-0.5 uppercase">আপনার সেন্ডিং নম্বর</label>
+                            <input 
+                              type="text" 
+                              placeholder="01XXXXXXXXX"
+                              value={partialPaymentSender}
+                              onChange={(e) => setPartialPaymentSender(e.target.value)}
+                              required
+                              className="w-full px-2.5 py-1.5 bg-white border border-slate-205 rounded-xl text-xs" 
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[9px] font-black text-slate-550 mb-0.5 uppercase">ট্রানজেকশন আইডি (TxnID)</label>
+                            <input 
+                              type="text" 
+                              placeholder="যেমন: A9B4F83X"
+                              value={partialPaymentTxnId}
+                              onChange={(e) => setPartialPaymentTxnId(e.target.value)}
+                              required
+                              className="w-full px-2.5 py-1.5 bg-white border border-slate-205 rounded-xl text-xs uppercase font-mono" 
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Summary bill calculations for products cart */}
@@ -583,6 +735,12 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
                       <span>কুরিয়ার চার্জ ({district === 'ঢাকা' ? 'ঢাকা সিটি' : 'ঢাকার বাহিরে'}):</span>
                       <span className="font-mono font-bold text-slate-800">+{deliveryFee} TK</span>
                     </div>
+                    {couponDiscountPercent > 0 && (
+                      <div className="flex justify-between text-emerald-600 font-bold">
+                        <span>বিশেষ কুপন ডিসকাউন্ট ({couponCodeApplied}):</span>
+                        <span className="font-mono">-{discountAmount} TK</span>
+                      </div>
+                    )}
 
                     {/* Trust Badge - 3 Seasons Guarantee */}
                     <div className="my-1.5 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2.5">
@@ -618,6 +776,63 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
               )}
             </div>
 
+          </div>
+        )}
+
+        {showExitModal && addons && addons.exit_intent_enabled && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-fade-in font-sans">
+            <div className="bg-slate-900 border border-slate-800 text-white rounded-3xl p-6 md:p-8 max-w-md w-full text-center relative shadow-2xl space-y-5 animate-scale-up">
+              <button 
+                type="button"
+                onClick={() => setShowExitModal(false)}
+                className="absolute top-4 right-4 text-slate-400 hover:text-white transition duration-150 text-base font-bold w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center cursor-pointer"
+              >
+                ✕
+              </button>
+              
+              <div className="w-14 h-14 bg-amber-500/10 text-amber-400 mx-auto rounded-full flex items-center justify-center text-3xl">
+                💥
+              </div>
+
+              <div className="space-y-2">
+                <h3 className="text-lg md:text-xl font-black text-amber-400 leading-tight">
+                  {addons.exit_intent_title}
+                </h3>
+                <p className="text-xs text-slate-350 leading-relaxed font-sans">
+                  {addons.exit_intent_subtitle}
+                </p>
+              </div>
+
+              <div className="p-4 bg-red-950/30 border border-dashed border-red-500/30 rounded-2xl flex items-center justify-between">
+                <div className="text-left font-sans">
+                  <span className="text-[10px] text-slate-400 block font-bold">কোপন কোড:</span>
+                  <strong className="text-base text-yellow-400 tracking-wider font-mono">{addons.exit_intent_coupon}</strong>
+                </div>
+                <div className="bg-orange-600 text-white font-extrabold text-xs px-3.5 py-1.5 rounded-xl uppercase tracking-wider font-sans">
+                  {addons.exit_intent_discount}% ডিসকাউন্ট
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setCouponDiscountPercent(addons.exit_intent_discount);
+                  setCouponCodeApplied(addons.exit_intent_coupon);
+                  setShowExitModal(false);
+                }}
+                className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-black font-black text-xs rounded-xl transition duration-150 shadow-lg cursor-pointer font-sans"
+              >
+                ডিসকাউন্ট ও কুপন সক্রিয় করুন
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => setShowExitModal(false)}
+                className="text-[10px] text-slate-500 hover:text-slate-400 block mx-auto underline mt-1 font-sans"
+              >
+                না, আমি পুরো দামেই কিনতে চাই
+              </button>
+            </div>
           </div>
         )}
 

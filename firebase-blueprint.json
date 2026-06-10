@@ -70,9 +70,93 @@
         "createdAt": { "type": "string", "description": "Datetime marker string" }
       },
       "required": ["id", "url", "title", "tag", "orderIndex"]
+    },
+    "IntegrationsConfig": {
+      "title": "Integrations Config",
+      "description": "Third-party pixel & tracking integrations and courier configurations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Global unique ID, usually 'integrations'" },
+        "fb_pixel_id": { "type": "string", "description": "Meta Facebook Pixel ID" },
+        "fb_pixel_enabled": { "type": "boolean", "description": "Is Meta Pixel enabled?" },
+        "fb_capi_enabled": { "type": "boolean", "description": "Is Conversion API enabled?" },
+        "fb_advanced_matching": { "type": "boolean", "description": "Is Advanced Matching enabled?" },
+        "fb_capi_token": { "type": "string", "description": "Conversion API access token" },
+        "fb_test_event_enabled": { "type": "boolean", "description": "Is test event mode enabled?" },
+        "fb_test_event_code": { "type": "string", "description": "Test event code format string" },
+        "ga_track_id": { "type": "string", "description": "Google Analytics tracking ID" },
+        "raincoat_header_snippets": { "type": "string", "description": "Header injection snippets HTML" },
+        "raincoat_footer_snippets": { "type": "string", "description": "Footer injection snippets HTML" },
+        "raincoat_courier_inside": { "type": "number", "description": "Courier charge inside Dhaka" },
+        "raincoat_courier_sub": { "type": "number", "description": "Courier charge sub Dhaka" },
+        "raincoat_courier_outside": { "type": "number", "description": "Courier charge outside Dhaka" }
+      },
+      "required": ["id"]
+    },
+    "ActiveSession": {
+      "title": "Active Session",
+      "description": "Real-time live visitor activity session tracking details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Global unique session ID" },
+        "city": { "type": "string", "description": "Approximate city of the visitor" },
+        "country": { "type": "string", "description": "Approximate country of the visitor" },
+        "countryCode": { "type": "string", "description": "Two letter country code" },
+        "page": { "type": "string", "description": "Active page path or hash code" },
+        "browser": { "type": "string", "description": "Visitor web browser type" },
+        "os": { "type": "string", "description": "Visitor device operating system" },
+        "createdAt": { "type": "string", "description": "Time the session started" },
+        "updatedAt": { "type": "string", "description": "Last heartbeat update timestamp" }
+      },
+      "required": ["id", "createdAt", "updatedAt"]
+    },
+    "Product": {
+      "title": "Shop Product",
+      "description": "A product available in the shop",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Global unique ID of the product" },
+        "title": { "type": "string", "description": "Product title name" },
+        "slug": { "type": "string", "description": "Product slug for lookup" },
+        "description": { "type": "string", "description": "Full product description text" },
+        "price": { "type": "number", "description": "Price in TK" },
+        "image": { "type": "string", "description": "Main image (url or base64)" },
+        "category": { "type": "string", "description": "Category name" },
+        "sizes": { "type": "array", "items": { "type": "string" }, "description": "List of available sizes" },
+        "colors": { "type": "array", "items": { "type": "string" }, "description": "List of available colors" },
+        "images": { "type": "array", "items": { "type": "string" }, "description": "Additional gallery images (url or base64)" },
+        "addDeliveryCharge": { "type": "boolean", "description": "Should courier charges apply?" }
+      },
+      "required": ["id", "title", "description", "price", "image", "category", "sizes", "colors"]
+    },
+    "Review": {
+      "title": "Customer Review",
+      "description": "Customer comments and ratings with rating counts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique Review ID" },
+        "customerName": { "type": "string", "description": "Name of reviewing buyer" },
+        "phoneNumberMasked": { "type": "string", "description": "Reviewer masked phone number" },
+        "verifiedPurchase": { "type": "boolean", "description": "Whether purchase is confirmed and verified" },
+        "avatarUrl": { "type": "string", "description": "Reviewer avatar profile image" },
+        "reviewDate": { "type": "string", "description": "Date statement string" },
+        "rating": { "type": "number", "description": "Star rating number" },
+        "title": { "type": "string", "description": "Title statement header" },
+        "badge": { "type": "string", "description": "Subtext or award tag line" },
+        "helpfulCount": { "type": "number", "description": "Upvote user metric count" }
+      },
+      "required": ["id", "customerName", "phoneNumberMasked", "verifiedPurchase", "rating"]
     }
   },
   "firestore": {
+    "reviews/{reviewId}": {
+      "schema": "Review",
+      "description": "Store authentic customer review entries and photo testimonials"
+    },
+    "products/{productId}": {
+      "schema": "Product",
+      "description": "Products available in the shop collection"
+    },
     "orders/{orderId}": {
       "schema": "Order",
       "description": "Raincoat Orders Collection"
@@ -88,6 +172,14 @@
     "media/{mediaId}": {
       "schema": "Media",
       "description": "Customized user slideshow carousel media items collection"
+    },
+    "settings/{settingId}": {
+      "schema": "IntegrationsConfig",
+      "description": "Global app settings and integrations configurations"
+    },
+    "activeSessions/{sessionId}": {
+      "schema": "ActiveSession",
+      "description": "Real-time active web visitor tracking sessions"
     }
   }
 }

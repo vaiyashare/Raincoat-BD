@@ -9,6 +9,7 @@ import {
   saveMediaToFirestore, 
   deleteMediaFromFirestore 
 } from '../../lib/firebase';
+import { compressImage } from '../../lib/imageCompressor';
 
 // Static fallbacks as imported standard image pointers
 import navyRaincoatImg from '../../assets/images/navy_raincoat_1780660053988.png';
@@ -422,19 +423,21 @@ export default function MediaAdmin({ userRole }: MediaAdminProps) {
       setErrorMsg('শুধুমাত্র JPG, PNG অথবা WEBP ইমেজ আপলোড করা যাবে!');
       return;
     }
-    
-    // File size limit config (1.5MB recommended for Firestore raw documents storage)
-    if (file.size > 1.5 * 1024 * 1024) {
-      setErrorMsg('ইমেজের সাইজ অতিরিক্ত বড় (১.৫ মেগাবাইটের নীচে ইমেজ ড্রাই করুন)!');
-      return;
-    }
 
     const reader = new FileReader();
-    reader.onload = (uploadEvent) => {
+    reader.onload = async (uploadEvent) => {
       if (uploadEvent.target?.result) {
-        setImageUrl(uploadEvent.target.result as string);
-        setSuccessMsg('ইমেজ ফাইল সফলভাবে রিড করা হয়েছে!');
-        setTimeout(() => setSuccessMsg(''), 2000);
+        const rawResult = uploadEvent.target.result as string;
+        try {
+          const compressed = await compressImage(rawResult, 1000, 0.72);
+          setImageUrl(compressed);
+          setSuccessMsg('ইমেজ ফাইল সফলভাবে আপলোড ও কমপ্রেস করা হয়েছে!');
+          setTimeout(() => setSuccessMsg(''), 2000);
+        } catch (e) {
+          setImageUrl(rawResult);
+          setSuccessMsg('ইমেজ ফাইল সফলভাবে প্রসেস করা হয়েছে!');
+          setTimeout(() => setSuccessMsg(''), 2000);
+        }
       }
     };
     reader.onerror = () => {
@@ -470,18 +473,21 @@ export default function MediaAdmin({ userRole }: MediaAdminProps) {
       setErrorMsg('শুধুমাত্র JPG, PNG অথবা WEBP ইমেজ আপলোড করা যাবে!');
       return;
     }
-    
-    if (file.size > 1.5 * 1024 * 1024) {
-      setErrorMsg('ব্যাকগ্রাউন্ড ইমেজের সাইজ অতিরিক্ত বড় (১.৫ মেগাবাইটের নীচে ইমেজ ট্রাই করুন)!');
-      return;
-    }
 
     const reader = new FileReader();
-    reader.onload = (uploadEvent) => {
+    reader.onload = async (uploadEvent) => {
       if (uploadEvent.target?.result) {
-        setBgUrl(uploadEvent.target.result as string);
-        setSuccessMsg('ব্যাকগ্রাউন্ড ইমেজ ফাইল সফলভাবে আপলোড করা হয়েছে!');
-        setTimeout(() => setSuccessMsg(''), 2000);
+        const rawResult = uploadEvent.target.result as string;
+        try {
+          const compressed = await compressImage(rawResult, 1000, 0.72);
+          setBgUrl(compressed);
+          setSuccessMsg('ব্যাকগ্রাউন্ড ইমেজ সফলভাবে আপলোড ও কমপ্রেস করা হয়েছে!');
+          setTimeout(() => setSuccessMsg(''), 2000);
+        } catch (e) {
+          setBgUrl(rawResult);
+          setSuccessMsg('ব্যাকগ্রাউন্ড ইমেজ ফাইল সফলভাবে আপলোড করা হয়েছে!');
+          setTimeout(() => setSuccessMsg(''), 2000);
+        }
       }
     };
     reader.onerror = () => {
