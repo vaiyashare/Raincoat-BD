@@ -25,6 +25,7 @@ import {
   updateOrderInFirestore,
   addOrderToFirestore,
   sendFirebasePasswordReset,
+  getAdvancedAddonsSettingsFromFirestore,
   db
 } from '../lib/firebase';
 import { collection, query, onSnapshot } from 'firebase/firestore';
@@ -55,21 +56,87 @@ const getEnglishDistrictName = (order: any): string => {
 
   const districtsMap: { [key: string]: string } = {
     'dhaka': 'Dhaka',
-    'chittagong': 'Chittagong',
-    'sylhet': 'Sylhet',
-    'khulna': 'Khulna',
-    'rajshahi': 'Rajshahi',
-    'barisal': 'Barisal',
-    'rangpur': 'Rangpur',
-    'mymensingh': 'Mymensingh',
-    'comilla': 'Comilla',
-    'gazipur': 'Gazipur',
+    'munshiganj': 'Munshiganj',
+    'munshigonj': 'Munshiganj',
+    'narsingdi': 'Narsingdi',
     'narayanganj': 'Narayanganj',
+    'narayangonj': 'Narayanganj',
+    'manikganj': 'Manikganj',
+    'manikgonj': 'Manikganj',
+    'mymensingh': 'Mymensingh',
+    'gazipur': 'Gazipur',
+    'kishoreganj': 'Kishoreganj',
+    'kishoregonj': 'Kishoreganj',
+    'jamalpur': 'Jamalpur',
+    'sherpur': 'Sherpur',
+    'netrokona': 'Netrokona',
+    'tangail': 'Tangail',
+    'faridpur': 'Faridpur',
+    'gopalganj': 'Gopalganj',
+    'gopalgonj': 'Gopalganj',
+    'shariatpur': 'Shariatpur',
+    'madaripur': 'Madaripur',
+    'rajbari': 'Rajbari',
+    'chattogram': 'Chattogram',
+    'chittagong': 'Chattogram',
+    'cox': 'Cox’s Bazar',
+    'cox’s': 'Cox’s Bazar',
+    'cox\'s': 'Cox’s Bazar',
+    'rangamati': 'Rangamati',
+    'bandarban': 'Bandarban',
+    'khagrachhari': 'Khagrachhari',
+    'khagrachari': 'Khagrachhari',
+    'feni': 'Feni',
+    'brahmanbaria': 'Brahmanbaria',
+    'chandpur': 'Chandpur',
+    'rajshahi': 'Rajshahi',
+    'natore': 'Natore',
+    'naogaon': 'Naogaon',
+    'chapainawabganj': 'Chapainawabganj',
+    'chapai': 'Chapainawabganj',
     'bogura': 'Bogura',
     'bogra': 'Bogura',
-    'jessore': 'Jessore',
-    'feni': 'Feni',
-    'noakhali': 'Noakhali'
+    'pabna': 'Pabna',
+    'sirajganj': 'Sirajganj',
+    'sirajgonj': 'Sirajganj',
+    'joypurhat': 'Joypurhat',
+    'rangpur': 'Rangpur',
+    'lalmonirhat': 'Lalmonirhat',
+    'kurigram': 'Kurigram',
+    'nilphamari': 'Nilphamari',
+    'gaibandha': 'Gaibandha',
+    'panchagarh': 'Panchagarh',
+    'dinajpur': 'Dinajpur',
+    'khulna': 'Khulna',
+    'thakurgaon': 'Thakurgaon',
+    'satkhira': 'Satkhira',
+    'bagerhat': 'Bagerhat',
+    'jashore': 'Jashore',
+    'jessore': 'Jashore',
+    'jhenaidah': 'Jhenaidah',
+    'narail': 'Narail',
+    'magura': 'Magura',
+    'kushtia': 'Kushtia',
+    'chuadanga': 'Chuadanga',
+    'meherpur': 'Meherpur',
+    'barishal': 'Barishal',
+    'barisal': 'Barishal',
+    'jhalokati': 'Jhalokati',
+    'jhalokathi': 'Jhalokati',
+    'pirojpur': 'Pirojpur',
+    'patuakhali': 'Patuakhali',
+    'barguna': 'Barguna',
+    'bhola': 'Bhola',
+    'sunamganj': 'Sunamganj',
+    'sunamgonj': 'Sunamganj',
+    'sylhet': 'Sylhet',
+    'habiganj': 'Habiganj',
+    'habigonj': 'Habiganj',
+    'moulvibazar': 'Moulvibazar',
+    'noakhali': 'Noakhali',
+    'lakshmipur': 'Lakshmipur',
+    'cumilla': 'Cumilla',
+    'comilla': 'Cumilla'
   };
 
   for (const [key, val] of Object.entries(districtsMap)) {
@@ -80,20 +147,98 @@ const getEnglishDistrictName = (order: any): string => {
 
   const bengaliDistrictsMap: { [key: string]: string } = {
     'ঢাকা': 'Dhaka',
-    'চট্টগ্রাম': 'Chittagong',
-    'সিলেট': 'Sylhet',
-    'খুলনা': 'Khulna',
-    'রাজশাহী': 'Rajshahi',
-    'বরিশাল': 'Barisal',
-    'রংপুর': 'Rangpur',
-    'ময়মনসিংহ': 'Mymensingh',
-    'কুমিল্লা': 'Comilla',
-    'গাজীপুর': 'Gazipur',
+    'মুन्সীগঞ্জ': 'Munshiganj',
+    'মুন্সীগঞ্জ': 'Munshiganj',
+    'মুন্সিগঞ্জ': 'Munshiganj',
+    'নরসিংদী': 'Narsingdi',
+    'নরসিংদি': 'Narsingdi',
+    'নারায়ণগঞ্জ': 'Narayanganj',
     'নারায়ণগঞ্জ': 'Narayanganj',
-    'বগুড়া': 'Bogura',
-    'যশোর': 'Jessore',
+    'মানিকগঞ্জ': 'Manikganj',
+    'ময়মনসিংহ': 'Mymensingh',
+    'ময়মনসিংহ': 'Mymensingh',
+    'গাজীপুর': 'Gazipur',
+    'কিশোরগঞ্জ': 'Kishoreganj',
+    'জামালপুর': 'Jamalpur',
+    'শেরপুর': 'Sherpur',
+    'নেত্রকোণা': 'Netrokona',
+    'নেত্রকোনা': 'Netrokona',
+    'টাঙ্গাইল': 'Tangail',
+    'ফরিদপুর': 'Faridpur',
+    'গোপালগঞ্জ': 'Gopalganj',
+    'শরীয়তপুর': 'Shariatpur',
+    'শরীয়তপুর': 'Shariatpur',
+    'মাদারীপুর': 'Madaripur',
+    'রাজবাড়ি': 'Rajbari',
+    'রাজবাড়ী': 'Rajbari',
+    'রাজবাড়ী': 'Rajbari',
+    'চট্টগ্রাম': 'Chattogram',
+    'চট্রগ্রাম': 'Chattogram',
+    'চিটাগাং': 'Chattogram',
+    'কক্সবাজার': 'Cox’s Bazar',
+    'কক্স বাজার': 'Cox’s Bazar',
+    'রাঙামাটি': 'Rangamati',
+    'রাঙ্গামাটি': 'Rangamati',
+    'বান্দরবান': 'Bandarban',
+    'খাগড়াছড়ি': 'Khagrachhari',
+    'খাগড়াছড়ি': 'Khagrachhari',
     'ফেনী': 'Feni',
-    'নোয়াখালী': 'Noakhali'
+    'ব্রাহ্মণবাড়িয়া': 'Brahmanbaria',
+    'ব্রাহ্মণবাড়িয়া': 'Brahmanbaria',
+    'চাঁদপুর': 'Chandpur',
+    'রাজশাহী': 'Rajshahi',
+    'নাটোর': 'Natore',
+    'নওগাঁ': 'Naogaon',
+    'নওগা': 'Naogaon',
+    'চাঁপাইনওয়াবগঞ্জ': 'Chapainawabganj',
+    'চাঁপাইনবাবগঞ্জ': 'Chapainawabganj',
+    'চাপাইনবাবগঞ্জ': 'Chapainawabganj',
+    'বগুড়া': 'Bogura',
+    'বগুড়া': 'Bogura',
+    'পাবনা': 'Pabna',
+    'সিরাজগঞ্জ': 'Sirajganj',
+    'জয়পুরহাট': 'Joypurhat',
+    'জয়পুরহাট': 'Joypurhat',
+    'রংপুর': 'Rangpur',
+    'লালমনিরহাট': 'Lalmonirhat',
+    'কুড়িগ্রাম': 'Kurigram',
+    'কুড়িগ্রাম': 'Kurigram',
+    'নীলফামারী': 'Nilphamari',
+    'গাইবান্ধা': 'Gaibandha',
+    'পঞ্চগড়': 'Panchagarh',
+    'পঞ্চগড়': 'Panchagarh',
+    'দিনাজপুর': 'Dinajpur',
+    'খুলনা': 'Khulna',
+    'ঠাকুরগাঁও': 'Thakurgaon',
+    'ঠাকুরগা': 'Thakurgaon',
+    'সাতক্ষীরা': 'Satkhira',
+    'বাগেরহাট': 'Bagerhat',
+    'যশোর': 'Jashore',
+    'ঝিনাইদহ': 'Jhenaidah',
+    'নড়াইল': 'Narail',
+    'নড়াইল': 'Narail',
+    'মাগুরা': 'Magura',
+    'কুষ্টিয়া': 'Kushtia',
+    'কুষ্টিয়া': 'Kushtia',
+    'চুয়াডাঙ্গা': 'Chuadanga',
+    'চুয়াডাঙ্গা': 'Chuadanga',
+    'মেহেরপুর': 'Meherpur',
+    'বরিশাল': 'Barishal',
+    'ঝালকাঠি': 'Jhalokati',
+    'পিরোজপুর': 'Pirojpur',
+    'পটুয়াখালী': 'Patuakhali',
+    'পটুয়াখালী': 'Patuakhali',
+    'বরগুনা': 'Barguna',
+    'ভোলা': 'Bhola',
+    'সুনামগঞ্জ': 'Sunamganj',
+    'সিলেট': 'Sylhet',
+    'হবিগঞ্জ': 'Habiganj',
+    'মৌলভীবাজার': 'Moulvibazar',
+    'নোয়াখালী': 'Noakhali',
+    'নোয়াখালী': 'Noakhali',
+    'লক্ষ্মীপুর': 'Lakshmipur',
+    'লক্ষীপুর': 'Lakshmipur',
+    'কুমিল্লা': 'Cumilla'
   };
 
   for (const [key, val] of Object.entries(bengaliDistrictsMap)) {
@@ -104,6 +249,73 @@ const getEnglishDistrictName = (order: any): string => {
 
   return 'Other';
 };
+
+const ALL_64_DISTRICTS = [
+  { en: "Bagerhat", bn: "বাগেরহাট" },
+  { en: "Bandarban", bn: "বান্দরবান" },
+  { en: "Barguna", bn: "বরগুনা" },
+  { en: "Barishal", bn: "বরিশাল" },
+  { en: "Bhola", bn: "ভোলা" },
+  { en: "Bogura", bn: "বগুড়া" },
+  { en: "Brahmanbaria", bn: "ব্রাহ্মণবাড়িয়া" },
+  { en: "Chandpur", bn: "চাঁদপুর" },
+  { en: "Chapainawabganj", bn: "চাঁপাইনওয়াবগঞ্জ" },
+  { en: "Chattogram", bn: "চট্টগ্রাম" },
+  { en: "Chuadanga", bn: "চুয়াডাঙ্গা" },
+  { en: "Cox’s Bazar", bn: "কক্সবাজার" },
+  { en: "Cumilla", bn: "কুমিল্লা" },
+  { en: "Dhaka", bn: "ঢাকা" },
+  { en: "Dinajpur", bn: "দিনাজপুর" },
+  { en: "Faridpur", bn: "ফরিদপুর" },
+  { en: "Feni", bn: "ফেনী" },
+  { en: "Gaibandha", bn: "গাইবান্ধা" },
+  { en: "Gazipur", bn: "গাজীপুর" },
+  { en: "Gopalganj", bn: "গোপালগঞ্জ" },
+  { en: "Habiganj", bn: "হবিগঞ্জ" },
+  { en: "Jamalpur", bn: "জামালপুর" },
+  { en: "Jashore", bn: "যশোর" },
+  { en: "Jhalokati", bn: "ঝালকাঠি" },
+  { en: "Jhenaidah", bn: "ঝিনাইদহ" },
+  { en: "Joypurhat", bn: "জয়পুরহাট" },
+  { en: "Khagrachhari", bn: "খাগড়াছড়ি" },
+  { en: "Khulna", bn: "খুলনা" },
+  { en: "Kishoreganj", bn: "কিশোরগঞ্জ" },
+  { en: "Kurigram", bn: "কুড়িগ্রাম" },
+  { en: "Kushtia", bn: "কুষ্টিয়া" },
+  { en: "Lakshmipur", bn: "লক্ষ্মীপুর" },
+  { en: "Lalmonirhat", bn: "লালমনিরহাট" },
+  { en: "Madaripur", bn: "মাদারীপুর" },
+  { en: "Magura", bn: "মাগুরা" },
+  { en: "Manikganj", bn: "মানিকগঞ্জ" },
+  { en: "Meherpur", bn: "মেহেরপুর" },
+  { en: "Moulvibazar", bn: "মৌলভীবাজার" },
+  { en: "Munshiganj", bn: "মুন্সীগঞ্জ" },
+  { en: "Mymensingh", bn: "ময়মনসিংহ" },
+  { en: "Naogaon", bn: "নওগাঁ" },
+  { en: "Narail", bn: "নড়াইল" },
+  { en: "Narayanganj", bn: "নারায়ণগঞ্জ" },
+  { en: "Narsingdi", bn: "নরসিংদী" },
+  { en: "Natore", bn: "নাটোর" },
+  { en: "Netrokona", bn: "নেত্রকোণা" },
+  { en: "Nilphamari", bn: "নীলফামারী" },
+  { en: "Noakhali", bn: "নোয়াখালী" },
+  { en: "Pabna", bn: "পাবনা" },
+  { en: "Panchagarh", bn: "পঞ্চগড়" },
+  { en: "Patuakhali", bn: "পটুয়াখালী" },
+  { en: "Pirojpur", bn: "পিরোজপুর" },
+  { en: "Rajbari", bn: "রাজবাড়ি" },
+  { en: "Rajshahi", bn: "রাজশাহী" },
+  { en: "Rangamati", bn: "রাঙামাটি" },
+  { en: "Rangpur", bn: "রংপুর" },
+  { en: "Satkhira", bn: "সাতক্ষীরা" },
+  { en: "Shariatpur", bn: "শরীয়তপুর" },
+  { en: "Sherpur", bn: "শেরপুর" },
+  { en: "Sirajganj", bn: "সিরাজগঞ্জ" },
+  { en: "Sunamganj", bn: "সুনামগঞ্জ" },
+  { en: "Sylhet", bn: "সিলেট" },
+  { en: "Tangail", bn: "টাঙ্গাইল" },
+  { en: "Thakurgaon", bn: "ঠাকুরগাঁও" }
+];
 
 interface AdminPanelProps {
   onClose: () => void;
@@ -128,7 +340,96 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   const [customEndDate, setCustomEndDate] = useState<string>('');
   const [copiedMessage, setCopiedMessage] = useState('');
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
+  const [showPrintLabelModal, setShowPrintLabelModal] = useState(false);
   
+  // Steadfast Sync Status States
+  const [courierSettings, setCourierSettings] = useState<any>(null);
+  const [steadfastStatuses, setSteadfastStatuses] = useState<{[orderId: string]: { status: string; loading: boolean; error?: string }}>({});
+
+  // Load courier settings on mount
+  useEffect(() => {
+    const loadCourierSettings = async () => {
+      try {
+        const saved = await getAdvancedAddonsSettingsFromFirestore();
+        if (saved) {
+          setCourierSettings(saved);
+        }
+      } catch (err) {
+        console.error("Error loading courier settings:", err);
+      }
+    };
+    loadCourierSettings();
+  }, []);
+
+  const fetchSteadfastStatus = async (orderId: string) => {
+    const apiKey = courierSettings?.steadfast_api_key || 'jtoxickzs13bhwpmmyjk7k9lnxkslet2';
+    const secretKey = courierSettings?.steadfast_secret || '9gsts1sioi6pwcaxn71sczml';
+
+    setSteadfastStatuses(prev => ({
+      ...prev,
+      [orderId]: { status: prev[orderId]?.status || '', loading: true }
+    }));
+
+    try {
+      const response = await fetch(`/api/steadfast/status/invoice/${orderId}`, {
+        headers: {
+          'api-key': apiKey,
+          'secret-key': secretKey
+        }
+      });
+      const data = await response.json();
+      if (data && data.status === 200) {
+        setSteadfastStatuses(prev => ({
+          ...prev,
+          [orderId]: { status: data.delivery_status || 'unknown', loading: false }
+        }));
+      } else {
+        setSteadfastStatuses(prev => ({
+          ...prev,
+          [orderId]: { status: 'not_found', loading: false, error: data.message || 'Status not 200' }
+        }));
+      }
+    } catch (err: any) {
+      console.error("Error fetching Steadfast status:", err);
+      setSteadfastStatuses(prev => ({
+        ...prev,
+        [orderId]: { status: 'error', loading: false, error: err.message }
+      }));
+    }
+  };
+
+  const getSteadfastStatusLabelAndStyle = (status: string) => {
+    switch (status) {
+      case 'pending': 
+        return { text: 'অপেক্ষমাণ (Pending)', style: 'bg-amber-100 text-amber-800 border-amber-300 border font-bold' };
+      case 'delivered_approval_pending':
+        return { text: 'Delivered (Approval Pending)', style: 'bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold' };
+      case 'partial_delivered_approval_pending':
+        return { text: 'Partial Shipped (Approval Pending)', style: 'bg-yellow-100 text-yellow-800 border border-yellow-300 font-bold' };
+      case 'cancelled_approval_pending':
+        return { text: 'Cancelled (Approval Pending)', style: 'bg-rose-100 text-rose-800 border border-rose-300 font-bold' };
+      case 'unknown_approval_pending':
+        return { text: 'Unknown (Approval Pending)', style: 'bg-slate-100 text-slate-700 border border-slate-300' };
+      case 'delivered':
+        return { text: 'ডেলিভারড (Delivered)', style: 'bg-emerald-605 bg-emerald-600 text-white font-extrabold border border-emerald-700 shadow-xs' };
+      case 'partial_delivered':
+        return { text: 'আংশিক (Partial)', style: 'bg-teal-605 bg-teal-600 text-white font-extrabold border border-teal-700 shadow-xs' };
+      case 'cancelled':
+        return { text: 'বাতিলকৃত (Cancelled)', style: 'bg-rose-605 bg-rose-600 text-white font-extrabold border border-rose-700 shadow-xs' };
+      case 'hold':
+        return { text: 'হোল্ড (Hold)', style: 'bg-indigo-100 text-indigo-850 border border-indigo-250 font-bold' };
+      case 'in_review':
+        return { text: 'রিভিউাধীন (In Review)', style: 'bg-blue-100 text-blue-800 border border-blue-200 font-bold animate-pulse' };
+      case 'not_found':
+        return { text: 'বুকিং করা হয়নি (No Booking)', style: 'bg-slate-100 text-slate-500 border border-slate-200 font-medium hover:bg-slate-200' };
+      case 'error':
+        return { text: 'ত্রুটি (Error)', style: 'bg-red-50 text-red-650 border border-red-200 font-semibold' };
+      case 'unknown':
+      default:
+        return { text: status ? `অজানা (${status})` : 'যাচাই করুন', style: 'bg-slate-100 text-slate-600 border border-slate-200 font-bold' };
+    }
+  };
+
   // Anti-fraud local/synced blacklist state
   const [blacklist, setBlacklist] = useState<any[]>(() => {
     try {
@@ -1145,7 +1446,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       alert('অনুগ্রহ করে অন্তত ১টি অর্ডার সিলেক্ট করুন!');
       return;
     }
-    window.print();
+    setShowPrintLabelModal(true);
   };
 
   const getProductNameFirstWord = (order: RaincoatOrder) => {
@@ -1298,6 +1599,18 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
     return timeB - timeA;
   });
+
+  // Automatically fetch Steadfast delivery status for top 15 visible orders
+  useEffect(() => {
+    if (filteredOrders.length > 0) {
+      const topVisibleIds = filteredOrders.slice(0, 15).map(o => o.id);
+      topVisibleIds.forEach(orderId => {
+        if (!steadfastStatuses[orderId]) {
+          fetchSteadfastStatus(orderId);
+        }
+      });
+    }
+  }, [filteredOrders.slice(0, 15).map(o => o.id).join(',')]);
 
   const filteredIncompleteOrders = incompleteOrders.filter(o => {
     const matchSearch = 
@@ -2204,26 +2517,16 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
 
               {/* District filtering */}
               <select
-                className="w-full sm:w-auto px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-600 focus:outline-none font-sans"
+                className="w-full sm:w-auto px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-600 focus:outline-none font-sans cursor-pointer"
                 value={filterDistrict}
                 onChange={(e) => setFilterDistrict(e.target.value)}
               >
                 <option value="All">সকল জেলা (All Districts)</option>
-                <option value="Dhaka">Dhaka (ঢাকা)</option>
-                <option value="Chittagong">Chittagong (চট্টগ্রাম)</option>
-                <option value="Sylhet">Sylhet (সিলেট)</option>
-                <option value="Khulna">Khulna (খুলনা)</option>
-                <option value="Rajshahi">Rajshahi (রাজশাহী)</option>
-                <option value="Barisal">Barisal (বরিশাল)</option>
-                <option value="Rangpur">Rangpur (রংপুর)</option>
-                <option value="Mymensingh">Mymensingh (ময়মনসিংহ)</option>
-                <option value="Comilla">Comilla (কুমিল্লা)</option>
-                <option value="Gazipur">Gazipur (গাজীপুর)</option>
-                <option value="Narayanganj">Narayanganj (নারায়ণগঞ্জ)</option>
-                <option value="Bogura">Bogura (বগুড়া)</option>
-                <option value="Jessore">Jessore (যশোর)</option>
-                <option value="Feni">Feni (ফেনী)</option>
-                <option value="Noakhali">Noakhali (নোয়াখালী)</option>
+                {ALL_64_DISTRICTS.map((dist) => (
+                  <option key={dist.en} value={dist.en}>
+                    {dist.en} ({dist.bn})
+                  </option>
+                ))}
                 <option value="Other">Other (অন্যান্য)</option>
               </select>
 
@@ -2309,6 +2612,13 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
               
               {activeTab === 'completed' ? (
                 <div className="flex gap-2 shrink-0">
+                  <button
+                    onClick={handleBulkPrintLabels}
+                    className="py-2 px-3 bg-violet-600 hover:bg-violet-700 text-white rounded-lg transition flex items-center justify-center gap-1.5 text-xs font-bold shadow-xs cursor-pointer"
+                    title="নির্বাচিত বায়ারদের জন্য স্টিকার লেবেল প্রিন্ট করুন (35mm x 35mm)"
+                  >
+                    <Printer className="h-3.5 w-3.5" /> লেবেল প্রিন্ট করুন
+                  </button>
                   <button
                     onClick={handleCopyCSV}
                     className="py-2 px-3 bg-indigo-650 hover:bg-indigo-750 text-white rounded-lg transition flex items-center justify-center gap-1.5 text-xs font-bold shadow-xs cursor-pointer"
@@ -2414,21 +2724,24 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
               <table className="w-full text-xs text-left text-slate-500">
                 <thead className="bg-slate-100 text-slate-700 uppercase font-mono text-[10px] tracking-wider sticky top-0 z-10 border-b border-slate-200">
                   <tr>
-                    <th scope="col" className="px-3 py-3 text-center w-10">
-                      <input 
-                        type="checkbox"
-                        className="rounded border-slate-300 text-indigo-600 focus:ring-0 cursor-pointer h-3.5 w-3.5"
-                        checked={filteredOrders.length > 0 && filteredOrders.every(o => selectedOrderIds.includes(o.id))}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            const newSelected = Array.from(new Set([...selectedOrderIds, ...filteredOrders.map(o => o.id)]));
-                            setSelectedOrderIds(newSelected);
-                          } else {
-                            const filteredIds = filteredOrders.map(o => o.id);
-                            setSelectedOrderIds(selectedOrderIds.filter(id => !filteredIds.includes(id)));
-                          }
-                        }}
-                      />
+                    <th scope="col" className="px-3 py-3 text-center min-w-[75px] font-sans">
+                      <div className="flex flex-col items-center justify-center gap-1">
+                        <span className="text-[9px] font-sans font-bold tracking-normal leading-none uppercase">Select</span>
+                        <input 
+                          type="checkbox"
+                          className="rounded border-slate-300 text-indigo-600 focus:ring-0 cursor-pointer h-3.5 w-3.5"
+                          checked={filteredOrders.length > 0 && filteredOrders.every(o => selectedOrderIds.includes(o.id))}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              const newSelected = Array.from(new Set([...selectedOrderIds, ...filteredOrders.map(o => o.id)]));
+                              setSelectedOrderIds(newSelected);
+                            } else {
+                              const filteredIds = filteredOrders.map(o => o.id);
+                              setSelectedOrderIds(selectedOrderIds.filter(id => !filteredIds.includes(id)));
+                            }
+                          }}
+                        />
+                      </div>
                     </th>
                     <th scope="col" className="px-4 py-3">গ্রাহক ও ফোন</th>
                     <th scope="col" className="px-4 py-3">ঠিকানা</th>
@@ -2437,13 +2750,14 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                     <th scope="col" className="px-3 py-3 text-right">মূল্য (Price)</th>
                     <th scope="col" className="px-4 py-3 text-center">অর্ডার কনফার্ম</th>
                     <th scope="col" className="px-4 py-3 text-center">ডেলিভারি স্থিতি</th>
+                    <th scope="col" className="px-4 py-3 text-center">Steadfast সিঙ্ক</th>
                     <th scope="col" className="px-4 py-3 text-center">মুছে ফেলুন</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-sans">
                   {filteredOrders.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="px-6 py-12 text-center text-slate-400 text-xs font-sans">
+                      <td colSpan={10} className="px-6 py-12 text-center text-slate-400 text-xs font-sans">
                         কোনো কাস্টমার বা সাকসেসফুল অর্ডার ডাটাবেসে পাওয়া যায়নি!
                       </td>
                     </tr>
@@ -2451,18 +2765,21 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                     filteredOrders.map((order) => (
                       <tr key={order.id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-3 py-3.5 text-center">
-                          <input 
-                            type="checkbox"
-                            className="rounded border-slate-300 text-indigo-600 focus:ring-0 cursor-pointer h-3.5 w-3.5"
-                            checked={selectedOrderIds.includes(order.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedOrderIds([...selectedOrderIds, order.id]);
-                              } else {
-                                setSelectedOrderIds(selectedOrderIds.filter(id => id !== order.id));
-                              }
-                            }}
-                          />
+                          <div className="flex flex-col items-center justify-center gap-1">
+                            <input 
+                              type="checkbox"
+                              className="rounded border-slate-300 text-indigo-600 focus:ring-0 cursor-pointer h-3.5 w-3.5"
+                              checked={selectedOrderIds.includes(order.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedOrderIds([...selectedOrderIds, order.id]);
+                                } else {
+                                  setSelectedOrderIds(selectedOrderIds.filter(id => id !== order.id));
+                                }
+                              }}
+                            />
+                            <span className="text-[9px] text-slate-400 font-sans font-medium leading-none select-none">Select</span>
+                          </div>
                         </td>
                         <td className="px-4 py-3.5">
                           <div className="font-extrabold text-slate-900">{order.name}</div>
@@ -2614,6 +2931,48 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                             <option value="Canceled">অর্ডার বাতিল (Canceled)</option>
                             <option value="Canceled Fake Order">ফেক বাতিল (Canceled Fake Order)</option>
                           </select>
+                        </td>
+                        <td className="px-4 py-3.5 text-center min-w-[125px]">
+                          {(() => {
+                            const info = steadfastStatuses[order.id];
+                            if (!info) {
+                              return (
+                                <button
+                                  onClick={() => fetchSteadfastStatus(order.id)}
+                                  className="px-2 py-1 bg-slate-100 hover:bg-slate-200 border border-slate-250 text-slate-600 rounded text-[9px] font-bold cursor-pointer inline-flex items-center gap-1.5 transition-all shadow-xs"
+                                >
+                                  <RefreshCw className="h-2.5 w-2.5" />
+                                  চেক সিঙ্ক
+                                </button>
+                              );
+                            }
+
+                            if (info.loading) {
+                              return (
+                                <span className="inline-flex items-center gap-1.5 text-[9px] font-bold text-slate-500 animate-pulse bg-slate-50 border border-slate-150 px-2 py-1 rounded">
+                                  <RefreshCw className="h-2.5 w-2.5 animate-spin" />
+                                  লোডিং...
+                                </span>
+                              );
+                            }
+
+                            const { text, style } = getSteadfastStatusLabelAndStyle(info.status);
+                            return (
+                              <div className="flex flex-col items-center gap-1.5 justify-center">
+                                <span className={`px-2 py-1 rounded-sm text-[8.5px] text-center font-bold font-sans shrink-0 inline-block leading-tight shadow-2xs ${style}`}>
+                                  {text}
+                                </span>
+                                <button
+                                  onClick={() => fetchSteadfastStatus(order.id)}
+                                  className="text-[8.5px] text-slate-450 hover:text-indigo-600 font-bold inline-flex items-center gap-0.5 cursor-pointer"
+                                  title="পুনরায় যাচাই করুন"
+                                >
+                                  <RefreshCw className="h-2.5 w-2.5" />
+                                  রিলোড
+                                </button>
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="px-4 py-3.5 text-center min-w-[150px]">
                           {deletingOrderId === order.id ? (
@@ -3106,6 +3465,147 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
           </div>
         )}
 
+      {/* 35mm x 35mm Thermal Label Print Preview Modal */}
+      {showPrintLabelModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-55 leading-relaxed font-sans overflow-y-auto">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-2xl overflow-hidden animate-scaleIn flex flex-col my-8">
+            
+            {/* Header */}
+            <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white p-5 flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-2">
+                <Printer className="h-5 w-5 text-indigo-400 shrink-0 animate-pulse" />
+                <div>
+                  <h2 className="font-extrabold text-white text-sm">থার্মাল লেবেল প্রিন্ট প্রাকদর্শন (35mm x 35mm Label Preview)</h2>
+                  <p className="text-[10px] text-slate-300">{orders.filter(o => selectedOrderIds.includes(o.id)).length} টি বায়ারের লেবেল প্রিন্ট করার জন্য নির্ধারিত করা হয়েছে</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShowPrintLabelModal(false)}
+                className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-full transition cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Instructions / Tips */}
+            <div className="bg-amber-50 border-b border-amber-100 p-4 shrink-0 text-amber-900 text-[11px] font-sans">
+              <div className="font-bold flex items-center gap-1.5 mb-1 text-amber-950">
+                <span>💡 থার্মাল প্রিন্টিং টিপস (Thermal Printer settings):</span>
+              </div>
+              <ul className="list-disc pl-4.5 space-y-0.5 font-medium">
+                <li>প্রিন্ট উইন্ডো লোড হলে <strong>Paper Size: 35mm x 35mm</strong> অথবা <strong>১.৩৮" x ১.৩৮"</strong> কাস্টম সাইজ দিন।</li>
+                <li><strong>Margins: None / Minimum (কোন মার্জিন ছাড়া)</strong> সিলেক্ট করুন।</li>
+                <li><strong>Scale: Fit to Page (অথবা ১০০%)</strong> নিশ্চিত করুন যাতে লেবেলের লেখাগুলি কেটে না যায়।</li>
+              </ul>
+            </div>
+
+            {/* Body Preview Area */}
+            <div className="p-6 bg-slate-50 overflow-y-auto max-h-[50vh] flex flex-wrap gap-4 items-center justify-center">
+              {orders
+                .filter((o) => selectedOrderIds.includes(o.id))
+                .map((order) => (
+                  <div key={order.id} className="transition shadow-sm hover:shadow-md bg-white p-2.5 rounded-xl border border-slate-200">
+                    <div className="text-[9px] font-sans font-bold text-slate-400 text-center mb-1 bg-slate-100 py-0.5 rounded">প্রাকদর্শন (Sticker Preview)</div>
+                    
+                    {/* Visual 35mm x 35mm Box */}
+                    <div style={{
+                      position: 'relative',
+                      width: '35mm',
+                      height: '35mm',
+                      minWidth: '35mm',
+                      minHeight: '35mm',
+                      maxWidth: '35mm',
+                      maxHeight: '35mm',
+                      padding: '2mm',
+                      boxSizing: 'border-box',
+                      border: '1.2px dashed #64748b',
+                      borderRadius: '4px',
+                      background: '#fff',
+                      color: '#000',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      fontFamily: 'Arial, sans-serif',
+                      lineHeight: '1.1',
+                    }}>
+                      {/* Top bar: Product name first word and Size badge */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #000', paddingBottom: '1px', width: '100%' }}>
+                        <span style={{ fontSize: '9.5px', fontWeight: '900', textTransform: 'uppercase', color: '#000' }}>
+                          {getProductNameFirstWord(order)}
+                        </span>
+                        <span style={{ fontSize: '10px', fontWeight: '950', background: '#e2e8f0', padding: '0 4.5px', borderRadius: '3px' }}>
+                          {order.size}
+                        </span>
+                      </div>
+
+                      {/* Content: Customer name & phone number */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', margin: '1px 0', width: '100%', textAlign: 'left' }}>
+                        <div style={{ fontSize: '9px', fontWeight: '900', color: '#000', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {order.name}
+                        </div>
+                        <div style={{ fontSize: '10.5px', fontWeight: '950', fontFamily: 'monospace', color: '#000' }}>
+                          {order.phone}
+                        </div>
+                      </div>
+
+                      {/* Color decoration, Price, custom values */}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', fontSize: '7.5px', fontWeight: '800', width: '100%', margin: '1px 0' }}>
+                        <span style={{ border: '0.5px solid #000', padding: '0.2px 2px', borderRadius: '2px', background: '#fff' }}>
+                          {order.color === 'Black' ? 'কালো' : 'ব্লু'}
+                        </span>
+                        <span style={{ border: '0.5px solid #000', padding: '0.2px 2px', borderRadius: '2px', background: '#fff' }}>
+                          {order.price}৳
+                        </span>
+                        <span style={{ border: '0.5px solid #000', padding: '0.2px 2px', borderRadius: '2px', background: '#fff' }}>
+                          {order.weight}kg / {order.heightFeet}′{order.heightInches}″
+                        </span>
+                      </div>
+
+                      {/* Bottom Footer: Address, District and order id */}
+                      <div style={{ borderTop: '0.7px solid #000', paddingTop: '1.5px', width: '100%', textAlign: 'left' }}>
+                        <div style={{ fontSize: '7.5px', fontWeight: '800', color: '#000', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {order.village}
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '6.5px', fontWeight: '700', color: '#333', marginTop: '1.2px', textTransform: 'uppercase' }}>
+                          <span style={{ fontWeight: '950', color: '#111' }}>{order.district || 'Other'}</span>
+                          <span style={{ fontSize: '6px' }}>#{order.id.replace('ord-', '').slice(0, 7)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+                ))}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="bg-slate-100 px-6 py-4 flex justify-between gap-2 border-t border-slate-200 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowPrintLabelModal(false)}
+                className="px-4 py-2 bg-slate-300 hover:bg-slate-400 text-slate-800 text-xs font-bold rounded-xl transition cursor-pointer"
+              >
+                প্রিভিউ বন্ধ করুন (Close Preview)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPrintLabelModal(false);
+                  setTimeout(() => {
+                    window.print();
+                  }, 300);
+                }}
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition shadow-md cursor-pointer flex items-center gap-1.5"
+              >
+                <Printer className="h-4 w-4" />
+                এখনই প্রিন্ট করুন (Print Labels Now)
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
       {/* 35mm x 35mm Thermal Label Print Element */}
       {selectedOrderIds.length > 0 && (
         <div id="print-area-wrapper" className="hidden print:block">
@@ -3114,6 +3614,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
             @media print {
               body {
                 visibility: hidden !important;
+                background: white !important;
               }
               #print-area-wrapper, #print-area-wrapper * {
                 visibility: visible !important;
@@ -3145,16 +3646,17 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                 display: flex !important;
                 flex-direction: column !important;
                 justify-content: space-between !important;
-                align-items: center !important;
-                text-align: center !important;
+                align-items: flex-start !important;
+                text-align: left !important;
                 font-family: Arial, sans-serif !important;
                 background: white !important;
                 color: black !important;
-                border: 1px dashed #444 !important;
+                border: 1px dashed #000 !important;
                 border-radius: 4px !important;
                 page-break-inside: avoid !important;
                 margin: 0 !important;
                 overflow: hidden !important;
+                line-height: 1.1 !important;
               }
             }
           `}} />
@@ -3162,25 +3664,48 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
             .filter((o) => selectedOrderIds.includes(o.id))
             .map((order) => (
               <div key={order.id} className="print-label-item">
-                <div style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', borderBottom: '1.5px solid black', width: '100%', paddingBottom: '2.5px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                  {getProductNameFirstWord(order)}
+                {/* Header: Product first word & Size */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #000', paddingBottom: '1px', width: '100%', boxSizing: 'border-box' }}>
+                  <span style={{ fontSize: '9.5px', fontWeight: '900', textTransform: 'uppercase', color: '#000' }}>
+                    {getProductNameFirstWord(order)}
+                  </span>
+                  <span style={{ fontSize: '10px', fontWeight: '950', background: '#e2e8f0', padding: '0 4.5px', borderRadius: '3px' }}>
+                    {order.size}
+                  </span>
                 </div>
-                
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '2px', width: '100%', margin: '2px 0' }}>
-                  <div style={{ fontSize: '9px', fontWeight: 900, fontFamily: 'monospace', letterSpacing: '0.1px' }}>
+
+                {/* Body: Customer Name & Phone Number */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', margin: '1px 0', width: '100%', boxSizing: 'border-box' }}>
+                  <div style={{ fontSize: '9px', fontWeight: '900', color: '#000', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {order.name}
+                  </div>
+                  <div style={{ fontSize: '10.5px', fontWeight: '950', fontFamily: 'monospace', color: '#000' }}>
                     {order.phone}
-                  </div>
-                  
-                  <div style={{ fontSize: '8.5px', fontWeight: 800, marginTop: '1px' }}>
-                    Size: <span style={{ fontSize: '9.5px', fontWeight: 950 }}>{order.size}</span>
-                  </div>
-                  <div style={{ fontSize: '7.5px', fontWeight: 700, color: '#111' }}>
-                    Color: {order.color === 'Black' ? 'কালো' : 'ব্লু'}
                   </div>
                 </div>
 
-                <div style={{ fontSize: '6.5px', fontWeight: 600, width: '100%', borderTop: '1px solid #ddd', paddingTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  #{order.id.replace('ord-', '')} • {order.name.slice(0, 10)}
+                {/* Details Section: Color, Price, Weight/Height */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', fontSize: '7.5px', fontWeight: '800', width: '100%', margin: '1px 0', boxSizing: 'border-box' }}>
+                  <span style={{ border: '0.5px solid #000', padding: '0.2px 2px', borderRadius: '2px', background: '#fff' }}>
+                    {order.color === 'Black' ? 'কালো' : 'ব্লু'}
+                  </span>
+                  <span style={{ border: '0.5px solid #000', padding: '0.2px 2px', borderRadius: '2px', background: '#fff' }}>
+                    {order.price}৳
+                  </span>
+                  <span style={{ border: '0.5px solid #000', padding: '0.2px 2px', borderRadius: '2px', background: '#fff' }}>
+                    {order.weight}kg / {order.heightFeet}′{order.heightInches}″
+                  </span>
+                </div>
+
+                {/* Footer: Order Details (Village & District) */}
+                <div style={{ borderTop: '0.7px solid #000', paddingTop: '1.5px', width: '100%', boxSizing: 'border-box' }}>
+                  <div style={{ fontSize: '7.5px', fontWeight: '800', color: '#000', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {order.village}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '6.5px', fontWeight: '700', color: '#333', marginTop: '1.2px', textTransform: 'uppercase' }}>
+                    <span style={{ fontWeight: '950', color: '#111' }}>{order.district || 'Other'}</span>
+                    <span style={{ fontSize: '6px' }}>#{order.id.replace('ord-', '').slice(0, 7)}</span>
+                  </div>
                 </div>
               </div>
             ))}

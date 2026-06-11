@@ -1,7 +1,7 @@
 {
   "firestore": [
     {
-      "database": "remixed-firestore-database-id",
+      "database": "ai-studio-e96a9d5f-9e04-4248-a4e5-49a2955072ec",
       "rules": "firestore.rules"
     },
     {

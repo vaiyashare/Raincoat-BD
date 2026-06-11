@@ -38,13 +38,15 @@ export default function CourierAdmin({ userRole, orders = [], onRefreshOrders }:
   const [whatsappTemplate, setWhatsappTemplate] = useState('');
   const [isSavingWhatsapp, setIsSavingWhatsapp] = useState(false);
   const [whatsappSuccess, setWhatsappSuccess] = useState('');
+  const [steadfastBalance, setSteadfastBalance] = useState<number | null>(null);
+  const [isLoadingBalance, setIsLoadingBalance] = useState(false);
 
   // Settings backing
   const [settings, setSettings] = useState<AdvancedAddonsSettings>({
     courier_enabled: true,
     courier_provider: 'steadfast',
-    steadfast_api_key: 'stdf_api_live_48201948x920a1',
-    steadfast_secret: 'stdf_sec_93019',
+    steadfast_api_key: 'jtoxickzs13bhwpmmyjk7k9lnxkslet2',
+    steadfast_secret: '9gsts1sioi6pwcaxn71sczml',
     pathao_client_id: 'pth_cli_839210',
     pathao_client_secret: 'pth_sec_48201948',
     pathao_store_id: '10932',
@@ -69,6 +71,35 @@ export default function CourierAdmin({ userRole, orders = [], onRefreshOrders }:
     sms_template_shipping: 'প্রিয় {name}, আপনার অর্ডার {order_id} স্টিডফাস্ট কুরিয়ারে বুকিং করা হয়েছে। ট্র্যাকিং ID: {tracking_id}। লিংক: https://steadfast.com.bd/t/{tracking_id}',
     sms_log: []
   });
+
+  const fetchSteadfastBalance = async (apiKey = settings.steadfast_api_key, secretKey = settings.steadfast_secret) => {
+    if (!apiKey || !secretKey) return;
+    setIsLoadingBalance(true);
+    try {
+      const response = await fetch('/api/steadfast/get_balance', {
+        headers: {
+          'api-key': apiKey,
+          'secret-key': secretKey,
+        }
+      });
+      const data = await response.json();
+      if (data && data.status === 200) {
+        setSteadfastBalance(data.current_balance);
+      } else {
+        setSteadfastBalance(null);
+      }
+    } catch (err) {
+      console.error("Error fetching balance:", err);
+    } finally {
+      setIsLoadingBalance(false);
+    }
+  };
+
+  useEffect(() => {
+    if (settings.courier_provider === 'steadfast' && settings.steadfast_api_key && settings.steadfast_secret) {
+      fetchSteadfastBalance(settings.steadfast_api_key, settings.steadfast_secret);
+    }
+  }, [settings.courier_provider, settings.steadfast_api_key, settings.steadfast_secret]);
 
   useEffect(() => {
     async function loadData() {
@@ -145,14 +176,48 @@ export default function CourierAdmin({ userRole, orders = [], onRefreshOrders }:
 
     setIsSaving(true);
     try {
-      // Simulate real Bangladesh Courier booking REST response
-      const providerKey = settings.courier_provider === 'steadfast' ? 'STDF' : settings.courier_provider === 'pathao' ? 'PTH' : 'REDX';
-      const trackingId = `${providerKey}-${Math.floor(100000 + Math.random() * 900000)}-BD`;
-      
+      let trackingId = '';
+      let actualCourierName = '';
+
+      if (settings.courier_provider === 'steadfast') {
+        const cleanPhone = order.phone.replace(/[^0-9]/g, '');
+        const orderData = {
+          invoice: order.id,
+          recipient_name: order.name,
+          recipient_phone: cleanPhone.slice(-11),
+          recipient_address: order.village + (order.policeStation ? `, ${order.policeStation}` : '') + (order.district ? `, ${order.district}` : ''),
+          cod_amount: order.price,
+          note: `Size: ${order.size}, Color: ${order.color}, Height: ${order.heightFeet}ft ${order.heightInches}in. Note: ${order.orderNotes || ''}`,
+          item_description: `Premium Bike Cover or Waterproof Raincoat Size ${order.size}`
+        };
+
+        const response = await fetch('/api/steadfast/create_order', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'api-key': settings.steadfast_api_key,
+            'secret-key': settings.steadfast_secret,
+          },
+          body: JSON.stringify({ orderData })
+        });
+
+        const result = await response.json();
+        if (result.status === 200 && result.consignment) {
+          trackingId = result.consignment.tracking_code;
+          actualCourierName = 'Steadfast';
+        } else {
+          throw new Error(result.message || 'Steadfast delivery response code is not 200');
+        }
+      } else {
+        const providerKey = settings.courier_provider === 'pathao' ? 'PTH' : 'REDX';
+        trackingId = `${providerKey}-${Math.floor(100000 + Math.random() * 900000)}-BD`;
+        actualCourierName = settings.courier_provider === 'pathao' ? 'Pathao' : 'RedX';
+      }
+
       const newLog = {
         id: `courier-log-${Date.now()}`,
         orderId: order.id,
-        courier: settings.courier_provider === 'steadfast' ? 'Steadfast' : settings.courier_provider === 'pathao' ? 'Pathao' : 'RedX',
+        courier: actualCourierName,
         status: 'Assigned',
         trackingId,
         createdAt: new Date().toISOString()
@@ -197,11 +262,46 @@ export default function CourierAdmin({ userRole, orders = [], onRefreshOrders }:
         onRefreshOrders();
       }
 
+      if (settings.courier_provider === 'steadfast') {
+        fetchSteadfastBalance(settings.steadfast_api_key, settings.steadfast_secret);
+      }
+
       alert(`সাফল্যের সাথে অর্ডার ${order.id} কুরিয়ার বুকিং সম্পন্ন হয়েছে!\nট্র্যাকিং আইডি: ${trackingId}\nকাস্টমারের মোবাইলে নোটিফিকেশন পাঠানো হয়েছে।`);
     } catch (err: any) {
       alert('কুরিয়ার বুকিং প্রসেস করতে ত্রুটি: ' + err.message);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleVerifyConnection = async () => {
+    if (settings.courier_provider === 'steadfast') {
+      if (!settings.steadfast_api_key || !settings.steadfast_secret) {
+        alert('অনুগ্রহ করে API Key ও Secret Key প্রদান করুন!');
+        return;
+      }
+      setIsSaving(true);
+      try {
+        const response = await fetch('/api/steadfast/get_balance', {
+          headers: {
+            'api-key': settings.steadfast_api_key,
+            'secret-key': settings.steadfast_secret,
+          }
+        });
+        const data = await response.json();
+        if (data && data.status === 200) {
+          setSteadfastBalance(data.current_balance);
+          alert(`সংযোগ সফল! Steadfast একাউন্টের বর্তমান ব্যালেন্স: ${data.current_balance}৳`);
+        } else {
+          alert(`সংযোগ ব্যর্থ হয়েছে! অনুগ্রহ করে সঠিক API Key ও Secret Key ব্যবহার করুন।`);
+        }
+      } catch (err: any) {
+        alert(`ত্রুটি ঘটেছে: ${err.message}`);
+      } finally {
+        setIsSaving(false);
+      }
+    } else {
+      alert('আপনার কুরিয়ার API গেটওয়ে সংযোগ সফল ও সক্রিয় রয়েছে!');
     }
   };
 
@@ -292,6 +392,17 @@ export default function CourierAdmin({ userRole, orders = [], onRefreshOrders }:
                         className="w-full text-xs font-mono p-2 bg-white border border-slate-250 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
+                    {steadfastBalance !== null && (
+                      <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-slate-700 rounded-lg font-sans">
+                        <div className="text-[10px] text-emerald-800 font-bold uppercase tracking-wider">Steadfast Wallet Balance</div>
+                        <div className="text-lg font-black text-slate-950 font-mono mt-0.5">৳{steadfastBalance} BDT</div>
+                      </div>
+                    )}
+                    {isLoadingBalance && (
+                      <div className="text-[10px] text-slate-500 animate-pulse font-sans">
+                        খাতায় ব্যালেন্স চেক করা হচ্ছে...
+                      </div>
+                    )}
                     <div className="p-2.5 bg-white border border-blue-200/50 rounded-lg text-[10px] text-slate-600 leading-normal">
                       🔴 স্টিডফাস্ট ইন্টিগ্রেশনের মাধ্যমে কাস্টমার জেলা বুঝে ঢাকার ভেতরে ও ঢাকার বাইরে ডেলিভারি চার্জ যথাক্রমে ৮০টাকা এবং ১৫০ টাকা স্বয়ংক্রিয়ভাবে ক্লাসিফাই হয়।
                     </div>
@@ -360,10 +471,11 @@ export default function CourierAdmin({ userRole, orders = [], onRefreshOrders }:
 
                 <button
                   type="button"
-                  onClick={() => alert('আপনার কুরিয়ার API গেটওয়ে সংযোগ সফল ও সক্রিয় রয়েছে!')}
+                  disabled={isLoadingBalance || isSaving}
+                  onClick={handleVerifyConnection}
                   className="w-full py-2 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow"
                 >
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  <RefreshCw className={`h-3.5 w-3.5 ${(isLoadingBalance || isSaving) ? 'animate-spin' : ''}`} />
                   API সংযোগ যাচাই করুন (Verify Link)
                 </button>
               </div>
