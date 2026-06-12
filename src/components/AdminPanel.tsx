@@ -766,7 +766,11 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     // Fetch active e-commerce orders from Firestore database
     try {
       const fbOrders = await getOrdersFromFirestore();
-      const sortedOrders = [...fbOrders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      const sortedOrders = [...fbOrders].sort((a, b) => {
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      });
       setOrders(sortedOrders);
       
       await loadIncompleteOrders();
@@ -801,7 +805,11 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
         fbOrders.push(doc.data() as RaincoatOrder);
       });
       
-      fbOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      fbOrders.sort((a, b) => {
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      });
       
       setOrders(fbOrders);
       onRefreshOrdersCount();
@@ -1616,11 +1624,12 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   };
 
   const filteredOrders = orders.filter(o => {
+    if (!o) return false;
     const matchSearch = 
-      o.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      o.phone.includes(searchTerm) ||
-      o.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (o.village && o.village.toLowerCase().includes(searchTerm.toLowerCase()));
+      (o.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (o.phone || '').includes(searchTerm) ||
+      (o.id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      ((o.village || '').toLowerCase().includes(searchTerm.toLowerCase()));
     const matchSize = filterSize === 'All' || o.size === filterSize;
     const matchStatus = filterStatus === 'All' || 
       (filterStatus === 'Canceled' 
@@ -1648,11 +1657,12 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   }, [filteredOrders.slice(0, 15).map(o => o.id).join(',')]);
 
   const filteredIncompleteOrders = incompleteOrders.filter(o => {
+    if (!o) return false;
     const matchSearch = 
-      (o.name && o.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (o.phone && o.phone.includes(searchTerm)) ||
-      o.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (o.village && o.village.toLowerCase().includes(searchTerm.toLowerCase()));
+      (o.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (o.phone || '').includes(searchTerm) ||
+      (o.id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      ((o.village || '').toLowerCase().includes(searchTerm.toLowerCase()));
     const matchSize = filterSize === 'All' || o.size === filterSize;
     const matchDistrict = filterDistrict === 'All' || getEnglishDistrictName(o) === filterDistrict;
     const matchDate = isDateInSelectedRange(o.createdAt);
