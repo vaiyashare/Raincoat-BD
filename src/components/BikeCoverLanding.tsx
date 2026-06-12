@@ -2,17 +2,35 @@ import React, { useState, useEffect } from 'react';
 import { 
   ShieldAlert, Bike, Star, ShoppingBag, ShieldCheck, Phone, CheckCircle2, 
   MapPin, Clock, ArrowDown, ChevronRight, HelpCircle, Heart, Settings, 
-  Smartphone, Award, Flame, ThumbsUp, Volume2, Info, MessageCircle,
-  Droplets, Truck, Shield, Sparkles, X, Sliders, Wind, HelpCircle as QuestionIcon
+  Smartphone, Award, Flame, ThumbsUp, Volume2, Droplets, Truck, Shield, 
+  Sparkles, X, Sliders, Wind, HelpCircle as QuestionIcon, MessageCircle
 } from 'lucide-react';
 import { Size, ProductColor, RaincoatOrder } from '../types';
-import { getMediaFromFirestore, addOrderToFirestore } from '../lib/firebase';
+import { getMediaFromFirestore, addOrderToFirestore, getAdvancedAddonsSettingsFromFirestore } from '../lib/firebase';
 import { trackPixelEvent } from '../lib/tracking';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface BikeCoverLandingProps {
   onOrderSuccess: (order: RaincoatOrder) => void;
 }
+
+const defaultTripleCards = [
+  {
+    title: "১০০% প্রিমিয়াম ফিটিংস",
+    imageUrl: "https://images.unsplash.com/photo-1558981856-653c55a5bfdd?auto=format&fit=crop&q=80&w=600",
+    description: "আপনার শখের বাইকের সাইজ অনুযায়ী নিখুঁত ফিটিংস ও চমৎকার ফিনিশিং।"
+  },
+  {
+    title: "থার্মাল হিট সিল টেকনোলজি",
+    imageUrl: "https://images.unsplash.com/photo-1558980590-25501fb3a893?auto=format&fit=crop&q=80&w=600",
+    description: "ডাবল সেলাই ও হিট সিল্ড কভারেজ, যা বিন্দুমাত্র পানি বা কুয়াশা প্রবেশ করতে দেয় না।"
+  },
+  {
+    title: "২ বছর দীর্ঘমেয়াদি গ্যারান্টি",
+    imageUrl: "https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?auto=format&fit=crop&q=80&w=600",
+    description: "সুপার ডিউরেবল প্যারাশুট ফ্যাব্রিকেশন, যা রোদের তাপে বা কড়া শীতেও দীর্ঘদিন ফেটে যায় না।"
+  }
+];
 
 export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingProps) {
   const [selectedColor, setSelectedColor] = useState<ProductColor>('Navy Blue');
@@ -23,8 +41,10 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
   const [village, setVillage] = useState('');
   const [phone, setPhone] = useState('');
   const [selectedDistrict, setSelectedDistrict] = useState('ঢাকা (Dhaka)');
+  const [bikeModel, setBikeModel] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [bikeTripleCards, setBikeTripleCards] = useState<any[]>(defaultTripleCards);
 
   // Default Fallback Slider Images featuring real Black & Navy Blue covers
   const defaultBikeSliderImages = [
@@ -103,6 +123,26 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
     }).catch(err => {
       console.warn("Could not load dynamic covers or videos from database:", err);
     });
+  }, []);
+
+  useEffect(() => {
+    const loadTripleCards = () => {
+      getAdvancedAddonsSettingsFromFirestore().then((settings) => {
+        if (settings && settings.bike_triple_cards && settings.bike_triple_cards.length === 3) {
+          setBikeTripleCards(settings.bike_triple_cards);
+        } else {
+          setBikeTripleCards(defaultTripleCards);
+        }
+      }).catch(err => {
+        console.warn("Could not load triple cards settings:", err);
+        setBikeTripleCards(defaultTripleCards);
+      });
+    };
+
+    loadTripleCards();
+
+    window.addEventListener('raincoat_site_settings_updated', loadTripleCards);
+    return () => window.removeEventListener('raincoat_site_settings_updated', loadTripleCards);
   }, []);
 
   useEffect(() => {
@@ -195,6 +235,7 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
     setErrorMessage('');
 
     if (!name.trim()) return setErrorMessage('অনুগ্রহ করে আপনার নাম লিখুন।');
+    if (!bikeModel.trim()) return setErrorMessage('অনুগ্রহ করে আপনার বাইকের মডেলটি সুন্দর করে লিখে দিন (যেমন: Pulsar 150, FZ-S)।');
     if (!village.trim()) return setErrorMessage('অনুগ্রহ করে আপনার সম্পূর্ণ ঠিকানা (গ্রাম/পাড়া/থানা) লিখুন।');
     
     let cleanPhone = phone.replace(/[^0-9]/g, '');
@@ -226,6 +267,7 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
       price: 600, // Total cost in Taka including home delivery
       status: 'Pending',
       isConfirmed: false,
+      bikeModel: bikeModel.trim(),
       createdAt: new Date().toISOString(),
       synced: false,
     };
@@ -671,6 +713,54 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
         </div>
       </section>
 
+      {/* Dynamic Triple Cards Section */}
+      <section className="py-12 bg-slate-950 border-b border-slate-800" id="triple-cards-section">
+        <div className="container mx-auto px-4 max-w-6xl text-center">
+          <div className="max-w-2xl mx-auto mb-10">
+            <span className="px-3 py-1 bg-amber-500/10 text-amber-400 text-xs font-bold rounded-full border border-amber-500/20 inline-flex items-center gap-1 font-sans">
+              🏍️ বিশেষ আকর্ষণসমূহ (Unique Highlights)
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-black text-white mt-2 font-sans">
+              প্রিমিয়াম ফিটিং ও উন্নত মান গ্যারান্টি
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+            {bikeTripleCards.map((card, idx) => (
+              <div 
+                key={idx} 
+                className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl transition-all duration-300 hover:border-slate-700 hover:scale-102 flex flex-col group"
+              >
+                <div className="h-52 w-full overflow-hidden relative bg-slate-950">
+                  {card.imageUrl ? (
+                    <img 
+                      src={card.imageUrl} 
+                      alt={card.title} 
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-slate-950 text-slate-500 text-xs font-bold">
+                      কোনো ছবি সেট করা নেই
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent" />
+                </div>
+                <div className="p-5 flex-1 flex flex-col justify-between text-left space-y-2">
+                  <h3 className="text-sm font-black text-white tracking-tight border-b border-slate-800 pb-2 flex items-center gap-1.5">
+                    <span className="text-orange-500 text-sm font-bold">{idx + 1}.</span>
+                    {card.title || `ফিচার #${idx + 1}`}
+                  </h3>
+                  <p className="text-slate-400 text-xs leading-relaxed font-sans mt-1">
+                    {card.description || "আমাদের কাস্টমাইজড বাইক কভারের বিশেষ গুণগত মান যা আপনার শখের বাইকটি রোদে পোড়া, বৃষ্টি ও কাদা থেকে সুন্দর রাখে।"}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Customer Reviews Section */}
       <section className="py-12 bg-slate-900 border-b border-slate-800" id="reviews-section">
         <div className="container mx-auto px-4 max-w-4xl text-center">
@@ -807,6 +897,12 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
                       <span>কভারের কালার:</span>
                       <span className="text-slate-300 font-bold">{submittedOrder.color === 'Black' ? 'কালো' : 'নেভি ব্লু'}</span>
                     </div>
+                    {submittedOrder.bikeModel && (
+                      <div className="flex justify-between">
+                        <span>বাইকের মডেল:</span>
+                        <span className="text-orange-400 font-bold">{submittedOrder.bikeModel}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span>সাইজ:</span>
                       <span className="text-slate-300 font-bold">৯৮ ইঞ্চি (চাকা টু চাকা স্ট্যান্ডার্ড)</span>
@@ -906,6 +1002,20 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
                         </button>
                       </div>
                     </div>
+                  </div>
+
+                  {/* Bike Model Input */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-300 block flex items-center gap-1.5">
+                      🏍️ আপনি কোন মডেল এর বাইক চালান? (Bike Model):
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="যেমন: Pulsar 150, FZ-S v3, Gixxer, Hornet, Splendor"
+                      value={bikeModel}
+                      onChange={(e)=>setBikeModel(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 text-white focus:outline-none"
+                    />
                   </div>
 
                   {/* Detailed Village/Address input */}

@@ -7,7 +7,8 @@ import {
   addIncompleteOrderToFirestore, 
   deleteIncompleteOrderFromFirestore,
   getInventoryFromFirestore,
-  decrementInventoryItemInFirestore
+  decrementInventoryItemInFirestore,
+  getOrdersFromFirestore
 } from '../lib/firebase';
 import { trackPixelEvent } from '../lib/tracking';
 
@@ -113,13 +114,9 @@ export default function OrderForm({
     getInventoryFromFirestore().then((items) => {
       if (items && items.length > 0) {
         setInventoryList(items);
-      } else {
-        const local = localStorage.getItem('raincoat_inventory');
-        if (local) setInventoryList(JSON.parse(local));
       }
-    }).catch(() => {
-      const local = localStorage.getItem('raincoat_inventory');
-      if (local) setInventoryList(JSON.parse(local));
+    }).catch((err) => {
+      console.warn("Failed to load inventory from Firestore:", err);
     });
   }, []);
 
@@ -132,7 +129,7 @@ export default function OrderForm({
     return clean.slice(-11);
   };
 
-  // Real-time check for duplicate orders with same mobile number in last 2 hours
+  // Real-time check for duplicate orders with same mobile number in last 2 hours (direct Firestore lookup)
   useEffect(() => {
     const cleanInput = normalizePhone(phone);
     if (cleanInput.length < 11) {
@@ -140,11 +137,8 @@ export default function OrderForm({
       return;
     }
 
-    try {
-      const existingOrdersJson = localStorage.getItem('raincoat_orders') || '[]';
-      const existingOrders: RaincoatOrder[] = JSON.parse(existingOrdersJson);
+    getOrdersFromFirestore().then((existingOrders) => {
       const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000;
-
       const recentDuplicate = existingOrders.find(order => {
         const cleanOrderPhone = normalizePhone(order.phone);
         const isSamePhone = cleanOrderPhone === cleanInput;
@@ -158,10 +152,10 @@ export default function OrderForm({
       } else {
         setHasRecentOrder(false);
       }
-    } catch (err) {
-      console.error('Error checking recent orders:', err);
+    }).catch((err) => {
+      console.warn("Failed to verify duplicate status against Firestore:", err);
       setHasRecentOrder(false);
-    }
+    });
   }, [phone]);
 
   // Dynamic price calculation
@@ -215,27 +209,13 @@ export default function OrderForm({
       whatsappConsent,
     };
 
-    const incompleteJson = localStorage.getItem('raincoat_incomplete_orders') || '[]';
-    let incompleteOrders = JSON.parse(incompleteJson);
-    
-    const index = incompleteOrders.findIndex((o: any) => o.id === sessionId);
-    if (index > -1) {
-      // Retain original createdAt
-      draftOrder.createdAt = incompleteOrders[index].createdAt;
-      incompleteOrders[index] = draftOrder;
-    } else {
-      incompleteOrders.unshift(draftOrder);
-    }
-
-    localStorage.setItem('raincoat_incomplete_orders', JSON.stringify(incompleteOrders));
-
     // Upload draft changes synchronously to Firestore database
     addIncompleteOrderToFirestore(draftOrder).catch((err) => {
       console.warn("Failed to sync incomplete draft to Cloud Firestore:", err);
     });
   }, [name, phone, village, initialSize, selectedColor, weight, heightFeet, heightInches, price, sessionId, orderNotes, whatsappConsent]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
 
@@ -275,7 +255,6 @@ export default function OrderForm({
     setIsSubmitting(true);
 
     // Save final order to database
-    // We do not block the UI transition, we trigger firestore operations with handlers
     const newId = 'ord-' + Math.floor(Math.random() * 100000);
     const newOrder: RaincoatOrder = {
       id: newId,
@@ -296,50 +275,18 @@ export default function OrderForm({
       synced: false,
     };
 
-    // Save of final order, delete of incomplete draft, and decrement of stock
-    Promise.all([
-      addOrderToFirestore(newOrder),
-      deleteIncompleteOrderFromFirestore(sessionId),
-      decrementInventoryItemInFirestore(selectedColor!, initialSize!)
-    ]).then(() => {
-      console.log("Successfully connected order to database Firestore and decremented stock!");
-      try {
-        const storedStr = localStorage.getItem('raincoat_orders') || '[]';
-        const list = JSON.parse(storedStr) as RaincoatOrder[];
-        const target = list.find(o => o.id === newOrder.id);
-        if (target) {
-          target.synced = true;
-          localStorage.setItem('raincoat_orders', JSON.stringify(list));
-        }
-      } catch (e) {}
-    }).catch((err) => {
-      console.error("Firebase connection error during submission:", err);
-    });
-
-    // Save of orders instantly without timeout delay
-    // Save to localStorage for store owner demo retrieval / local storage fallback
-    const existingOrdersJson = localStorage.getItem('raincoat_orders') || '[]';
-    const existingOrders = JSON.parse(existingOrdersJson);
-    existingOrders.unshift(newOrder);
-    localStorage.setItem('raincoat_orders', JSON.stringify(existingOrders));
-
-    // Save order ID to my past order IDs for local history mapping
+    // Save of final order, delete of incomplete draft, and decrement of stock in Firebase Cloud
     try {
-      const myOrderIdsJson = localStorage.getItem('raincoat_my_order_ids') || '[]';
-      const myOrderIds = JSON.parse(myOrderIdsJson);
-      if (!myOrderIds.includes(newOrder.id)) {
-        myOrderIds.push(newOrder.id);
-      }
-      localStorage.setItem('raincoat_my_order_ids', JSON.stringify(myOrderIds));
+      await Promise.all([
+        addOrderToFirestore(newOrder),
+        deleteIncompleteOrderFromFirestore(sessionId),
+        decrementInventoryItemInFirestore(selectedColor!, initialSize!)
+      ]);
+      console.log("Successfully connected order to database Firestore and decremented stock!");
+      newOrder.synced = true;
     } catch (err) {
-      console.error('Error saving order ID to history:', err);
+      console.error("Firebase connection error during submission:", err);
     }
-
-    // Clear the temporary draft from incomplete orders because it is now verified & complete
-    const incompleteJson = localStorage.getItem('raincoat_incomplete_orders') || '[]';
-    let incompleteOrders = JSON.parse(incompleteJson);
-    incompleteOrders = incompleteOrders.filter((o: any) => o.id !== sessionId);
-    localStorage.setItem('raincoat_incomplete_orders', JSON.stringify(incompleteOrders));
 
     // Dispatch Facebook Pixel / Conversion API Purchase Event with real purchase data & Advanced User Matching
     trackPixelEvent('Purchase', {

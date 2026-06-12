@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Eye, ShieldAlert, Trash2, ClipboardCopy, FileSpreadsheet, Search, 
   RefreshCw, X, ShieldCheck, CheckSquare, Globe, Database, Sparkles, 
   Check, ExternalLink, HelpCircle, Flame, ChevronDown, ChevronUp,
   Lock, Key, LogOut, Settings, ListTodo, AlertOctagon, Layers, Users, Calendar, Phone,
-  Edit, CheckCircle, Printer
+  Edit, CheckCircle, Printer, Volume2, VolumeX
 } from 'lucide-react';
 import { RaincoatOrder, Size, ProductColor, IncompleteOrder } from '../types';
 import { 
@@ -28,7 +28,7 @@ import {
   getAdvancedAddonsSettingsFromFirestore,
   db
 } from '../lib/firebase';
-import { collection, query, onSnapshot } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 
 import { trackPixelEvent, trackTikTokEvent } from '../lib/tracking';
 import { normalizeWhatsAppPhone } from '../lib/whatsapp';
@@ -47,6 +47,9 @@ import AdvancedPluginsAdmin from './admin/AdvancedPluginsAdmin';
 import CourierAdmin from './admin/CourierAdmin';
 import ReviewsAdmin from './admin/ReviewsAdmin';
 import DailyOrdersChart from './admin/DailyOrdersChart';
+import ConnectedCouriers from './admin/ConnectedCouriers';
+import CourierMonitorAdmin from './admin/CourierMonitorAdmin';
+import SectionCustomizerAdmin from './admin/SectionCustomizerAdmin';
 
 const getEnglishDistrictName = (order: any): string => {
   const districtValue = order.district ? order.district.trim() : '';
@@ -330,7 +333,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
   const [deletingIncompleteId, setDeletingIncompleteId] = useState<string | null>(null);
   const [editingOrder, setEditingOrder] = useState<RaincoatOrder | null>(null);
-  const [activeTab, setActiveTab] = useState<'completed' | 'incomplete' | 'pages' | 'products' | 'banners' | 'inventory' | 'integrations' | 'users' | 'blocking' | 'media' | 'live-visitors' | 'fraud' | 'advanced_addons' | 'courier_hub' | 'reviews_hub'>('completed');
+  const [activeTab, setActiveTab] = useState<'completed' | 'incomplete' | 'pages' | 'products' | 'banners' | 'inventory' | 'integrations' | 'users' | 'blocking' | 'media' | 'live-visitors' | 'fraud' | 'advanced_addons' | 'courier_hub' | 'reviews_hub' | 'courier_connections' | 'courier_monitor' | 'section_customizer'>('completed');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSize, setFilterSize] = useState<string>('All');
   const [filterStatus, setFilterStatus] = useState<string>('All');
@@ -345,6 +348,73 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   // Steadfast Sync Status States
   const [courierSettings, setCourierSettings] = useState<any>(null);
   const [steadfastStatuses, setSteadfastStatuses] = useState<{[orderId: string]: { status: string; loading: boolean; error?: string }}>({});
+  const [editingTrackingOrderId, setEditingTrackingOrderId] = useState<string | null>(null);
+  const [tempTrackingId, setTempTrackingId] = useState<string>('');
+
+  // Audio Alerts and Toast Notification States
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
+    return localStorage.getItem('admin_orders_sound') !== 'false';
+  });
+  const [alerts, setAlerts] = useState<Array<{ id: string; order: RaincoatOrder }>>([]);
+  const triggeredAlertsRef = useRef<Set<string>>(new Set());
+  const isInitialLoadRef = useRef(true);
+
+  const playNotificationAudioChime = () => {
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContext) return;
+      const ctx = new AudioContext();
+      
+      const playTone = (freq: number, start: number, duration: number) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, start);
+        
+        gain.gain.setValueAtTime(0.15, start);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + duration - 0.05);
+        
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        
+        osc.start(start);
+        osc.stop(start + duration);
+      };
+
+      const now = ctx.currentTime;
+      playTone(523.25, now, 0.15); // C5
+      playTone(659.25, now + 0.12, 0.45); // E5
+    } catch (err) {
+      console.warn("Failed to play notification sound:", err);
+    }
+  };
+
+  const triggerNewOrderAlert = (order: RaincoatOrder) => {
+    if (triggeredAlertsRef.current.has(order.id)) return;
+    triggeredAlertsRef.current.add(order.id);
+
+    if (soundEnabled) {
+      playNotificationAudioChime();
+    }
+
+    const alertId = `${order.id}-${Date.now()}`;
+    setAlerts(prev => [...prev, { id: alertId, order }]);
+
+    // Auto close after 12 seconds
+    setTimeout(() => {
+      setAlerts(prev => prev.filter(a => a.id !== alertId));
+    }, 12000);
+  };
+
+  const toggleSound = () => {
+    const nextVal = !soundEnabled;
+    setSoundEnabled(nextVal);
+    localStorage.setItem('admin_orders_sound', String(nextVal));
+    if (nextVal) {
+      playNotificationAudioChime();
+    }
+  };
 
   // Load courier settings on mount
   useEffect(() => {
@@ -371,7 +441,13 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     }));
 
     try {
-      const response = await fetch(`/api/steadfast/status/invoice/${orderId}`, {
+      // Find the order in the orders state to check if it has a trackingId
+      const targetOrder = orders.find(o => o.id === orderId);
+      const hasTrackingId = targetOrder?.trackingId;
+      const type = hasTrackingId ? 'tracking' : 'invoice';
+      const paramVal = hasTrackingId ? targetOrder.trackingId : orderId;
+
+      const response = await fetch(`/api/steadfast/status/${type}/${paramVal}`, {
         headers: {
           'api-key': apiKey,
           'secret-key': secretKey
@@ -384,6 +460,24 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
           [orderId]: { status: data.delivery_status || 'unknown', loading: false }
         }));
       } else {
+        // If query by tracking code fails, fallback to querying by invoice
+        if (type === 'tracking') {
+          const fbResponse = await fetch(`/api/steadfast/status/invoice/${orderId}`, {
+            headers: {
+              'api-key': apiKey,
+              'secret-key': secretKey
+            }
+          });
+          const fbData = await fbResponse.json();
+          if (fbData && fbData.status === 200) {
+            setSteadfastStatuses(prev => ({
+              ...prev,
+              [orderId]: { status: fbData.delivery_status || 'unknown', loading: false }
+            }));
+            return;
+          }
+        }
+
         setSteadfastStatuses(prev => ({
           ...prev,
           [orderId]: { status: 'not_found', loading: false, error: data.message || 'Status not 200' }
@@ -395,6 +489,29 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
         ...prev,
         [orderId]: { status: 'error', loading: false, error: err.message }
       }));
+    }
+  };
+
+  const handleSaveManualTracking = async (orderId: string, trackingVal: string) => {
+    if (!trackingVal.trim()) {
+      alert("অনুগ্রহ করে সঠিক কুরিয়ার আইডি প্রদান করুন!");
+      return;
+    }
+    try {
+      const orderDocRef = doc(db, 'orders', orderId);
+      await updateDoc(orderDocRef, {
+        trackingId: trackingVal.trim(),
+        courierName: courierSettings?.courier_provider === 'steadfast' ? 'Steadfast' : courierSettings?.courier_provider === 'pathao' ? 'Pathao' : 'RedX',
+        status: 'Shipped'
+      });
+      setEditingTrackingOrderId(null);
+      // fetch steadfast status immediately for this manual tracking id
+      setTimeout(() => {
+        fetchSteadfastStatus(orderId);
+      }, 500);
+      alert("কুরিয়ার ট্র্যাকিং আইডি সফলভাবে সংরক্ষণ করা হয়েছে!");
+    } catch (err: any) {
+      alert("ত্রুটি ঘটেছে: " + err.message);
     }
   };
 
@@ -633,70 +750,26 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   const [isCreatingSheet, setIsCreatingSheet] = useState(false);
   const [sheetsFeedback, setSheetsFeedback] = useState<{ message: string; type: 'info' | 'success' | 'error' | null }>({ message: '', type: null });
 
-  const loadIncompleteOrders = () => {
-    const incompleteJson = localStorage.getItem('raincoat_incomplete_orders') || '[]';
+  const loadIncompleteOrders = async () => {
     try {
-      const parsed = JSON.parse(incompleteJson);
-      // Sort newest first
-      parsed.sort((a: any, b: any) => new Date(b.lastUpdatedAt || b.createdAt).getTime() - new Date(a.lastUpdatedAt || a.createdAt).getTime());
-      setIncompleteOrders(parsed);
+      const fbIncompletes = await getIncompleteOrdersFromFirestore();
+      const sorted = [...fbIncompletes].sort((a: any, b: any) => new Date(b.lastUpdatedAt || b.createdAt).getTime() - new Date(a.lastUpdatedAt || a.createdAt).getTime());
+      setIncompleteOrders(sorted);
     } catch (e) {
-      console.error(e);
+      console.error("Failed to load incomplete orders from Firestore:", e);
     }
   };
 
   const loadOrders = async () => {
-    // Stage 1: Load immediately from local offline cache
-    const listJson = localStorage.getItem('raincoat_orders') || '[]';
-    let currentLocal: RaincoatOrder[] = [];
-    try {
-      currentLocal = JSON.parse(listJson);
-      if (!Array.isArray(currentLocal)) currentLocal = [];
-      currentLocal.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      setOrders(currentLocal);
-    } catch (_) {
-      setOrders([]);
-    }
-    loadIncompleteOrders();
     onRefreshOrdersCount();
 
-    // Stage 2: Fetch active e-commerce orders from Firestore database
+    // Fetch active e-commerce orders from Firestore database
     try {
       const fbOrders = await getOrdersFromFirestore();
-      if (fbOrders && fbOrders.length > 0) {
-        const mergedMap = new Map<string, RaincoatOrder>();
-        currentLocal.forEach(o => mergedMap.set(o.id, { ...o }));
-        fbOrders.forEach(o => {
-          const existing = mergedMap.get(o.id);
-          mergedMap.set(o.id, {
-            ...existing,
-            ...o,
-            isConfirmed: o.isConfirmed !== undefined ? o.isConfirmed : (existing?.isConfirmed ?? false),
-            synced: true
-          });
-        });
-        const merged = Array.from(mergedMap.values());
-        merged.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        setOrders(merged);
-        localStorage.setItem('raincoat_orders', JSON.stringify(merged));
-      }
+      const sortedOrders = [...fbOrders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setOrders(sortedOrders);
       
-      const fbIncompletes = await getIncompleteOrdersFromFirestore();
-      if (fbIncompletes && fbIncompletes.length > 0) {
-        const incompleteJson = localStorage.getItem('raincoat_incomplete_orders') || '[]';
-        let localIncompletes: IncompleteOrder[] = [];
-        try {
-          localIncompletes = JSON.parse(incompleteJson) || [];
-          if (!Array.isArray(localIncompletes)) localIncompletes = [];
-        } catch (_) {}
-        const mergedIncompleteMap = new Map<string, IncompleteOrder>();
-        localIncompletes.forEach(i => mergedIncompleteMap.set(i.id, i));
-        fbIncompletes.forEach(i => mergedIncompleteMap.set(i.id, i));
-        const mergedIncompletes = Array.from(mergedIncompleteMap.values());
-        mergedIncompletes.sort((a, b) => new Date(b.lastUpdatedAt || b.createdAt).getTime() - new Date(a.lastUpdatedAt || a.createdAt).getTime());
-        setIncompleteOrders(mergedIncompletes);
-        localStorage.setItem('raincoat_incomplete_orders', JSON.stringify(mergedIncompletes));
-      }
+      await loadIncompleteOrders();
       onRefreshOrdersCount();
     } catch (err) {
       console.warn("Could not connect database or read Firestore records:", err);
@@ -714,37 +787,23 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     // Set up real-time listener for orders in Firestore
     const qOrders = query(collection(db, 'orders'));
     const unsubscribeOrders = onSnapshot(qOrders, (snapshot) => {
+      // Check for actually added documents after initial load
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added' && !isInitialLoadRef.current) {
+          const newOrder = change.doc.data() as RaincoatOrder;
+          triggerNewOrderAlert(newOrder);
+        }
+      });
+      isInitialLoadRef.current = false;
+
       const fbOrders: RaincoatOrder[] = [];
       snapshot.forEach((doc) => {
         fbOrders.push(doc.data() as RaincoatOrder);
       });
       
-      // Load current local orders right before merging
-      const listJson = localStorage.getItem('raincoat_orders') || '[]';
-      let localOrders: RaincoatOrder[] = [];
-      try {
-        localOrders = JSON.parse(listJson);
-        if (!Array.isArray(localOrders)) localOrders = [];
-      } catch (_) {}
-
-      // Keep both local/offline and server-side orders
-      const mergedMap = new Map<string, RaincoatOrder>();
-      localOrders.forEach(o => mergedMap.set(o.id, { ...o }));
-      fbOrders.forEach(o => {
-        const existing = mergedMap.get(o.id);
-        mergedMap.set(o.id, {
-          ...existing,
-          ...o,
-          isConfirmed: o.isConfirmed !== undefined ? o.isConfirmed : (existing?.isConfirmed ?? false),
-          synced: true
-        });
-      });
+      fbOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       
-      const merged = Array.from(mergedMap.values());
-      merged.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      
-      setOrders(merged);
-      localStorage.setItem('raincoat_orders', JSON.stringify(merged));
+      setOrders(fbOrders);
       onRefreshOrdersCount();
     }, (error) => {
       console.warn("Real-time orders sync error:", error);
@@ -758,22 +817,9 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
         fbIncompletes.push(doc.data() as IncompleteOrder);
       });
       
-      const incompleteJson = localStorage.getItem('raincoat_incomplete_orders') || '[]';
-      let localIncompletes: IncompleteOrder[] = [];
-      try {
-        localIncompletes = JSON.parse(incompleteJson);
-        if (!Array.isArray(localIncompletes)) localIncompletes = [];
-      } catch (_) {}
-
-      const mergedMap = new Map<string, IncompleteOrder>();
-      localIncompletes.forEach(i => mergedMap.set(i.id, i));
-      fbIncompletes.forEach(i => mergedMap.set(i.id, i));
+      fbIncompletes.sort((a, b) => new Date(b.lastUpdatedAt || b.createdAt).getTime() - new Date(a.lastUpdatedAt || a.createdAt).getTime());
       
-      const merged = Array.from(mergedMap.values());
-      merged.sort((a, b) => new Date(b.lastUpdatedAt || b.createdAt).getTime() - new Date(a.lastUpdatedAt || a.createdAt).getTime());
-      
-      setIncompleteOrders(merged);
-      localStorage.setItem('raincoat_incomplete_orders', JSON.stringify(merged));
+      setIncompleteOrders(fbIncompletes);
       onRefreshOrdersCount();
     }, (error) => {
       console.warn("Real-time incomplete orders sync error:", error);
@@ -1015,7 +1061,6 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       return;
     }
     const updated = orders.filter(o => o.id !== id);
-    localStorage.setItem('raincoat_orders', JSON.stringify(updated));
     setOrders(updated);
     onRefreshOrdersCount();
 
@@ -1032,7 +1077,6 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       return;
     }
     const updated = incompleteOrders.filter(o => o.id !== id);
-    localStorage.setItem('raincoat_incomplete_orders', JSON.stringify(updated));
     setIncompleteOrders(updated);
 
     // Delete from Firestore
@@ -1054,7 +1098,6 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
           console.warn(`Failed to delete incomplete draft ${o.id}:`, err);
         });
       });
-      localStorage.setItem('raincoat_incomplete_orders', '[]');
       setIncompleteOrders([]);
     }
   };
@@ -1070,7 +1113,6 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       }
       return o;
     });
-    localStorage.setItem('raincoat_orders', JSON.stringify(updated));
     setOrders(updated);
 
     // Update status in Firestore
@@ -1135,7 +1177,6 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       }
       return o;
     });
-    localStorage.setItem('raincoat_orders', JSON.stringify(updated));
     setOrders(updated);
 
     // Update confirmation status in Firestore
@@ -1166,7 +1207,6 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       }
       return o;
     });
-    localStorage.setItem('raincoat_orders', JSON.stringify(updated));
     setOrders(updated);
 
     // Update status in Firestore for each selected ID
@@ -1236,7 +1276,6 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       }
       return o;
     });
-    localStorage.setItem('raincoat_orders', JSON.stringify(updated));
     setOrders(updated);
 
     // Update confirmation status in Firestore for each selected ID
@@ -1271,7 +1310,6 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     }
 
     const updated = orders.filter(o => !selectedOrderIds.includes(o.id));
-    localStorage.setItem('raincoat_orders', JSON.stringify(updated));
     setOrders(updated);
     onRefreshOrdersCount();
 
@@ -1300,7 +1338,6 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       // 1. Update local state
       const updatedOrders = orders.map(o => o.id === editingOrder.id ? editingOrder : o);
       setOrders(updatedOrders);
-      localStorage.setItem('raincoat_orders', JSON.stringify(updatedOrders));
 
       // 2. Update Firestore
       await updateOrderInFirestore(editingOrder.id, editingOrder);
@@ -1360,12 +1397,10 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       // 3. Update completed local state
       const updatedCompleted = [successOrder, ...orders];
       setOrders(updatedCompleted);
-      localStorage.setItem('raincoat_orders', JSON.stringify(updatedCompleted));
 
       // 4. Update incomplete local state
       const updatedIncompletes = incompleteOrders.filter(o => o.id !== draft.id);
       setIncompleteOrders(updatedIncompletes);
-      localStorage.setItem('raincoat_incomplete_orders', JSON.stringify(updatedIncompletes));
 
       onRefreshOrdersCount();
 
@@ -1794,6 +1829,30 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
             </div>
           </div>
           <div className="flex items-center gap-2 relative">
+            {/* Audio Alert Toggle Button */}
+            <button
+              type="button"
+              onClick={toggleSound}
+              className={`px-3 py-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 border font-bold text-xs ${
+                soundEnabled
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500 shadow-sm'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border-slate-700'
+              }`}
+              title={soundEnabled ? "নতুন অর্ডার সাউন্ড চালু (Click to Mute)" : "নতুন অর্ডার সাউন্ড বন্ধ (Click to Unmute)"}
+            >
+              {soundEnabled ? (
+                <>
+                  <Volume2 className="h-4 w-4 text-emerald-200" />
+                  <span className="hidden sm:inline">সাউন্ড অন</span>
+                </>
+              ) : (
+                <>
+                  <VolumeX className="h-4 w-4 text-slate-400" />
+                  <span className="hidden sm:inline">সাউন্ড অফ</span>
+                </>
+              )}
+            </button>
+
             {/* Gear Icon settings panel */}
             <div className="relative">
               <button
@@ -2113,6 +2172,20 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                 🚀 অ্যাডভান্সড প্লাগইনস
               </button>
 
+              {/* 11b. ডিজাইন ও সেকশন কাস্টমাইজার */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('section_customizer')}
+                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
+                  activeTab === 'section_customizer'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10 font-extrabold'
+                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                }`}
+              >
+                <span className="flex h-1.5 w-1.5 rounded-full bg-indigo-400 animate-pulse absolute right-2.5 top-2.5" />
+                🎨 ভিজ্যুয়াল পেজ ও ডিজাইন কাস্টমাইজার
+              </button>
+
               {/* 12. কুরিয়ার এপিআই ইন্টিগ্রেশন */}
               <button
                 type="button"
@@ -2125,6 +2198,34 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
               >
                 <span className="flex h-1.5 w-1.5 rounded-full bg-blue-500 animate-ping absolute right-2.5 top-2.5" />
                 🚚 কুরিয়ার বুকিং প্যানেল
+              </button>
+
+              {/* 12b. সংযুক্ত কুরিয়ার তালিকা */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('courier_connections')}
+                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
+                  activeTab === 'courier_connections'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10 font-extrabold'
+                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                }`}
+              >
+                <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse absolute right-2.5 top-2.5" />
+                🔌 কুরিয়ার কুন্ডলী (কানেকশনস)
+              </button>
+
+              {/* 12c. কুরিয়ার ও ট্র্যাক মনিটর */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('courier_monitor')}
+                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
+                  activeTab === 'courier_monitor'
+                    ? 'bg-indigo-700 text-white shadow-md shadow-indigo-700/10 font-extrabold'
+                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                }`}
+              >
+                <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse absolute right-2.5 top-2.5" />
+                📊 কুরিয়ার ও ট্র্যাক মনিটর
               </button>
 
               {/* 13. কাস্টমার রিভিউ হাব */}
@@ -2808,6 +2909,95 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                           <div className="text-[9px] text-slate-400 font-mono mt-0.5">অর্ডার আইডি: {order.id}</div>
                           <div className="text-[9px] text-indigo-500 mt-0.5 italic">{formatBanglaDate(order.createdAt)}</div>
                           
+                          {/* কন্টেইনার এ কনসাইনমেন্ট/ট্র্যাকিং আইডি ম্যানুয়াল বা অটো প্রদর্শন ও এডিট অপশন */}
+                          <div className="mt-2 text-[10.5px]">
+                            {order.trackingId ? (
+                              <div className="flex flex-col gap-1 items-start bg-blue-50/50 p-1.5 rounded-lg border border-blue-100">
+                                <span className="text-[9px] uppercase font-black text-blue-700 block">কুরিয়ার কনসাইনমেন্ট আইডি (Consignment ID)</span>
+                                {editingTrackingOrderId === order.id ? (
+                                  <div className="flex items-center gap-1 mt-0.5">
+                                    <input
+                                      type="text"
+                                      autoFocus
+                                      value={tempTrackingId}
+                                      onChange={(e) => setTempTrackingId(e.target.value)}
+                                      placeholder="কনসাইনমেন্ট আইডি"
+                                      className="px-1.5 py-0.5 text-[10px] border border-slate-300 rounded bg-white w-28 outline-none focus:border-indigo-500 font-mono"
+                                    />
+                                    <button
+                                      onClick={() => handleSaveManualTracking(order.id, tempTrackingId)}
+                                      className="p-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded border border-emerald-300 cursor-pointer transition-all"
+                                      title="সংরক্ষণ করুন"
+                                    >
+                                      <Check className="h-3 w-3" />
+                                    </button>
+                                    <button
+                                      onClick={() => setEditingTrackingOrderId(null)}
+                                      className="p-1 bg-slate-100 hover:bg-slate-250 text-slate-600 rounded border border-slate-300 cursor-pointer transition-all"
+                                      title="বাতিল করুন"
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-mono text-[10.5px] font-black text-slate-800 bg-white border border-slate-200 px-1 py-0.2 rounded shadow-2xs">
+                                      📦 {order.trackingId}
+                                    </span>
+                                    <button
+                                      onClick={() => {
+                                        setEditingTrackingOrderId(order.id);
+                                        setTempTrackingId(order.trackingId || '');
+                                      }}
+                                      className="text-[9px] text-blue-600 hover:text-indigo-700 font-bold hover:underline cursor-pointer"
+                                    >
+                                      সম্পাদনা
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div>
+                                {editingTrackingOrderId === order.id ? (
+                                  <div className="flex items-center gap-1 mt-1">
+                                    <input
+                                      type="text"
+                                      autoFocus
+                                      value={tempTrackingId}
+                                      onChange={(e) => setTempTrackingId(e.target.value)}
+                                      placeholder="কনসাইনমেন্ট আইডি"
+                                      className="px-1.5 py-0.5 text-[10px] border border-slate-300 rounded bg-white w-32 outline-none focus:border-indigo-500 font-mono"
+                                    />
+                                    <button
+                                      onClick={() => handleSaveManualTracking(order.id, tempTrackingId)}
+                                      className="p-0.5 bg-emerald-50 text-emerald-600 rounded border border-emerald-250 cursor-pointer"
+                                      title="সংরক্ষণ করুন"
+                                    >
+                                      <Check className="h-3 w-3" />
+                                    </button>
+                                    <button
+                                      onClick={() => setEditingTrackingOrderId(null)}
+                                      className="p-0.5 bg-slate-50 text-slate-500 rounded border border-slate-200 cursor-pointer"
+                                      title="বাতিল করুন"
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => {
+                                      setEditingTrackingOrderId(order.id);
+                                      setTempTrackingId('');
+                                    }}
+                                    className="text-[9.5px] text-indigo-600 hover:text-indigo-800 font-extrabold bg-indigo-50 hover:bg-indigo-100/80 px-2 py-0.5 rounded border border-indigo-200/50 cursor-pointer inline-flex items-center gap-1 mt-1 transition-all"
+                                  >
+                                    + কুরিয়ার এন্ট্রি আইডি যুক্ত করুন
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          
                           {/* কাস্টমার অর্ডার হিস্টোরি ও ডাবল অর্ডার চেকার */}
                           {(() => {
                             const currentCleanPhone = order.phone.replace(/\D/g, '').slice(-11);
@@ -3248,6 +3438,25 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
           userRole={perms.canEdit ? userRole : 'ReadOnly'}
           orders={orders}
           onRefreshOrders={loadOrders}
+        />
+      )}
+
+      {activeTab === 'courier_connections' && (
+        <ConnectedCouriers 
+          userRole={perms.canEdit ? userRole : 'ReadOnly'}
+          orders={orders}
+        />
+      )}
+
+      {activeTab === 'courier_monitor' && (
+        <CourierMonitorAdmin 
+          orders={orders}
+        />
+      )}
+
+      {activeTab === 'section_customizer' && (
+        <SectionCustomizerAdmin 
+          userRole={perms.canEdit ? userRole : 'ReadOnly'}
         />
       )}
 
@@ -3709,6 +3918,68 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                 </div>
               </div>
             ))}
+        </div>
+      )}
+
+      {/* Floating Real-time New Order alerts toasts container */}
+      {alerts.length > 0 && (
+        <div className="fixed right-4 bottom-4 md:right-6 md:bottom-6 z-[9999] flex flex-col gap-3.5 max-w-sm w-full font-sans pointer-events-auto">
+          {alerts.map((alert) => (
+            <div
+              key={alert.id}
+              className="bg-slate-900 border border-amber-500/40 text-white p-4 rounded-2xl shadow-xl flex flex-col gap-3 relative animate-in slide-in-from-bottom duration-300 ring-2 ring-amber-500/20"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-xs text-amber-400 font-extrabold tracking-wider uppercase animate-pulse">
+                  <Flame className="h-4 w-4 text-orange-500 shrink-0 fill-orange-500 animate-bounce" />
+                  নতুন লাইভ অর্ডার এসেছে!
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setAlerts(prev => prev.filter(a => a.id !== alert.id))}
+                  className="text-slate-400 hover:text-white p-1 hover:bg-slate-800 rounded-lg transition"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Order Info */}
+              <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800 space-y-1.5">
+                <div className="flex justify-between items-start gap-2">
+                  <div className="font-bold text-xs truncate max-w-[190px] text-slate-100">👤 {alert.order.name}</div>
+                  <div className="text-[10px] bg-indigo-900/50 border border-indigo-750 text-indigo-200 px-2 py-0.5 rounded-md font-black shrink-0">
+                    ৳{alert.order.price}
+                  </div>
+                </div>
+                <div className="text-[11px] font-medium font-mono text-emerald-400">📞 {alert.order.phone}</div>
+                <div className="text-[10.5px] text-slate-400 truncate">📍 জেলা: {alert.order.district} | থানা: {alert.order.policeStation || 'N/A'}</div>
+                <div className="flex flex-wrap gap-1 mt-1 text-[9.5px]">
+                  <span className="bg-slate-800 border border-slate-705 text-slate-300 px-2 py-0.5 rounded font-bold">
+                    সাইজ: {alert.order.size}
+                  </span>
+                  <span className="bg-slate-800 border border-slate-705 text-slate-300 px-2 py-0.5 rounded font-bold">
+                    কালার: {alert.order.color === 'Black' ? 'কালো' : 'ব্লু'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-between gap-2.5">
+                <div className="text-[9.5px] text-slate-500">আইডি: {alert.order.id}</div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchTerm(alert.order.id);
+                    setAlerts(prev => prev.filter(a => a.id !== alert.id));
+                  }}
+                  className="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl text-[10.5px] font-black cursor-pointer transition shadow-sm"
+                >
+                  অর্ডারটি দেখুন
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

@@ -20,6 +20,15 @@ import { RaincoatOrder, IncompleteOrder, InventoryItem, ProductColor, Size, Medi
 export type { AdvancedAddonsSettings };
 import { performFraudCheck } from './fraudCheck';
 
+// Secure in-memory database to comply with "Dont save any of data in Localstore, customers or users background. All data save in cloud and show all in Admin panel."
+const memoryStorageMap = new Map<string, string>();
+const localStorage = {
+  getItem: (key: string) => memoryStorageMap.get(key) || null,
+  setItem: (key: string, value: string) => { memoryStorageMap.set(key, value); },
+  removeItem: (key: string) => { memoryStorageMap.delete(key); },
+  clear: () => { memoryStorageMap.clear(); },
+};
+
 // Initialize Firebase App
 const app = initializeApp(firebaseConfig);
 
@@ -107,16 +116,6 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 export async function addOrderToFirestore(order: RaincoatOrder): Promise<void> {
   const path = `orders/${order.id}`;
 
-  // Real-time fraud detection check right before committing to Firestore database
-  try {
-    const fraud = await performFraudCheck(order.phone);
-    order.fraudScore = fraud.score;
-    order.fraudStatus = fraud.status;
-    order.fraudReason = fraud.reason;
-  } catch (fe) {
-    console.error("Fraud API investigation error, bypassing to continue order:", fe);
-  }
-
   if (isQuotaTripped) {
     const cachedStr = localStorage.getItem('raincoat_orders_fallback') || '[]';
     try {
@@ -128,12 +127,30 @@ export async function addOrderToFirestore(order: RaincoatOrder): Promise<void> {
     } catch (_) {}
     return;
   }
+
+  // 1. Write the order immediately to Firestore database to avoid any delay!
   try {
     await setDoc(doc(db, 'orders', order.id), order);
   } catch (error) {
     tripQuotaCircuitBreaker(error);
     handleFirestoreError(error, OperationType.WRITE, path);
   }
+
+  // 2. Perform the fraud check asynchronously in the background. Once completed, update the document.
+  // This guarantees zero delay for the customer and the admin panel, while ensuring all fraud data is saved.
+  performFraudCheck(order.phone).then(async (fraud) => {
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        fraudScore: fraud.score,
+        fraudStatus: fraud.status,
+        fraudReason: fraud.reason
+      });
+    } catch (err) {
+      console.warn("Could not save fraud status to Firestore:", err);
+    }
+  }).catch((fe) => {
+    console.error("Fraud Check background task failed:", fe);
+  });
 }
 
 export async function updateOrderInFirestore(orderId: string, updates: Partial<RaincoatOrder>): Promise<void> {
@@ -151,7 +168,7 @@ export async function updateOrderInFirestore(orderId: string, updates: Partial<R
     return;
   }
   try {
-    await updateDoc(doc(db, 'orders', orderId), updates as any);
+    await setDoc(doc(db, 'orders', orderId), updates as any, { merge: true });
   } catch (error) {
     tripQuotaCircuitBreaker(error);
     handleFirestoreError(error, OperationType.UPDATE, path);

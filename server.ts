@@ -103,6 +103,33 @@ async function startServer() {
     }
   });
 
+  // API Route: Meta Facebook Conversions API (CAPI) Proxy
+  app.post("/api/fb-capi", async (req, res) => {
+    try {
+      const { pixelId, capiToken, payload } = req.body;
+
+      if (!pixelId || !capiToken || !payload) {
+        return res.status(400).json({ status: 400, message: "pixelId, capiToken, and payload are required." });
+      }
+
+      const capiUrl = `https://graph.facebook.com/v18.0/${pixelId}/events?access_token=${capiToken}`;
+
+      const response = await fetch(capiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json();
+      res.json(data);
+    } catch (err: any) {
+      console.error("Meta CAPI Proxy Error:", err);
+      res.status(500).json({ status: 500, message: err.message });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

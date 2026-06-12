@@ -40,6 +40,7 @@ export default function CourierAdmin({ userRole, orders = [], onRefreshOrders }:
   const [whatsappSuccess, setWhatsappSuccess] = useState('');
   const [steadfastBalance, setSteadfastBalance] = useState<number | null>(null);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
+  const [manualTrackingVals, setManualTrackingVals] = useState<{[orderId: string]: string}>({});
 
   // Settings backing
   const [settings, setSettings] = useState<AdvancedAddonsSettings>({
@@ -269,6 +270,82 @@ export default function CourierAdmin({ userRole, orders = [], onRefreshOrders }:
       alert(`সাফল্যের সাথে অর্ডার ${order.id} কুরিয়ার বুকিং সম্পন্ন হয়েছে!\nট্র্যাকিং আইডি: ${trackingId}\nকাস্টমারের মোবাইলে নোটিফিকেশন পাঠানো হয়েছে।`);
     } catch (err: any) {
       alert('কুরিয়ার বুকিং প্রসেস করতে ত্রুটি: ' + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleManualBookCourier = async (order: RaincoatOrder, manualId: string) => {
+    if (!manualId.trim()) {
+      alert('অনুগ্রহ করে সঠিক কুরিয়ার ট্র্যাকিং আইডি প্রদান করুন!');
+      return;
+    }
+    
+    const confirmBooking = window.confirm(`আপনি কি অর্ডারের জন্য ম্যানুয়ালি কুরিয়ার আইডি (${manualId.trim()}) সংরক্ষণ করতে চান?`);
+    if (!confirmBooking) return;
+
+    setIsSaving(true);
+    try {
+      const trackingId = manualId.trim();
+      const actualCourierName = settings.courier_provider === 'steadfast' ? 'Steadfast' : settings.courier_provider === 'pathao' ? 'Pathao' : 'RedX';
+      
+      const newLog = {
+        id: `courier-log-${Date.now()}`,
+        orderId: order.id,
+        courier: actualCourierName,
+        status: 'Assigned',
+        trackingId,
+        createdAt: new Date().toISOString()
+      };
+
+      const updatedLogs = [newLog, ...(settings.courier_log || [])];
+
+      let updatedSMSLogs = settings.sms_log || [];
+      if (settings.sms_enabled && settings.sms_template_shipping) {
+        const smsMsg = settings.sms_template_shipping
+          .replace('{name}', order.name)
+          .replace('{order_id}', order.id)
+          .replace('{tracking_id}', trackingId);
+
+        const newSMSLog = {
+          id: `sms-${Date.now()}`,
+          orderId: order.id,
+          phone: order.phone,
+          message: smsMsg,
+          status: 'Sent',
+          createdAt: new Date().toISOString()
+        };
+        updatedSMSLogs = [newSMSLog, ...updatedSMSLogs];
+      }
+
+      // Update Firestore Order Document with tracking attributes
+      const orderDocRef = doc(db, 'orders', order.id);
+      await updateDoc(orderDocRef, {
+        status: 'Shipped',
+        trackingId,
+        courierName: actualCourierName,
+        shippedAt: new Date().toISOString()
+      });
+
+      await handleSaveSettings({
+        courier_log: updatedLogs,
+        sms_log: updatedSMSLogs
+      });
+
+      // Clear the input value
+      setManualTrackingVals(prev => {
+        const next = { ...prev };
+        delete next[order.id];
+        return next;
+      });
+
+      if (onRefreshOrders) {
+        onRefreshOrders();
+      }
+
+      alert(`সাফল্যের সাথে অর্ডার ${order.id} ম্যানুয়াল কুরিয়ার ট্র্যাকিং আইডি (${trackingId}) দিয়ে কনফার্ম সম্পন্ন হয়েছে!`);
+    } catch (err: any) {
+      alert('কুরিয়ার ট্র্যাকিং আইডি সেভ করতে ত্রুটি: ' + err.message);
     } finally {
       setIsSaving(false);
     }
@@ -600,14 +677,40 @@ export default function CourierAdmin({ userRole, orders = [], onRefreshOrders }:
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => handleBookCourier(order)}
-                        className="w-full sm:w-auto px-4 py-2 bg-blue-650 hover:bg-blue-700 text-white rounded-xl font-bold text-[11px] shrink-0 font-sans cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-sm shadow-blue-650/10"
-                      >
-                        <Truck className="h-3.5 w-3.5" />
-                        স্টিডফাস্টে বুক করুন (1-Click)
-                      </button>
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto shrink-0 pb-1 sm:pb-0">
+                        {/* API Booking button */}
+                        <button
+                          type="button"
+                          onClick={() => handleBookCourier(order)}
+                          className="px-3.5 py-2 bg-blue-650 hover:bg-blue-700 text-white rounded-xl font-bold text-[11px] font-sans cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-sm shadow-blue-650/10"
+                        >
+                          <Truck className="h-3.5 w-3.5" />
+                          স্টিডফাস্টে বুক করুন (1-Click)
+                        </button>
+
+                        <div className="hidden sm:block text-slate-300 font-bold text-xs select-none">|</div>
+
+                        {/* Manual entry field */}
+                        <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200 w-full sm:w-auto">
+                          <input
+                            type="text"
+                            value={manualTrackingVals[order.id] || ''}
+                            onChange={(e) => setManualTrackingVals({
+                              ...manualTrackingVals,
+                              [order.id]: e.target.value
+                            })}
+                            placeholder="কনসাইনমেন্ট আইডি (Tracking ID)"
+                            className="bg-white px-2 py-1 text-[10.5px] outline-none font-mono font-medium focus:ring-1 focus:ring-blue-500 w-full sm:w-44 border border-slate-200/50 rounded-lg"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleManualBookCourier(order, manualTrackingVals[order.id] || '')}
+                            className="bg-slate-900 hover:bg-black text-white text-[10px] font-black font-sans px-2.5 py-1.5 rounded-lg cursor-pointer transition-all shrink-0"
+                          >
+                            ম্যানুয়াল এন্ট্রি
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   );
                 })

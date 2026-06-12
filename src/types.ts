@@ -47,6 +47,7 @@ export interface RaincoatOrder {
   price: number;
   status: 'Pending' | 'Shipped' | 'Delivered' | 'Cancelled' | 'Canceled' | 'Canceled Fake Order';
   isConfirmed?: boolean;
+  bikeModel?: string;
   createdAt: string;
   fraudScore?: number;
   fraudStatus?: 'Safe' | 'Warning' | 'High Risk' | 'Scammer';
@@ -72,6 +73,7 @@ export interface IncompleteOrder {
   heightFeet: number;
   heightInches: number;
   price: number;
+  bikeModel?: string;
   createdAt: string;
   lastUpdatedAt: string;
   fieldsFilledCount: number;
@@ -217,6 +219,10 @@ export interface AdvancedAddonsSettings {
   site_title?: string;
   site_favicon?: string;
   site_logo_url?: string;
+  header_snippets?: string;
+  footer_snippets?: string;
+  section_customizations?: Record<string, any>;
+  bike_triple_cards?: { title: string; imageUrl: string; description?: string }[];
 }
 
 
