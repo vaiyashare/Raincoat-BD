@@ -275,17 +275,24 @@ export default function OrderForm({
       synced: false,
     };
 
-    // Save of final order, delete of incomplete draft, and decrement of stock in Firebase Cloud
+    // Save of final order first to ensure core purchase is never blocked by secondary actions
     try {
-      await Promise.all([
-        addOrderToFirestore(newOrder),
-        deleteIncompleteOrderFromFirestore(sessionId),
-        decrementInventoryItemInFirestore(selectedColor!, initialSize!)
-      ]);
-      console.log("Successfully connected order to database Firestore and decremented stock!");
+      await addOrderToFirestore(newOrder);
+      console.log("Successfully connected order to database Firestore!");
       newOrder.synced = true;
+
+      // Execute secondary, non-critical database updates asynchronously with isolated catch handlers
+      deleteIncompleteOrderFromFirestore(sessionId).catch((err) => {
+        console.warn("Non-critical: Failed to delete incomplete draft order:", err);
+      });
+
+      if (selectedColor && initialSize) {
+        decrementInventoryItemInFirestore(selectedColor, initialSize).catch((err) => {
+          console.warn("Non-critical: Failed to decrement inventory stock:", err);
+        });
+      }
     } catch (err) {
-      console.error("Firebase connection error during submission:", err);
+      console.error("Critical Firebase error saving order:", err);
     }
 
     // Dispatch Facebook Pixel / Conversion API Purchase Event with real purchase data & Advanced User Matching

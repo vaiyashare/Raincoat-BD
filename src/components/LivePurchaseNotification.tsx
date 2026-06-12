@@ -70,6 +70,7 @@ export default function LivePurchaseNotification() {
   const [purchaseList, setPurchaseList] = useState<PurchaseNotification[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isVisible, setIsVisible] = useState(false);
+  const [isListOpen, setIsListOpen] = useState(false);
 
   const activeList = purchaseList.length > 0 ? purchaseList : PURCHASE_DATA;
 
@@ -131,6 +132,11 @@ export default function LivePurchaseNotification() {
           if (prevList.length > 0 && results[0]?.id !== prevList[0]?.id) {
             setCurrentIndex(0);
             setIsVisible(true);
+            
+            // Auto close preview after 5 seconds
+            setTimeout(() => {
+              setIsVisible(false);
+            }, 5000);
           }
           return results;
         });
@@ -146,6 +152,10 @@ export default function LivePurchaseNotification() {
   useEffect(() => {
     const initialDelay = setTimeout(() => {
       setIsVisible(true);
+      // Auto vanish after 5 seconds to remain light and non-intrusive
+      setTimeout(() => {
+        setIsVisible(false);
+      }, 5000);
     }, 4000);
     return () => clearTimeout(initialDelay);
   }, []);
@@ -162,9 +172,14 @@ export default function LivePurchaseNotification() {
       setTimeout(() => {
         setCurrentIndex((prev) => (prev + 1) % listLen);
         setIsVisible(true);
+        
+        // Auto vanish after 5 seconds to remain clean
+        setTimeout(() => {
+          setIsVisible(false);
+        }, 5000);
       }, 500);
 
-    }, 12000); // changes every 12 seconds
+    }, 15000); // changes and briefly displays every 15 seconds
 
     return () => clearInterval(interval);
   }, [activeList.length]);
@@ -178,66 +193,140 @@ export default function LivePurchaseNotification() {
     : currentPurchase.timeAgo;
 
   return (
-    <div className="fixed top-6 right-3 sm:right-6 z-[100000] pointer-events-none w-full max-w-[calc(100vw-1.5rem)] sm:max-w-xs px-2 sm:px-0">
-      <AnimatePresence mode="wait">
-        {isVisible && (
-          <motion.div
-            key={currentPurchase.id}
-            initial={{ opacity: 0, x: 50, scale: 0.95 }}
-            animate={{ opacity: 1, x: 0, scale: 1 }}
-            exit={{ opacity: 0, x: 100, scale: 0.9 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-            drag="x"
-            dragConstraints={{ left: -100, right: 300 }}
-            dragElastic={0.2}
-            onDragEnd={(event, info) => {
-              if (info.offset.x > 80 || info.offset.x < -80) {
-                setIsVisible(false);
-              }
-            }}
-            whileDrag={{ scale: 0.96, opacity: 0.7 }}
-            className="pointer-events-auto bg-slate-950/90 backdrop-blur-md border border-slate-800 p-2 sm:p-2.5 rounded-xl shadow-xl flex items-center gap-2.5 text-white font-sans cursor-grab active:cursor-grabbing relative overflow-hidden select-none"
-          >
-            {/* Optimized Green glowing status circle / bag */}
-            <div className="relative shrink-0 w-8 sm:w-9 h-8 sm:h-9 bg-gradient-to-tr from-emerald-500/20 to-teal-500/10 rounded-lg border border-emerald-500/30 flex items-center justify-center pointer-events-none">
-              <ShoppingBag className="h-4 sm:h-4.5 w-4 sm:w-4.5 text-emerald-400" />
-              <div className="absolute top-0 right-0 w-2 h-2 bg-emerald-500 rounded-full border border-slate-900 animate-ping" />
-              <div className="absolute top-0 right-0 w-2 h-2 bg-emerald-500 rounded-full border border-slate-900" />
-            </div>
-
-            {/* Notification Text details */}
-            <div className="flex-1 min-w-0 pr-4 pointer-events-none">
-              <div className="flex items-center justify-between gap-1">
-                <span className="font-sans font-black text-[11px] sm:text-xs text-slate-100 tracking-wide truncate max-w-[120px]">
-                  {currentPurchase.name}
-                </span>
-                <span className="text-[8px] sm:text-[9px] bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded-full font-sans font-bold flex items-center gap-0.5 border border-emerald-500/15 shrink-0">
-                  <ShieldCheck className="h-2.5 w-2.5" /> কনফার্মড
-                </span>
-              </div>
-              <p className="text-[10px] sm:text-[11px] text-slate-300 mt-0.5 font-sans font-medium">
-                <span className="text-orange-400 font-semibold">{currentPurchase.color}</span> (<span className="text-[#00e3cd] font-bold">{currentPurchase.size}</span>) রেনকোট
-              </p>
-              <div className="flex items-center justify-between mt-0.5 text-[8px] sm:text-[9px] text-slate-400 font-sans">
-                <span className="truncate max-w-[120px] sm:max-w-[160px]">📍 {currentPurchase.location}</span>
-                <span className="shrink-0 text-amber-500 font-sans font-bold">{timeAgoVal}</span>
-              </div>
-            </div>
-
-            {/* Simple Tap/Click Cross to Dismiss */}
-            <button 
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsVisible(false);
-              }}
-              className="absolute top-1 right-1 p-1 text-slate-400 hover:text-white rounded-full hover:bg-slate-800/40 transition cursor-pointer"
-              title="বন্ধ করুন"
+    <div className="fixed bottom-28 right-4 sm:right-6 z-[9999] pointer-events-none flex flex-col items-end">
+      
+      {/* Container for Relative Floating Items */}
+      <div className="relative flex items-center justify-end">
+        
+        {/* Understated sliding horizontal compact capsule indicator */}
+        <AnimatePresence mode="wait">
+          {isVisible && !isListOpen && (
+            <motion.div
+              initial={{ opacity: 0, x: 25, scale: 0.95 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, x: 25, scale: 0.95 }}
+              transition={{ type: 'spring', stiffness: 380, damping: 28 }}
+              className="absolute right-14 top-1/2 -translate-y-1/2 bg-slate-950/95 border border-emerald-500/25 backdrop-blur-md pl-3 pr-2.5 py-2 rounded-full shadow-2xl flex items-center gap-2 text-white text-[11px] whitespace-nowrap pointer-events-auto select-none"
             >
-              <X className="h-3 w-3" />
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+              <p className="font-sans font-medium text-slate-100 flex items-center gap-1.5 leading-none">
+                <span className="font-black text-emerald-400">{currentPurchase.name}</span> 
+                <span className="text-slate-400 font-sans">({currentPurchase.location.split(',')[0]} থেকে)</span> 
+                <span className="font-sans text-amber-400 font-bold">{currentPurchase.color} {currentPurchase.size}</span> 
+                <span className="text-[10px] text-slate-300 font-sans">অর্ডার করেছেন</span>
+              </p>
+              
+              {/* Very small self close trigger */}
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsVisible(false);
+                }}
+                className="text-slate-500 hover:text-white ml-1 p-0.5 rounded-full hover:bg-slate-800 transition cursor-pointer"
+                title="বন্ধ করুন"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Recent Purchase Dropdown Panel */}
+        <AnimatePresence>
+          {isListOpen && (
+            <motion.div
+              initial={{ opacity: 0, y: 15, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 15, scale: 0.95 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+              className="absolute bottom-14 right-0 w-72 sm:w-80 bg-slate-950/95 border border-slate-800/80 backdrop-blur-md rounded-2xl p-4 shadow-2xl pointer-events-auto text-left select-none"
+            >
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2.5 mb-3">
+                <h3 className="text-xs font-extrabold text-slate-100 flex items-center gap-1.5 uppercase font-sans tracking-wider">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping shrink-0" />
+                  সদ্য সমাপ্ত অর্ডারসমূহ
+                </h3>
+                <button 
+                  onClick={() => setIsListOpen(false)}
+                  className="text-slate-400 hover:text-white p-1 hover:bg-slate-800/40 rounded-lg transition cursor-pointer"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              
+              {/* Scrollable list of last orders */}
+              <div className="space-y-2 max-h-56 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-800">
+                {activeList.slice(0, 5).map((item, idx) => {
+                  const itemTimeAgo = item.createdAt ? getBengaliTimeAgo(item.createdAt) : item.timeAgo;
+                  return (
+                    <div 
+                      key={item.id || idx} 
+                      className="p-2 rounded-xl bg-slate-900/40 border border-slate-800/40 flex items-start gap-2.5 hover:bg-slate-900/60 transition"
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center shrink-0">
+                        <ShoppingBag className="h-3.5 w-3.5 text-emerald-400" />
+                      </div>
+                      <div className="flex-1 min-w-0 font-sans text-left">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-[11px] font-black text-slate-200 truncate">{item.name}</span>
+                          <span className="text-[8px] text-emerald-400 font-bold shrink-0">{itemTimeAgo}</span>
+                        </div>
+                        <p className="text-[9px] text-slate-400 mt-0.5 font-sans">
+                          কালার: <span className="text-orange-400 font-bold">{item.color}</span> | সাইজ: <span className="text-teal-400 font-bold">{item.size}</span>
+                        </p>
+                        <p className="text-[8px] text-slate-500 truncate mt-0.5">
+                          📍 {item.location}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-3 pt-2 text-center border-t border-slate-900">
+                <p className="text-[9px] text-slate-500 font-semibold tracking-wide uppercase">
+                  ⚡ রিয়েল-টাইম ডাটা ট্র্যাকিং সক্রিয়
+                </p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Mini Floating Bell Button */}
+        <motion.button
+          onClick={() => {
+            setIsListOpen(!isListOpen);
+            setIsVisible(false); // Hide the slide-out tooltip on open
+          }}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          animate={isVisible ? { rotate: [0, -12, 12, -12, 12, -8, 8, 0] } : {}}
+          transition={{ duration: 0.65, ease: "easeInOut" }}
+          className="pointer-events-auto w-11 h-11 rounded-full bg-slate-950/90 hover:bg-slate-900 border border-slate-800/80 text-white shadow-2xl flex items-center justify-center cursor-pointer transition relative select-none"
+          title="অর্ডার নোটিফিকেশন"
+        >
+          {/* Subtle glowing indicator or icon */}
+          <svg 
+            xmlns="http://www.w3.org/2000/svg" 
+            viewBox="0 0 24 24" 
+            fill="none" 
+            stroke="currentColor" 
+            strokeWidth="2.5" 
+            strokeLinecap="round" 
+            strokeLinejoin="round" 
+            className="h-4.5 w-4.5 text-slate-100 group-hover:text-emerald-400 transition"
+          >
+            <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+            <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+          </svg>
+
+          {/* Glowing Red Notification Ring Indicator */}
+          <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border border-slate-950 animate-pulse">
+            <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
+          </span>
+        </motion.button>
+
+      </div>
     </div>
   );
 }
