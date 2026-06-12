@@ -35,6 +35,7 @@ const defaultTripleCards = [
 export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingProps) {
   const [selectedColor, setSelectedColor] = useState<ProductColor>('Navy Blue');
   const [submittedOrder, setSubmittedOrder] = useState<RaincoatOrder | null>(null);
+  const [isCheckoutVisible, setIsCheckoutVisible] = useState(false);
   
   // Form fields
   const [name, setName] = useState('');
@@ -150,8 +151,12 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
     const handleScroll = () => {
       const checkoutEl = document.getElementById('checkout-form');
       if (!checkoutEl) return;
+      const rect = checkoutEl.getBoundingClientRect();
+      const isVisible = rect.top < window.innerHeight && rect.bottom > 0;
+      setIsCheckoutVisible(isVisible);
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll();
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
@@ -1071,7 +1076,7 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
       </section>
 
       {/* Floating Sticky bottom mini product checkout trigger element */}
-      <div className="sticky bottom-0 bg-slate-950 border-t border-slate-800 py-3 px-4 shadow-[0_-5px_15px_rgba(0,0,0,0.3)] z-40 flex flex-col sm:flex-row justify-between items-center gap-3">
+      <div className={`sticky bottom-0 bg-slate-950 border-t border-slate-800 py-3 px-4 shadow-[0_-5px_15px_rgba(0,0,0,0.3)] z-40 sm:flex-row justify-between items-center gap-3 ${isCheckoutVisible ? 'hidden' : 'flex flex-col'}`}>
         <div className="flex items-center gap-2.5 text-slate-300 text-xs sm:text-sm font-sans font-semibold">
           <Bike className="h-5 w-5 text-orange-400 shrink-0" />
           <span>

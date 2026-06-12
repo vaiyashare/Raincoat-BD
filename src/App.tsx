@@ -99,6 +99,7 @@ export default function App() {
   const [showAdmin, setShowAdmin] = useState(false);
   const [ordersCount, setOrdersCount] = useState(0);
   const [scrollProgress, setScrollProgress] = useState(0);
+  const [isCheckoutVisible, setIsCheckoutVisible] = useState(false);
   const [bundleOfferImage, setBundleOfferImage] = useState<string>(navyRaincoatImg);
   const [liveVideosList, setLiveVideosList] = useState<any[]>([
     {
@@ -269,8 +270,12 @@ export default function App() {
       const checkoutEl = document.getElementById('checkout-form');
       if (!checkoutEl) return;
       
+      const rect = checkoutEl.getBoundingClientRect();
+      const isVisible = rect.top < window.innerHeight && rect.bottom > 0;
+      setIsCheckoutVisible(isVisible);
+      
       const scrollTop = window.scrollY || document.documentElement.scrollTop;
-      const checkoutTop = checkoutEl.getBoundingClientRect().top + scrollTop;
+      const checkoutTop = rect.top + scrollTop;
       const viewportHeight = window.innerHeight;
       
       const maxScroll = checkoutTop - viewportHeight;
@@ -1334,6 +1339,32 @@ export default function App() {
         );
       })()}
 
+      {/* 🏍️ Biker Special Offer Block */}
+      <section className="py-6 bg-amber-50/40 border-y border-amber-100/60" id="biker-promo">
+        <div className="container mx-auto px-4 max-w-4xl">
+          <div className="bg-white border border-amber-400/30 p-5 rounded-2xl flex flex-col md:flex-row items-center gap-4 shadow-sm hover:shadow-md transition-all">
+            <div className="bg-orange-500 text-white w-12 h-12 rounded-2xl font-bold flex items-center justify-center text-2xl shrink-0 shadow-lg shadow-orange-500/10 animate-bounce">
+              🏍️
+            </div>
+            <div className="flex-1 text-center md:text-left">
+              <h4 className="text-sm font-black text-slate-900 tracking-wide font-sans mb-1 uppercase flex items-center justify-center md:justify-start gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-orange-600 animate-pulse shrink-0" />
+                বাইকারদের উদ্দেশ্যে স্পেশাল অফার:
+              </h4>
+              <p className="text-xs sm:text-sm leading-relaxed text-slate-700 font-sans font-medium">
+                সুজুকি, ইয়ামাহা, পালসার বা টিভিএস বাইকার বন্ধুরা আমাদের রেনকোট কাপড়ে পেয়ে অত্যন্ত খুশি। কাদা বৃষ্টির চাট থেকে বাইক রাইড সেফ ও ড্রাই রাখতে আজই আপনার পছন্দের রঙ কনফার্ম করুন।
+              </p>
+            </div>
+            <button
+              onClick={() => scrollToSection('checkout-form')}
+              className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 active:scale-98 text-white font-extrabold text-xs sm:text-sm rounded-xl transition duration-300 shadow-xs cursor-pointer whitespace-nowrap shrink-0 font-sans"
+            >
+              আজই কালার কনফার্ম করুন
+            </button>
+          </div>
+        </div>
+      </section>
+
       {/* Bento Grid Features Showcase */}
       {(() => {
         const raincoatFeatures = getSectionData('raincoat_features');
@@ -1860,45 +1891,27 @@ export default function App() {
       <FAQSection />
 
       {/* Order Placement and Form flow section */}
-      <section className="py-10 bg-blue-50/20" id="checkout-form">
-        <div className="container mx-auto px-4 max-w-7xl">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start" id="form-scroll-target">
-            
-            {/* Purchase assurances block left side */}
-            <div className="lg:col-span-5 space-y-6">
+      <section className="py-12 bg-blue-50/20" id="checkout-form">
+        <div className="container mx-auto px-4 max-w-2xl" id="form-scroll-target">
+          
+          {/* Centered dynamic order form / Receipt output */}
+          {submittedOrder ? (
+            <Receipt order={submittedOrder} onClose={handleBackToShopping} />
+          ) : (
+            <OrderForm
+              initialSize={selectedSize}
+              selectedColor={selectedColor}
+              onChangeSize={setSelectedSize}
+              onChangeColor={setSelectedColor}
+              onOrderSuccess={handleOrderCreated}
+            />
+          )}
 
-              {/* Bikers support quote */}
-              <div className="p-4 bg-white border border-slate-200 rounded-2xl flex items-center gap-3 shadow-xs">
-                <div className="bg-orange-500 text-white p-2.5 rounded-xl font-bold animate-pulse text-lg">
-                  🏍️
-                </div>
-                <p className="text-xs leading-relaxed text-slate-500 font-sans">
-                  <strong>বাইকারদের উদ্দেশ্যে স্পেশাল অফার:</strong> সুজুকি, ইয়ামাহা, পালসার বা টিভিএস বাইকার বন্ধুরা আমাদের রেনকোট কাপড়ে পেয়ে অত্যন্ত খুশি। কাদা বৃষ্টির চাট থেকে বাইক রাইড সেফ ও ড্রাই রাখতে আজই আপনার পছন্দের রঙ কনফার্ম করুন।
-                </p>
-              </div>
-            </div>
-
-            {/* Dynamic order form / Receipt output column */}
-            <div className="lg:col-span-7">
-              {submittedOrder ? (
-                <Receipt order={submittedOrder} onClose={handleBackToShopping} />
-              ) : (
-                <OrderForm
-                  initialSize={selectedSize}
-                  selectedColor={selectedColor}
-                  onChangeSize={setSelectedSize}
-                  onChangeColor={setSelectedColor}
-                  onOrderSuccess={handleOrderCreated}
-                />
-              )}
-            </div>
-
-          </div>
         </div>
       </section>
 
       {/* Suttle Sticky bottom CTA order bar (for outstanding conversions) */}
-      <div className="sticky bottom-0 bg-white border-t border-slate-200 py-3.5 px-4 shadow-[0_-5px_15px_rgba(0,0,0,0.06)] z-45 flex flex-col sm:flex-row justify-between items-center gap-3 block">
+      <div className={`sticky bottom-0 bg-white border-t border-slate-200 py-3.5 px-4 shadow-[0_-5px_15px_rgba(0,0,0,0.06)] z-45 sm:flex-row justify-between items-center gap-3 ${isCheckoutVisible ? 'hidden' : 'flex flex-col'}`}>
         <div className="flex items-center gap-2.5 text-slate-800 text-xs sm:text-sm font-sans font-semibold">
           <CloudRain className="h-5 w-5 text-orange-500 shrink-0" />
           <span>

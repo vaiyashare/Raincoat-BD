@@ -445,7 +445,7 @@ export default function UsersAdmin({ currentUser, onRefreshUsers, userRole }: Us
         </div>
 
         {/* Right Column: User accounts overview and directory */}
-        <div className="flex-1 bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-xs">
+        <div className="lg:col-span-7 w-full bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-xs">
           
           <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
             <div className="flex items-center gap-2">

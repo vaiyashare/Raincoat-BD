@@ -193,27 +193,27 @@ export default function LivePurchaseNotification() {
     : currentPurchase.timeAgo;
 
   return (
-    <div className="fixed bottom-28 right-4 sm:right-6 z-[9999] pointer-events-none flex flex-col items-end">
+    <div className="fixed top-3 right-4 left-4 sm:left-auto sm:right-6 sm:bottom-28 sm:top-auto z-[99999] pointer-events-none flex flex-col items-end">
       
       {/* Container for Relative Floating Items */}
-      <div className="relative flex items-center justify-end">
+      <div className="relative flex items-center justify-end w-full sm:w-auto">
         
         {/* Understated sliding horizontal compact capsule indicator */}
         <AnimatePresence mode="wait">
           {isVisible && !isListOpen && (
             <motion.div
-              initial={{ opacity: 0, x: 25, scale: 0.95 }}
+              initial={{ opacity: 0, x: 20, scale: 0.95 }}
               animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={{ opacity: 0, x: 25, scale: 0.95 }}
+              exit={{ opacity: 0, x: 20, scale: 0.95 }}
               transition={{ type: 'spring', stiffness: 380, damping: 28 }}
-              className="absolute right-14 top-1/2 -translate-y-1/2 bg-slate-950/95 border border-emerald-500/25 backdrop-blur-md pl-3 pr-2.5 py-2 rounded-full shadow-2xl flex items-center gap-2 text-white text-[11px] whitespace-nowrap pointer-events-auto select-none"
+              className="absolute right-12 sm:right-14 top-1/2 -translate-y-1/2 bg-slate-950/95 border border-emerald-500/25 backdrop-blur-md pl-3 pr-2 py-1.5 sm:py-2 rounded-xl sm:rounded-full shadow-2xl flex items-center gap-2 text-white text-[11px] w-[calc(100vw-6.5rem)] sm:w-auto max-w-[280px] sm:max-w-none pointer-events-auto select-none"
             >
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-              <p className="font-sans font-medium text-slate-100 flex items-center gap-1.5 leading-none">
-                <span className="font-black text-emerald-400">{currentPurchase.name}</span> 
-                <span className="text-slate-400 font-sans">({currentPurchase.location.split(',')[0]} থেকে)</span> 
-                <span className="font-sans text-amber-400 font-bold">{currentPurchase.color} {currentPurchase.size}</span> 
-                <span className="text-[10px] text-slate-300 font-sans">অর্ডার করেছেন</span>
+              <p className="font-sans font-medium text-slate-100 flex flex-wrap sm:flex-nowrap items-center gap-x-1 sm:gap-1.5 leading-tight sm:leading-none flex-1 min-w-0">
+                <span className="font-black text-emerald-400 shrink-0">{currentPurchase.name}</span> 
+                <span className="text-slate-400 font-sans truncate max-w-[90px] sm:max-w-none">({currentPurchase.location.split(',')[0]} থেকে)</span> 
+                <span className="font-sans text-amber-400 font-bold shrink-0">{currentPurchase.color} {currentPurchase.size}</span> 
+                <span className="text-[10px] text-slate-300 font-sans shrink-0">অর্ডার করেছেন</span>
               </p>
               
               {/* Very small self close trigger */}
@@ -222,10 +222,10 @@ export default function LivePurchaseNotification() {
                   e.stopPropagation();
                   setIsVisible(false);
                 }}
-                className="text-slate-500 hover:text-white ml-1 p-0.5 rounded-full hover:bg-slate-800 transition cursor-pointer"
+                className="text-slate-400 hover:text-white p-0.5 rounded-full hover:bg-slate-800 transition cursor-pointer shrink-0"
                 title="বন্ধ করুন"
               >
-                <X className="h-3 w-3" />
+                <X className="h-3.5 w-3.5" />
               </button>
             </motion.div>
           )}
@@ -235,11 +235,11 @@ export default function LivePurchaseNotification() {
         <AnimatePresence>
           {isListOpen && (
             <motion.div
-              initial={{ opacity: 0, y: 15, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 15, scale: 0.95 }}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
               transition={{ duration: 0.18, ease: "easeOut" }}
-              className="absolute bottom-14 right-0 w-72 sm:w-80 bg-slate-950/95 border border-slate-800/80 backdrop-blur-md rounded-2xl p-4 shadow-2xl pointer-events-auto text-left select-none"
+              className="absolute top-14 sm:top-auto sm:bottom-14 right-0 w-72 sm:w-80 bg-slate-950/95 border border-slate-800/80 backdrop-blur-md rounded-2xl p-4 shadow-2xl pointer-events-auto text-left select-none"
             >
               <div className="flex items-center justify-between border-b border-slate-800 pb-2.5 mb-3">
                 <h3 className="text-xs font-extrabold text-slate-100 flex items-center gap-1.5 uppercase font-sans tracking-wider">

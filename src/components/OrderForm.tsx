@@ -469,14 +469,6 @@ export default function OrderForm({
             </div>
           </div>
           
-          <p className="text-[10px] text-blue-800 bg-blue-50/50 p-2 rounded-lg font-semibold leading-relaxed">
-            📍 আপনার ওজনের জন্য উপযুক্ত রেইনকোট সাইজ হচ্ছে: <strong className="font-mono text-xs">{(() => {
-              if (weight <= 60) return 'XL';
-              if (weight <= 80) return 'XXL';
-              if (weight <= 95) return '3XL';
-              return '4XL';
-            })()}</strong>। অনুগ্রহ করে নিচে ৬ নম্বর ধাপে ক্লিক করে সাইজটি ম্যানুয়ালি সিলেক্ট করুন।
-          </p>
         </div>
 
         {/* Color Choice */}

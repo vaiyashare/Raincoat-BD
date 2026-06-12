@@ -279,6 +279,28 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
     reader.readAsDataURL(file);
   };
 
+  // Upload/Compress general section image in browser
+  const handleSectionImageUpload = (sectionKey: string, file: File) => {
+    const validExtensions = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
+    if (!validExtensions.includes(file.type)) {
+      alert('শুধুমাত্র JPG, PNG অথবা WEBP ইমেজ আপলোড করা যাবে!');
+      return;
+    }
+    if (file.size > 1.2 * 1024 * 1024) {
+      alert('ইমেজের সাইজ অতিরিক্ত বড় (১.২ মেগাবাইটের নীচে ইমেজ ট্রাই করুন)!');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        const base64 = event.target.result as string;
+        handleUpdateValue(sectionKey, 'image_url', base64);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   // Commit changes to cloud Firestore seamlessly
   const handleSaveAll = async () => {
     if (!settings) return;
@@ -720,20 +742,52 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
                 </div>
 
                 {/* Custom Image URL background / section illustration */}
-                <div className="pt-1">
-                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                <div className="pt-1.5 space-y-2">
+                  <label className="block text-xs font-bold text-slate-700 flex items-center justify-between">
                     <span>সেকশন ইমেজ লিংক বা ব্যানার হোস্ট URL (Image Input)</span>
-                    <ImageIcon className="h-4 w-4 text-slate-400" />
+                    <ImageIcon className="h-4 w-4 text-indigo-500" />
                   </label>
+
+                  {/* Image Preview Box */}
+                  {currentSectionData.image_url && (
+                    <div className="w-full h-36 bg-slate-150 rounded-xl overflow-hidden relative flex items-center justify-center border border-dashed border-slate-300">
+                      <img 
+                        src={currentSectionData.image_url} 
+                        alt="Section Preview" 
+                        className="w-full h-full object-contain bg-white"
+                        referrerPolicy="no-referrer"
+                      />
+                    </div>
+                  )}
+
+                  {/* Direct File Upload button */}
+                  <div className="select-none">
+                    <label className="block cursor-pointer bg-slate-900 border border-slate-800 hover:bg-slate-800 active:scale-98 text-white text-[11px] font-extrabold py-2 text-center rounded-xl shadow-xs transition mb-2">
+                      📥 নতুন ছবি সরাসরি আপলোড করুন
+                      <input 
+                        type="file" 
+                        accept="image/*"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) handleSectionImageUpload(activeSection, f);
+                        }}
+                        className="hidden" 
+                      />
+                    </label>
+                  </div>
+
                   <input 
                     type="text" 
-                    value={currentSectionData.image_url}
+                    value={currentSectionData.image_url || ''}
                     onChange={(e) => handleUpdateValue(activeSection, 'image_url', e.target.value)}
                     placeholder="যেমন: https://example.com/banner-raincoat.png"
                     className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-850 focus:ring-1 focus:ring-blue-500 outline-none"
                   />
-                  <span className="text-[10px] text-slate-400 mt-1 block leading-normal">
-                    যেসব সেকশনে স্লাইডার রয়েছে, সেখানে ছবির লিংক দিলে তা স্লাইডারের উপর বা ব্যাকগ্রাউন্ডে সেট হবে। ফাঁকা রাখলে বাই-ডিফল্ট প্রোডাক্ট ড্রপ কন্টেন্ট ব্যবহার হবে।
+                  <span className="text-[10px] text-slate-400 mt-1 block leading-normal font-medium">
+                    {activeSection === 'raincoat_comparison' 
+                      ? 'বাজারের সাধারণ রেইনকোট বনাম আমাদের প্রিমিয়াম রেইনকোট সেকশনের প্রধান তুলনা কার্টুন/ছবি কাস্টমাইজ করুন। ফাঁকা রাখলে এটি প্রদর্শিত হবে না।'
+                      : 'যেসব সেকশনে স্লাইডার বা ব্যানার রয়েছে, সেখানে ছবির লিংক দিলে তা প্রদর্শন হবে। ফাঁকা রাখলে বাই-ডিফল্ট প্রোডাক্ট ড্রপ কন্টেন্ট ব্যবহার হবে।'
+                    }
                   </span>
                 </div>
 
