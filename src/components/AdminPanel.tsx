@@ -47,7 +47,6 @@ import AdvancedPluginsAdmin from './admin/AdvancedPluginsAdmin';
 import CourierAdmin from './admin/CourierAdmin';
 import ReviewsAdmin from './admin/ReviewsAdmin';
 import DailyOrdersChart from './admin/DailyOrdersChart';
-import ConnectedCouriers from './admin/ConnectedCouriers';
 import CourierMonitorAdmin from './admin/CourierMonitorAdmin';
 import SectionCustomizerAdmin from './admin/SectionCustomizerAdmin';
 
@@ -2201,27 +2200,13 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                 type="button"
                 onClick={() => setActiveTab('courier_hub')}
                 className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
-                  activeTab === 'courier_hub'
-                    ? 'bg-blue-650 text-white shadow-md shadow-blue-650/10 font-extrabold'
+                  activeTab === 'courier_hub' || activeTab === 'courier_connections'
+                    ? 'bg-gradient-to-r from-blue-650 to-indigo-650 text-white shadow-md shadow-blue-650/10 font-extrabold'
                     : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
                 }`}
               >
                 <span className="flex h-1.5 w-1.5 rounded-full bg-blue-500 animate-ping absolute right-2.5 top-2.5" />
-                🚚 কুরিয়ার বুকিং প্যানেল
-              </button>
-
-              {/* 12b. সংযুক্ত কুরিয়ার তালিকা */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('courier_connections')}
-                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
-                  activeTab === 'courier_connections'
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10 font-extrabold'
-                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
-                }`}
-              >
-                <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse absolute right-2.5 top-2.5" />
-                🔌 কুরিয়ার কুন্ডলী (কানেকশনস)
+                🚚 কুরিয়ার বুকিং ও কুন্ডলী
               </button>
 
               {/* 12c. কুরিয়ার ও ট্র্যাক মনিটর */}
@@ -3443,18 +3428,11 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
         />
       )}
 
-      {activeTab === 'courier_hub' && (
+      {(activeTab === 'courier_hub' || activeTab === 'courier_connections') && (
         <CourierAdmin 
           userRole={perms.canEdit ? userRole : 'ReadOnly'}
           orders={orders}
           onRefreshOrders={loadOrders}
-        />
-      )}
-
-      {activeTab === 'courier_connections' && (
-        <ConnectedCouriers 
-          userRole={perms.canEdit ? userRole : 'ReadOnly'}
-          orders={orders}
         />
       )}
 
@@ -3931,59 +3909,59 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
         </div>
       )}
 
-      {/* Floating Real-time New Order alerts toasts container */}
+      {/* Floating Real-time New Order alerts toasts container - beautifully compact, easily closable */}
       {alerts.length > 0 && (
-        <div className="fixed right-4 bottom-4 md:right-6 md:bottom-6 z-[9999] flex flex-col gap-3.5 max-w-sm w-full font-sans pointer-events-auto">
+        <div className="fixed right-3 bottom-3 md:right-5 md:bottom-5 z-[9999] flex flex-col gap-2 max-w-[315px] w-[calc(100%-1.5rem)] font-sans pointer-events-auto">
           {alerts.map((alert) => (
             <div
               key={alert.id}
-              className="bg-slate-900 border border-amber-500/40 text-white p-4 rounded-2xl shadow-xl flex flex-col gap-3 relative animate-in slide-in-from-bottom duration-300 ring-2 ring-amber-500/20"
+              className="bg-slate-900 border border-amber-500/40 text-white p-3 rounded-xl shadow-2xl flex flex-col gap-2 relative animate-in slide-in-from-bottom duration-300 ring-1 ring-amber-500/10"
             >
               {/* Header */}
               <div className="flex items-center justify-between">
-                <span className="flex items-center gap-1.5 text-xs text-amber-400 font-extrabold tracking-wider uppercase animate-pulse">
-                  <Flame className="h-4 w-4 text-orange-500 shrink-0 fill-orange-500 animate-bounce" />
-                  নতুন লাইভ অর্ডার এসেছে!
+                <span className="flex items-center gap-1.5 text-[11px] text-amber-400 font-extrabold tracking-wider uppercase animate-pulse">
+                  <Flame className="h-3.5 w-3.5 text-orange-500 shrink-0 fill-orange-500" />
+                  নতুন অর্ডার এসেছে!
                 </span>
                 <button
                   type="button"
                   onClick={() => setAlerts(prev => prev.filter(a => a.id !== alert.id))}
-                  className="text-slate-400 hover:text-white p-1 hover:bg-slate-800 rounded-lg transition"
+                  className="text-slate-400 hover:text-white p-2 hover:bg-slate-800 rounded-full transition flex items-center justify-center cursor-pointer"
+                  style={{ minWidth: '38px', minHeight: '38px' }}
+                  title="বন্ধ করুন (Close)"
                 >
-                  <X className="h-4 w-4" />
+                  <X className="h-5 w-5" />
                 </button>
               </div>
 
               {/* Order Info */}
-              <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800 space-y-1.5">
-                <div className="flex justify-between items-start gap-2">
-                  <div className="font-bold text-xs truncate max-w-[190px] text-slate-100">👤 {alert.order.name}</div>
-                  <div className="text-[10px] bg-indigo-900/50 border border-indigo-750 text-indigo-200 px-2 py-0.5 rounded-md font-black shrink-0">
+              <div className="bg-slate-950/85 p-2 rounded-lg border border-slate-800/80 space-y-1">
+                <div className="flex justify-between items-start gap-1.5">
+                  <div className="font-bold text-xs truncate max-w-[170px] text-slate-100">👤 {alert.order.name}</div>
+                  <div className="text-[9.5px] bg-indigo-950/60 border border-indigo-900 text-indigo-300 px-1.5 py-0.5 rounded font-black shrink-0">
                     ৳{alert.order.price}
                   </div>
                 </div>
-                <div className="text-[11px] font-medium font-mono text-emerald-400">📞 {alert.order.phone}</div>
-                <div className="text-[10.5px] text-slate-400 truncate">📍 জেলা: {alert.order.district} | থানা: {alert.order.policeStation || 'N/A'}</div>
-                <div className="flex flex-wrap gap-1 mt-1 text-[9.5px]">
-                  <span className="bg-slate-800 border border-slate-705 text-slate-300 px-2 py-0.5 rounded font-bold">
-                    সাইজ: {alert.order.size}
-                  </span>
-                  <span className="bg-slate-800 border border-slate-705 text-slate-300 px-2 py-0.5 rounded font-bold">
-                    কালার: {alert.order.color === 'Black' ? 'কালো' : 'ব্লু'}
-                  </span>
-                </div>
+                <div className="text-[10px] font-bold font-mono text-emerald-400">📞 {alert.order.phone}</div>
+                <div className="text-[9.5px] text-slate-400 truncate">📍 {alert.order.district} {alert.order.policeStation ? `| ${alert.order.policeStation}` : ''}</div>
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center justify-between gap-2.5">
-                <div className="text-[9.5px] text-slate-500">আইডি: {alert.order.id}</div>
+              <div className="flex items-center justify-between gap-2 pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => setAlerts(prev => prev.filter(a => a.id !== alert.id))}
+                  className="px-2.5 py-1 text-slate-400 hover:text-slate-200 text-[10px] font-bold hover:underline transition"
+                >
+                  কেটে দিন
+                </button>
                 <button
                   type="button"
                   onClick={() => {
                     setSearchTerm(alert.order.id);
                     setAlerts(prev => prev.filter(a => a.id !== alert.id));
                   }}
-                  className="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl text-[10.5px] font-black cursor-pointer transition shadow-sm"
+                  className="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg text-[10.5px] font-black cursor-pointer transition shadow-sm"
                 >
                   অর্ডারটি দেখুন
                 </button>

@@ -304,38 +304,31 @@ export default function App() {
     // Initial load and sync orders count
     setOrdersCount(0);
 
-    // Auto-setup and save Meta Pixel and Conversion API settings from user's request (only if not already set or initialized)
+    // Auto-setup and save Meta Pixel and Conversion API settings from user's request
     const requestedPixelId = '1145959524284032';
     const requestedToken = 'EAAMY12ZCBQswBRQAXx2MDdDRSTZAgopaWP81nWqY8JYsRnOZAQOn7Nk6L6ZAKk61oFi278KPubqXpZBurmTGi5e8jWjF8Jp7bOhw5meOfl9C7Nn5PXJLs4xYtxSbAnUoAJdKmOwZA6MZCEXqvlnPqo3qZCToLgydC5EvEUZA7uawlJq5LT2AfpKkIEDuMJZCI9ngZDZD';
     
-    if (!localStorage.getItem('fb_pixel_id_initialized_key')) {
-      localStorage.setItem('fb_pixel_id_initialized_key', 'true');
+    if (localStorage.getItem('fb_pixel_id') !== requestedPixelId || localStorage.getItem('fb_capi_token') !== requestedToken) {
+      localStorage.setItem('fb_pixel_id', requestedPixelId);
+      localStorage.setItem('fb_pixel_enabled', 'true');
+      localStorage.setItem('fb_capi_enabled', 'true');
+      localStorage.setItem('fb_capi_token', requestedToken);
+      window.dispatchEvent(new Event('raincoat_pixel_config_updated'));
       
-      // Only set if fb_pixel_id does not already exist to respect custom user settings
-      if (!localStorage.getItem('fb_pixel_id')) {
-        localStorage.setItem('fb_pixel_id', requestedPixelId);
-        localStorage.setItem('fb_pixel_enabled', 'true');
-        localStorage.setItem('fb_capi_enabled', 'true');
-        localStorage.setItem('fb_capi_token', requestedToken);
-        window.dispatchEvent(new Event('raincoat_pixel_config_updated'));
-        
-        import('./lib/firebase').then(({ getIntegrationsSettingsFromFirestore, saveIntegrationsSettingsToFirestore }) => {
-          getIntegrationsSettingsFromFirestore().then((existing) => {
-            if (!existing || !existing.fb_pixel_id) {
-              const updated = {
-                ...existing,
-                fb_pixel_id: requestedPixelId,
-                fb_pixel_enabled: true,
-                fb_capi_enabled: true,
-                fb_capi_token: requestedToken
-              };
-              saveIntegrationsSettingsToFirestore(updated).then(() => {
-                console.log("Successfully auto-configured Meta Pixel & CAPI Settings in Firestore.");
-              }).catch(e => console.warn(e));
-            }
-          }).catch(() => {});
+      import('./lib/firebase').then(({ getIntegrationsSettingsFromFirestore, saveIntegrationsSettingsToFirestore }) => {
+        getIntegrationsSettingsFromFirestore().then((existing) => {
+          const updated = {
+            ...existing,
+            fb_pixel_id: requestedPixelId,
+            fb_pixel_enabled: true,
+            fb_capi_enabled: true,
+            fb_capi_token: requestedToken
+          };
+          saveIntegrationsSettingsToFirestore(updated).then(() => {
+            console.log("Successfully auto-configured Meta Pixel & CAPI Settings in Firestore.");
+          }).catch(e => console.warn(e));
         }).catch(() => {});
-      }
+      }).catch(() => {});
     }
 
     // Sync count asynchronously from Firestore database
@@ -992,8 +985,8 @@ export default function App() {
         fontSize: 'default',
         image_url: '',
         icon_text: 'হান্ড্রেড পার্সেন্ট রিয়েল লাইভ টেস্ট',
-        title_1: 'हमारे রেইনকোটের জীবন্ত ওয়াটারপ্রুফ টেস্ট ভিডিও!',
-        title_2: 'বিশ্বাস না হলে সরাসরি ভিডিওতে দেখে নিন পানির উপর কেমন প্রতিরোধ গড়ে খোলে।',
+        title_1: 'আমাদের রেইনকোটের লাইভ ওয়াটারপ্রুফ টেস্ট ভিডিও!',
+        title_2: 'বিশ্বাস না হলে সরাসরি ভিডিওতে দেখে নিন পানির উপর কেমন প্রতিরোধ গড়ে তোলে।',
         body: 'কোনো গিমিক বা এডিট ছাড়াই শতভাগ বাস্তব উপায়ে রেইনকোটটির গুণগত মান ও ফিনিশিং এই ছোট রিভিও ক্লিপে তুলে ধরা হয়েছে।',
         visible_mobile: true,
         visible_desktop: true,
@@ -1043,7 +1036,7 @@ export default function App() {
       }
     };
 
-    return {
+    const result = {
       ...(defaultData[sectionKey] || {
         bgColor: '',
         textColor: '',
@@ -1060,6 +1053,20 @@ export default function App() {
       }),
       ...(customizations[sectionKey] || {})
     };
+
+    if (sectionKey === 'raincoat_live_video') {
+      if (
+        result.title_1 === 'আমাদের রেইনকোটের জীবন্ত ওয়াটারপ্রুফ টেস্ট ভিডিও!' ||
+        result.title_1 === 'हमारे রেইনকোটের জীবন্ত ওয়াটারপ্রুফ টেস্ট ভিডিও!'
+      ) {
+        result.title_1 = 'আমাদের রেইনকোটের লাইভ ওয়াটারপ্রুফ টেস্ট ভিডিও!';
+      }
+      if (result.title_2 && result.title_2.trim() === 'do not edit this directly click below') {
+        result.title_2 = '';
+      }
+    }
+
+    return result;
   };
 
   const getAlignClass = (align: 'left' | 'center' | 'right') => {
@@ -1263,7 +1270,7 @@ export default function App() {
       {/* Prominent Embedded Video Section */}
       {(() => {
         const raincoatLiveVideo = getSectionData('raincoat_live_video');
-        const customVideosList = raincoatLiveVideo.video_url 
+        const customVideosList = (raincoatLiveVideo.video_url && raincoatLiveVideo.video_url !== 'https://www.youtube.com/watch?v=dQw4w9WgXcQ') 
           ? [{ id: 'custom-video-1', title: raincoatLiveVideo.icon_text || 'Premium Custom Video', url: raincoatLiveVideo.video_url }]
           : liveVideosList;
         return (

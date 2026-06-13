@@ -82,10 +82,10 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
       fontSize: 'default',
       image_url: '',
       icon_text: 'হান্ড্রেড পার্সেন্ট রিয়েল লাইভ টেস্ট',
-      title_1: 'আমাদের রেইনকোটের জীবন্ত ওয়াটারপ্রুফ টেস্ট ভিডিও!',
-      title_2: ' do not edit this directly click below',
+      title_1: 'আমাদের রেইনকোটের লাইভ ওয়াটারপ্রুফ টেস্ট ভিডিও!',
+      title_2: '',
       body: 'কোনো গিমিক বা এডিট ছাড়াই শতভাগ বাস্তব উপায়ে রেইনকোটটির গুণগত মান ও ফিনিশিং এই ছোট রিভিও ক্লিপে তুলে ধরা হয়েছে।',
-      video_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      video_url: '',
       visible_mobile: true,
       visible_desktop: true,
       padding_vertical: 'normal'

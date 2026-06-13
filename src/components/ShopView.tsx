@@ -387,10 +387,10 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
         status: 'Pending',
         isConfirmed: false,
         createdAt: new Date().toISOString(),
-        orderNotes: orderNotes.trim() || undefined,
-        partialPaymentSender: partialPaymentSender.trim() || undefined,
-        partialPaymentTxnId: partialPaymentTxnId.trim() || undefined,
-        partialPaymentAmount: addons?.partial_payment_enabled ? addons.partial_payment_amount : undefined,
+        orderNotes: orderNotes.trim(),
+        partialPaymentSender: partialPaymentSender.trim(),
+        partialPaymentTxnId: partialPaymentTxnId.trim(),
+        partialPaymentAmount: addons?.partial_payment_enabled ? (addons.partial_payment_amount || 0) : 0,
         synced: false
       };
 

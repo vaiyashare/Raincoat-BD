@@ -357,11 +357,16 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
 
   // Filter products based on search term & category selection
   const filteredProducts = products.filter(product => {
-    const matchSearch = product.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                        product.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        product.description.toLowerCase().includes(searchTerm.toLowerCase());
+    if (!product) return false;
+    const title = product.title || '';
+    const category = product.category || '';
+    const description = product.description || '';
+
+    const matchSearch = title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                        category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        description.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchCategory = selectedCategory === 'All' || product.category === selectedCategory;
+    const matchCategory = selectedCategory === 'All' || category.trim() === selectedCategory.trim();
     
     return matchSearch && matchCategory;
   });
@@ -372,7 +377,7 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
   };
 
   // Get categories dynamically
-  const categoriesList = ['All', ...Array.from(new Set(products.map(p => p.category)))];
+  const categoriesList = ['All', ...Array.from(new Set(products.map(p => p?.category).filter((cat): cat is string => typeof cat === 'string' && cat.trim() !== '')))];
 
   const handleOpenQuickOrder = (product: Product) => {
     setCheckoutProduct(product);

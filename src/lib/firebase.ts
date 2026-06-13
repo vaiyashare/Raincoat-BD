@@ -41,15 +41,19 @@ export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true
 }, dbId);
 
+// Initialize default database so we can fetch previous or old data if stored there in default fallback
+export const defaultDb = initializeFirestore(app, {
+  experimentalForceLongPolling: true
+}); // Defaults to "(default)"
+
 // Basic connection validation
 async function testConnection() {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn("Firebase client appears to be offline. Verify network connection.");
-    }
-  }
+  } catch (_) {}
+  try {
+    await getDocFromServer(doc(defaultDb, 'test', 'connection'));
+  } catch (_) {}
 }
 testConnection();
 
@@ -112,9 +116,32 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
+// Global utility helper to recursively sanitise objects before passing them to Firestore.
+// Since Firestore client SDK does not support keys with explicit undefined values, this
+// ensures they are totally pruned recursively while preserving Dates and other instances.
+function cleanUndefined<T>(obj: T): T {
+  if (obj === null || obj === undefined) return obj;
+  if (obj instanceof Date) return obj as any;
+  if (Array.isArray(obj)) {
+    return obj.map(cleanUndefined) as any;
+  }
+  if (typeof obj === 'object') {
+    const cleaned: any = {};
+    for (const key of Object.keys(obj as any)) {
+      const val = (obj as any)[key];
+      if (val !== undefined) {
+        cleaned[key] = cleanUndefined(val);
+      }
+    }
+    return cleaned;
+  }
+  return obj;
+}
+
 // Order Database API methods
 export async function addOrderToFirestore(order: RaincoatOrder): Promise<void> {
   const path = `orders/${order.id}`;
+  const cleanedOrder = cleanUndefined(order);
 
   if (isQuotaTripped) {
     const cachedStr = localStorage.getItem('raincoat_orders_fallback') || '[]';
@@ -128,16 +155,31 @@ export async function addOrderToFirestore(order: RaincoatOrder): Promise<void> {
     return;
   }
 
-  // 1. Write the order immediately to Firestore database to avoid any delay!
+  // 1. Write the order immediately to both database instances so user never loses their data!
+  let succeeded = false;
+  let firstError: any = null;
+
   try {
-    await setDoc(doc(db, 'orders', order.id), order);
+    await setDoc(doc(db, 'orders', order.id), cleanedOrder);
+    succeeded = true;
   } catch (error) {
-    tripQuotaCircuitBreaker(error);
-    handleFirestoreError(error, OperationType.WRITE, path);
+    firstError = error;
+    console.warn("Direct addOrderToFirestore failed on custom database:", error);
   }
 
-  // 2. Perform the fraud check asynchronously in the background. Once completed, update the document.
-  // This guarantees zero delay for the customer and the admin panel, while ensuring all fraud data is saved.
+  try {
+    await setDoc(doc(defaultDb, 'orders', order.id), cleanedOrder);
+    succeeded = true;
+  } catch (error) {
+    console.warn("Direct addOrderToFirestore failed on default database:", error);
+  }
+
+  if (!succeeded && firstError) {
+    tripQuotaCircuitBreaker(firstError);
+    handleFirestoreError(firstError, OperationType.WRITE, path);
+  }
+
+  // 2. Perform the fraud check asynchronously in the background. Once completed, update both documents.
   performFraudCheck(order.phone).then(async (fraud) => {
     try {
       await updateDoc(doc(db, 'orders', order.id), {
@@ -145,9 +187,14 @@ export async function addOrderToFirestore(order: RaincoatOrder): Promise<void> {
         fraudStatus: fraud.status,
         fraudReason: fraud.reason
       });
-    } catch (err) {
-      console.warn("Could not save fraud status to Firestore:", err);
-    }
+    } catch (_) {}
+    try {
+      await updateDoc(doc(defaultDb, 'orders', order.id), {
+        fraudScore: fraud.score,
+        fraudStatus: fraud.status,
+        fraudReason: fraud.reason
+      });
+    } catch (_) {}
   }).catch((fe) => {
     console.error("Fraud Check background task failed:", fe);
   });
@@ -155,6 +202,7 @@ export async function addOrderToFirestore(order: RaincoatOrder): Promise<void> {
 
 export async function updateOrderInFirestore(orderId: string, updates: Partial<RaincoatOrder>): Promise<void> {
   const path = `orders/${orderId}`;
+  const cleanedUpdates = cleanUndefined(updates);
   if (isQuotaTripped) {
     const cachedStr = localStorage.getItem('raincoat_orders_fallback') || '[]';
     try {
@@ -167,11 +215,28 @@ export async function updateOrderInFirestore(orderId: string, updates: Partial<R
     } catch (_) {}
     return;
   }
+
+  let succeeded = false;
+  let firstError: any = null;
+
   try {
-    await setDoc(doc(db, 'orders', orderId), updates as any, { merge: true });
+    await setDoc(doc(db, 'orders', orderId), cleanedUpdates as any, { merge: true });
+    succeeded = true;
   } catch (error) {
-    tripQuotaCircuitBreaker(error);
-    handleFirestoreError(error, OperationType.UPDATE, path);
+    firstError = error;
+    console.warn("Update failed on custom database:", error);
+  }
+
+  try {
+    await setDoc(doc(defaultDb, 'orders', orderId), cleanedUpdates as any, { merge: true });
+    succeeded = true;
+  } catch (error) {
+    console.warn("Update failed on default database:", error);
+  }
+
+  if (!succeeded && firstError) {
+    tripQuotaCircuitBreaker(firstError);
+    handleFirestoreError(firstError, OperationType.UPDATE, path);
   }
 }
 
@@ -186,12 +251,13 @@ export async function deleteOrderFromFirestore(orderId: string): Promise<void> {
     } catch (_) {}
     return;
   }
+
   try {
     await deleteDoc(doc(db, 'orders', orderId));
-  } catch (error) {
-    tripQuotaCircuitBreaker(error);
-    handleFirestoreError(error, OperationType.DELETE, path);
-  }
+  } catch (_) {}
+  try {
+    await deleteDoc(doc(defaultDb, 'orders', orderId));
+  } catch (_) {}
 }
 
 export async function getOrdersFromFirestore(): Promise<RaincoatOrder[]> {
@@ -205,37 +271,49 @@ export async function getOrdersFromFirestore(): Promise<RaincoatOrder[]> {
     }
     return [];
   }
+
+  const results: RaincoatOrder[] = [];
+  const orderIdsFetched = new Set<string>();
+
   try {
     const q = query(collection(db, 'orders'));
     const snapshot = await getDocs(q);
-    const results: RaincoatOrder[] = [];
     snapshot.forEach((doc) => {
-      results.push(doc.data() as RaincoatOrder);
+      const data = doc.data() as RaincoatOrder;
+      if (data && data.id && !orderIdsFetched.has(data.id)) {
+        results.push(data);
+        orderIdsFetched.add(data.id);
+      }
     });
-    try {
-      localStorage.setItem('raincoat_orders_fallback', JSON.stringify(results));
-    } catch (_) {}
-    return results;
   } catch (error) {
-    tripQuotaCircuitBreaker(error);
-    try {
-      handleFirestoreError(error, OperationType.LIST, path);
-    } catch (e) {
-      console.warn("getOrdersFromFirestore failed, returning cached fallback:", e);
-    }
-    const cached = localStorage.getItem('raincoat_orders_fallback') || localStorage.getItem('raincoat_orders');
-    if (cached) {
-      try {
-        return JSON.parse(cached) as RaincoatOrder[];
-      } catch (_) {}
-    }
-    return [];
+    console.warn("Could not query orders from custom database, trying default fallback:", error);
   }
+
+  try {
+    const qDefault = query(collection(defaultDb, 'orders'));
+    const snapshotDefault = await getDocs(qDefault);
+    snapshotDefault.forEach((doc) => {
+      const data = doc.data() as RaincoatOrder;
+      if (data && data.id && !orderIdsFetched.has(data.id)) {
+        results.push(data);
+        orderIdsFetched.add(data.id);
+      }
+    });
+  } catch (error) {
+    console.warn("Could not query orders from default database:", error);
+  }
+
+  try {
+    localStorage.setItem('raincoat_orders_fallback', JSON.stringify(results));
+  } catch (_) {}
+
+  return results;
 }
 
 // Incomplete Orders Draft API
 export async function addIncompleteOrderToFirestore(draft: IncompleteOrder): Promise<void> {
   const path = `incompleteOrders/${draft.id}`;
+  const cleanedDraft = cleanUndefined(draft);
   if (isQuotaTripped) {
     const cachedStr = localStorage.getItem('raincoat_incomplete_orders_fallback') || '[]';
     try {
@@ -248,11 +326,11 @@ export async function addIncompleteOrderToFirestore(draft: IncompleteOrder): Pro
     return;
   }
   try {
-    await setDoc(doc(db, 'incompleteOrders', draft.id), draft);
-  } catch (error) {
-    tripQuotaCircuitBreaker(error);
-    handleFirestoreError(error, OperationType.WRITE, path);
-  }
+    await setDoc(doc(db, 'incompleteOrders', draft.id), cleanedDraft);
+  } catch (_) {}
+  try {
+    await setDoc(doc(defaultDb, 'incompleteOrders', draft.id), cleanedDraft);
+  } catch (_) {}
 }
 
 export async function deleteIncompleteOrderFromFirestore(draftId: string): Promise<void> {
@@ -268,10 +346,10 @@ export async function deleteIncompleteOrderFromFirestore(draftId: string): Promi
   }
   try {
     await deleteDoc(doc(db, 'incompleteOrders', draftId));
-  } catch (error) {
-    tripQuotaCircuitBreaker(error);
-    handleFirestoreError(error, OperationType.DELETE, path);
-  }
+  } catch (_) {}
+  try {
+    await deleteDoc(doc(defaultDb, 'incompleteOrders', draftId));
+  } catch (_) {}
 }
 
 export async function getIncompleteOrdersFromFirestore(): Promise<IncompleteOrder[]> {
@@ -285,32 +363,43 @@ export async function getIncompleteOrdersFromFirestore(): Promise<IncompleteOrde
     }
     return [];
   }
+
+  const results: IncompleteOrder[] = [];
+  const idsFetched = new Set<string>();
+
   try {
     const q = query(collection(db, 'incompleteOrders'));
     const snapshot = await getDocs(q);
-    const results: IncompleteOrder[] = [];
     snapshot.forEach((doc) => {
-      results.push(doc.data() as IncompleteOrder);
+      const data = doc.data() as IncompleteOrder;
+      if (data && data.id && !idsFetched.has(data.id)) {
+        results.push(data);
+        idsFetched.add(data.id);
+      }
     });
-    try {
-      localStorage.setItem('raincoat_incomplete_orders_fallback', JSON.stringify(results));
-    } catch (_) {}
-    return results;
   } catch (error) {
-    tripQuotaCircuitBreaker(error);
-    try {
-      handleFirestoreError(error, OperationType.LIST, path);
-    } catch (e) {
-      console.warn("getIncompleteOrdersFromFirestore failed, returning fallback:", e);
-    }
-    const cached = localStorage.getItem('raincoat_incomplete_orders_fallback');
-    if (cached) {
-      try {
-        return JSON.parse(cached) as IncompleteOrder[];
-      } catch (_) {}
-    }
-    return [];
+    console.warn("Could not read incomplete orders from custom database:", error);
   }
+
+  try {
+    const qDefault = query(collection(defaultDb, 'incompleteOrders'));
+    const snapshotDefault = await getDocs(qDefault);
+    snapshotDefault.forEach((doc) => {
+      const data = doc.data() as IncompleteOrder;
+      if (data && data.id && !idsFetched.has(data.id)) {
+        results.push(data);
+        idsFetched.add(data.id);
+      }
+    });
+  } catch (error) {
+    console.warn("Could not read incomplete orders from default database:", error);
+  }
+
+  try {
+    localStorage.setItem('raincoat_incomplete_orders_fallback', JSON.stringify(results));
+  } catch (_) {}
+
+  return results;
 }
 
 // Inventory API methods
@@ -386,7 +475,8 @@ export async function saveInventoryItemToFirestore(item: InventoryItem): Promise
     return;
   }
   try {
-    await setDoc(doc(db, 'inventory', item.id), item);
+    const cleanedItem = cleanUndefined(item);
+    await setDoc(doc(db, 'inventory', item.id), cleanedItem);
   } catch (error) {
     tripQuotaCircuitBreaker(error);
     handleFirestoreError(error, OperationType.WRITE, path);
@@ -507,7 +597,8 @@ export async function saveMediaToFirestore(item: MediaItem): Promise<void> {
     return;
   }
   try {
-    await setDoc(doc(db, 'media', item.id), item);
+    const cleanedItem = cleanUndefined(item);
+    await setDoc(doc(db, 'media', item.id), cleanedItem);
   } catch (error) {
     tripQuotaCircuitBreaker(error);
     handleFirestoreError(error, OperationType.WRITE, path);
@@ -567,14 +658,19 @@ export async function saveIntegrationsSettingsToFirestore(settings: Partial<Inte
     return;
   }
   try {
-    await setDoc(doc(db, 'settings', 'integrations'), {
+    const cleanedSettings = cleanUndefined({
       id: 'integrations',
       ...settings
     });
-  } catch (error) {
-    tripQuotaCircuitBreaker(error);
-    handleFirestoreError(error, OperationType.WRITE, path);
-  }
+    await setDoc(doc(db, 'settings', 'integrations'), cleanedSettings);
+  } catch (_) {}
+  try {
+    const cleanedSettings = cleanUndefined({
+      id: 'integrations',
+      ...settings
+    });
+    await setDoc(doc(defaultDb, 'settings', 'integrations'), cleanedSettings);
+  } catch (_) {}
 }
 
 export async function getIntegrationsSettingsFromFirestore(): Promise<IntegrationsSettings | null> {
@@ -593,17 +689,24 @@ export async function getIntegrationsSettingsFromFirestore(): Promise<Integratio
       } catch (_) {}
       return data;
     }
-    return null;
   } catch (error) {
-    tripQuotaCircuitBreaker(error);
-    try {
-      handleFirestoreError(error, OperationType.GET, path);
-    } catch (e) {
-      console.warn("getIntegrationsSettingsFromFirestore failed:", e);
-    }
-    const cached = localStorage.getItem('raincoat_settings_fallback');
-    return cached ? JSON.parse(cached) : null;
+    console.warn("getIntegrationsSettingsFromFirestore failed on custom database:", error);
   }
+  try {
+    const docRef = doc(defaultDb, 'settings', 'integrations');
+    const docSnap = await getDocFromServer(docRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data() as IntegrationsSettings;
+      try {
+        localStorage.setItem('raincoat_settings_fallback', JSON.stringify(data));
+      } catch (_) {}
+      return data;
+    }
+  } catch (error) {
+    console.warn("getIntegrationsSettingsFromFirestore failed on default database:", error);
+  }
+  const cached = localStorage.getItem('raincoat_settings_fallback');
+  return cached ? JSON.parse(cached) : null;
 }
 
 export async function saveBannerSettingsToFirestore(settings: HomepageBannerSettings): Promise<void> {
@@ -664,7 +767,8 @@ export async function saveActiveSessionToFirestore(session: ActiveSession): Prom
   if (isQuotaTripped) return;
   const path = `activeSessions/${session.id}`;
   try {
-    await setDoc(doc(db, 'activeSessions', session.id), session);
+    const cleanedSession = cleanUndefined(session);
+    await setDoc(doc(db, 'activeSessions', session.id), cleanedSession);
   } catch (error) {
     tripQuotaCircuitBreaker(error);
     // Silent fail to handle Firestore Quota Exceeded gracefully without disrupting user experience
@@ -711,45 +815,47 @@ export async function getProductsFromFirestore(): Promise<Product[]> {
     }
     return [];
   }
+
+  const results: Product[] = [];
+  const fetchedIds = new Set<string>();
+
   try {
     const q = query(collection(db, 'products'));
     const snapshot = await getDocs(q);
-    const results: Product[] = [];
     snapshot.forEach((doc) => {
-      results.push(doc.data() as Product);
+      const data = doc.data() as Product;
+      if (data && data.id && !fetchedIds.has(data.id)) {
+        results.push(data);
+        fetchedIds.add(data.id);
+      }
     });
-    
-    if (results.length > 0) {
-      // Update local storage cache
-      try {
-        localStorage.setItem('raincoat_shop_products', JSON.stringify(results));
-      } catch (_) {}
-      return results;
-    }
-    
-    // Fallback if empty but not failed
-    const cached = localStorage.getItem('raincoat_shop_products');
-    if (cached) {
-      try {
-        return JSON.parse(cached) as Product[];
-      } catch (_) {}
-    }
-    return [];
   } catch (error) {
-    tripQuotaCircuitBreaker(error);
-    try {
-      handleFirestoreError(error, OperationType.LIST, path);
-    } catch (e) {
-      console.warn("getProductsFromFirestore failed, returning cached fallback if available:", e);
-    }
-    const cached = localStorage.getItem('raincoat_shop_products');
-    if (cached) {
-      try {
-        return JSON.parse(cached) as Product[];
-      } catch (_) {}
-    }
-    return [];
+    console.warn("Could not query products from custom database, trying default fallback:", error);
   }
+
+  try {
+    const qDefault = query(collection(defaultDb, 'products'));
+    const snapshotDefault = await getDocs(qDefault);
+    snapshotDefault.forEach((doc) => {
+      const data = doc.data() as Product;
+      if (data && data.id && !fetchedIds.has(data.id)) {
+        results.push(data);
+        fetchedIds.add(data.id);
+      }
+    });
+  } catch (error) {
+    console.warn("Could not query products from default database:", error);
+  }
+
+  if (results.length > 0) {
+    try {
+      localStorage.setItem('raincoat_shop_products', JSON.stringify(results));
+    } catch (_) {}
+    return results;
+  }
+
+  const cached = localStorage.getItem('raincoat_shop_products');
+  return cached ? JSON.parse(cached) : [];
 }
 
 export async function saveProductToFirestore(product: Product): Promise<void> {
@@ -768,26 +874,26 @@ export async function saveProductToFirestore(product: Product): Promise<void> {
     } catch (_) {}
     return;
   }
+  const cleanedProduct = cleanUndefined(product);
   try {
-    // Save to Firestore
-    await setDoc(doc(db, 'products', product.id), product);
-    
-    // Sync local storage
-    const cachedStr = localStorage.getItem('raincoat_shop_products') || '[]';
-    try {
-      const list = JSON.parse(cachedStr) as Product[];
-      const idx = list.findIndex(p => p.id === product.id);
-      if (idx > -1) {
-        list[idx] = product;
-      } else {
-        list.push(product);
-      }
-      localStorage.setItem('raincoat_shop_products', JSON.stringify(list));
-    } catch (_) {}
-  } catch (error) {
-    tripQuotaCircuitBreaker(error);
-    handleFirestoreError(error, OperationType.WRITE, path);
-  }
+    await setDoc(doc(db, 'products', product.id), cleanedProduct);
+  } catch (_) {}
+  try {
+    await setDoc(doc(defaultDb, 'products', product.id), cleanedProduct);
+  } catch (_) {}
+
+  // Sync local storage
+  const cachedStr = localStorage.getItem('raincoat_shop_products') || '[]';
+  try {
+    const list = JSON.parse(cachedStr) as Product[];
+    const idx = list.findIndex(p => p.id === product.id);
+    if (idx > -1) {
+      list[idx] = product;
+    } else {
+      list.push(product);
+    }
+    localStorage.setItem('raincoat_shop_products', JSON.stringify(list));
+  } catch (_) {}
 }
 
 export async function deleteProductFromFirestore(productId: string): Promise<void> {
@@ -803,17 +909,17 @@ export async function deleteProductFromFirestore(productId: string): Promise<voi
   }
   try {
     await deleteDoc(doc(db, 'products', productId));
-    
-    const cachedStr = localStorage.getItem('raincoat_shop_products') || '[]';
-    try {
-      const list = JSON.parse(cachedStr) as Product[];
-      const updated = list.filter(p => p.id !== productId);
-      localStorage.setItem('raincoat_shop_products', JSON.stringify(updated));
-    } catch (_) {}
-  } catch (error) {
-    tripQuotaCircuitBreaker(error);
-    handleFirestoreError(error, OperationType.DELETE, path);
-  }
+  } catch (_) {}
+  try {
+    await deleteDoc(doc(defaultDb, 'products', productId));
+  } catch (_) {}
+
+  const cachedStr = localStorage.getItem('raincoat_shop_products') || '[]';
+  try {
+    const list = JSON.parse(cachedStr) as Product[];
+    const updated = list.filter(p => p.id !== productId);
+    localStorage.setItem('raincoat_shop_products', JSON.stringify(updated));
+  } catch (_) {}
 }
 
 export async function saveAllProductsToFirestore(products: Product[]): Promise<void> {
@@ -821,10 +927,15 @@ export async function saveAllProductsToFirestore(products: Product[]): Promise<v
     localStorage.setItem('raincoat_shop_products', JSON.stringify(products));
     if (isQuotaTripped) return;
     for (const product of products) {
-      await setDoc(doc(db, 'products', product.id), product);
+      const cleanedProduct = cleanUndefined(product);
+      try {
+        await setDoc(doc(db, 'products', product.id), cleanedProduct);
+      } catch (_) {}
+      try {
+        await setDoc(doc(defaultDb, 'products', product.id), cleanedProduct);
+      } catch (_) {}
     }
   } catch (error) {
-    tripQuotaCircuitBreaker(error);
     console.warn("saveAllProductsToFirestore failed:", error);
   }
 }
@@ -834,10 +945,11 @@ export async function savePagesToFirestore(pages: CustomPage[]): Promise<void> {
   try {
     localStorage.setItem('raincoat_pages', JSON.stringify(pages));
     if (isQuotaTripped) return;
-    await setDoc(doc(db, 'settings', 'custom_pages'), {
+    const cleanedPayload = cleanUndefined({
       id: 'custom_pages',
       pages: pages
     });
+    await setDoc(doc(db, 'settings', 'custom_pages'), cleanedPayload);
   } catch (error) {
     tripQuotaCircuitBreaker(error);
     console.warn("savePagesToFirestore failed, fallback to localStorage only:", error);
@@ -879,37 +991,102 @@ export async function saveAdvancedAddonsSettingsToFirestore(settings: Partial<Ad
     const cachedStr = localStorage.getItem('raincoat_advanced_addons_fallback');
     const existing = cachedStr ? JSON.parse(cachedStr) : {};
     const updated = { ...existing, ...settings };
+    
+    // Perform real-time sanitization before saving to make sure database always gets pristine values!
+    if (updated.section_customizations && updated.section_customizations.raincoat_live_video) {
+      const liveVideo = updated.section_customizations.raincoat_live_video;
+      if (
+        liveVideo.title_1 === 'আমাদের রেইনকোটের জীবন্ত ওয়াটারপ্রুফ টেস্ট ভিডিও!' ||
+        liveVideo.title_1 === 'हमारे রেইনকোটের জীবন্ত ওয়াটারপ্রুফ টেস্ট ভিডিও!' ||
+        !liveVideo.title_1
+      ) {
+        liveVideo.title_1 = 'আমাদের রেইনকোটের লাইভ ওয়াটারপ্রুফ টেস্ট ভিডিও!';
+      }
+      if (liveVideo.title_2 && (liveVideo.title_2.trim() === 'do not edit this directly click below' || liveVideo.title_2.trim() === 'বিশ্বাস না হলে সরাসরি ভিডিওতে দেখে নিন পানির উপর কেমন প্রতিরোধ গড়ে খোলে।')) {
+        liveVideo.title_2 = '';
+      }
+      if (liveVideo.video_url === 'https://www.youtube.com/watch?v=dQw4w9WgXcQ') {
+        liveVideo.video_url = '';
+      }
+    }
+
     localStorage.setItem('raincoat_advanced_addons_fallback', JSON.stringify(updated));
     if (isQuotaTripped) return;
-    await setDoc(doc(db, 'settings', 'advanced_addons'), {
+    const cleanedPayload = cleanUndefined({
       id: 'advanced_addons',
       ...updated
     });
+    try {
+      await setDoc(doc(db, 'settings', 'advanced_addons'), cleanedPayload);
+    } catch (_) {}
+    try {
+      await setDoc(doc(defaultDb, 'settings', 'advanced_addons'), cleanedPayload);
+    } catch (_) {}
   } catch (error) {
     console.warn("saveAdvancedAddonsSettingsToFirestore failed, fallback to localStorage:", error);
   }
 }
 
 export async function getAdvancedAddonsSettingsFromFirestore(): Promise<AdvancedAddonsSettings | null> {
+  const sanitizeSettings = (data: any): AdvancedAddonsSettings => {
+    if (data && data.section_customizations && data.section_customizations.raincoat_live_video) {
+      const liveVideo = data.section_customizations.raincoat_live_video;
+      if (
+        liveVideo.title_1 === 'আমাদের রেইনকোটের জীবন্ত ওয়াটারপ্রুফ টেস্ট ভিডিও!' ||
+        liveVideo.title_1 === 'हमारे রেইনকোটের জীবন্ত ওয়াটারপ্রুফ টেস্ট ভিডিও!' ||
+        !liveVideo.title_1
+      ) {
+        liveVideo.title_1 = 'আমাদের রেইনকোটের লাইভ ওয়াটারপ্রুফ টেস্ট ভিডিও!';
+      }
+      if (liveVideo.title_2 && (liveVideo.title_2.trim() === 'do not edit this directly click below' || liveVideo.title_2.trim() === 'বিশ্বাস না হলে সরাসরি ভিডিওতে দেখে নিন পানির উপর কেমন প্রতিরোধ গড়ে খোলে।')) {
+        liveVideo.title_2 = '';
+      }
+      if (liveVideo.video_url === 'https://www.youtube.com/watch?v=dQw4w9WgXcQ') {
+        liveVideo.video_url = '';
+      }
+    }
+    return data as AdvancedAddonsSettings;
+  };
+
   if (isQuotaTripped) {
     const cached = localStorage.getItem('raincoat_advanced_addons_fallback');
-    return cached ? JSON.parse(cached) : null;
+    return cached ? sanitizeSettings(JSON.parse(cached)) : null;
   }
+
+  let finalData: any = null;
+
   try {
     const docRef = doc(db, 'settings', 'advanced_addons');
     const docSnap = await getDocFromServer(docRef);
     if (docSnap.exists()) {
-      const data = docSnap.data() as AdvancedAddonsSettings;
-      try {
-        localStorage.setItem('raincoat_advanced_addons_fallback', JSON.stringify(data));
-      } catch (_) {}
-      return data;
+      finalData = docSnap.data();
     }
   } catch (error) {
-    console.warn("getAdvancedAddonsSettingsFromFirestore failed, fallback to localStorage:", error);
+    console.warn("getAdvancedAddonsSettingsFromFirestore failed on custom database:", error);
   }
+
+  try {
+    if (!finalData) {
+      const docRefDefault = doc(defaultDb, 'settings', 'advanced_addons');
+      const docSnapDefault = await getDocFromServer(docRefDefault);
+      if (docSnapDefault.exists()) {
+        finalData = docSnapDefault.data();
+      }
+    }
+  } catch (error) {
+    console.warn("getAdvancedAddonsSettingsFromFirestore failed on default database:", error);
+  }
+
+  if (finalData) {
+    const sanitized = sanitizeSettings(finalData);
+    try {
+      localStorage.setItem('raincoat_advanced_addons_fallback', JSON.stringify(sanitized));
+    } catch (_) {}
+    return sanitized;
+  }
+
   const cached = localStorage.getItem('raincoat_advanced_addons_fallback');
-  return cached ? JSON.parse(cached) : null;
+  return cached ? sanitizeSettings(JSON.parse(cached)) : null;
 }
 
 export async function saveReviewToFirestore(review: CustomerReview): Promise<void> {
@@ -925,7 +1102,8 @@ export async function saveReviewToFirestore(review: CustomerReview): Promise<voi
     localStorage.setItem('raincoat_custom_reviews_fallback', JSON.stringify(list));
     
     if (isQuotaTripped) return;
-    await setDoc(doc(db, 'reviews', review.id), review);
+    const cleanedReview = cleanUndefined(review);
+    await setDoc(doc(db, 'reviews', review.id), cleanedReview);
   } catch (error) {
     console.warn("saveReviewToFirestore failed:", error);
   }
@@ -1003,7 +1181,8 @@ export async function syncCachedOrdersToFirestore(): Promise<void> {
           try {
             // Exclude synced property before sending to Firestore
             const { synced, ...firestorePayload } = order;
-            await setDoc(doc(db, 'orders', order.id), firestorePayload);
+            const cleanedPayload = cleanUndefined(firestorePayload);
+            await setDoc(doc(db, 'orders', order.id), cleanedPayload);
             order.synced = true;
             updated = true;
             console.log(`[Sync] Successfully uploaded cached order ${order.id} to Firestore!`);
@@ -1028,7 +1207,8 @@ export async function syncCachedOrdersToFirestore(): Promise<void> {
       for (const order of fallbackList) {
         try {
           const { synced, ...firestorePayload } = order;
-          await setDoc(doc(db, 'orders', order.id), firestorePayload);
+          const cleanedPayload = cleanUndefined(firestorePayload);
+          await setDoc(doc(db, 'orders', order.id), cleanedPayload);
           successfullySyncedIds.push(order.id);
           console.log(`[Sync] Successfully uploaded offline fallback order ${order.id} to Firestore!`);
         } catch (err) {

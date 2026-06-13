@@ -205,7 +205,7 @@ export default function OrderForm({
       createdAt: new Date().toISOString(),
       lastUpdatedAt: new Date().toISOString(),
       fieldsFilledCount,
-      orderNotes: orderNotes.trim() || undefined,
+      orderNotes: orderNotes.trim(),
       whatsappConsent,
     };
 
@@ -270,7 +270,7 @@ export default function OrderForm({
       status: 'Pending',
       isConfirmed: false, // Default unconfirmed status until authorized from panel
       createdAt: new Date().toISOString(),
-      orderNotes: orderNotes.trim() || undefined,
+      orderNotes: orderNotes.trim(),
       whatsappConsent,
       synced: false,
     };

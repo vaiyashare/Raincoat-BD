@@ -29,8 +29,13 @@ async function startServer() {
         body: JSON.stringify(orderData)
       });
 
-      const data = await response.json();
-      res.json(data);
+      const text = await response.text();
+      try {
+        const data = JSON.parse(text);
+        res.json(data);
+      } catch (_) {
+        res.status(response.status).json({ status: response.status, message: text || "Invalid response from Steadfast API" });
+      }
     } catch (err: any) {
       console.error("Steadfast API Proxy Error:", err);
       res.status(500).json({ status: 500, message: err.message });
@@ -56,8 +61,13 @@ async function startServer() {
         }
       });
 
-      const data = await response.json();
-      res.json(data);
+      const text = await response.text();
+      try {
+        const data = JSON.parse(text);
+        res.json(data);
+      } catch (_) {
+        res.status(response.status).json({ status: response.status, message: text || "Invalid response from Steadfast API" });
+      }
     } catch (err: any) {
       console.error("Steadfast Balance Proxy Error:", err);
       res.status(500).json({ status: 500, message: err.message });
@@ -95,8 +105,13 @@ async function startServer() {
         }
       });
 
-      const data = await response.json();
-      res.json(data);
+      const text = await response.text();
+      try {
+        const data = JSON.parse(text);
+        res.json(data);
+      } catch (_) {
+        res.status(response.status).json({ status: response.status, message: text || "Invalid response from Steadfast API" });
+      }
     } catch (err: any) {
       console.error("Steadfast Status Proxy Error:", err);
       res.status(500).json({ status: 500, message: err.message });
