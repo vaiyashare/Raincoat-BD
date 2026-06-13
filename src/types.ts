@@ -60,6 +60,8 @@ export interface RaincoatOrder {
   trackingId?: string;
   whatsappConsent?: boolean;
   synced?: boolean;
+  courierTotalParcel?: number;
+  courierSuccessRatio?: number;
 }
 
 export interface IncompleteOrder {
@@ -178,6 +180,7 @@ export interface CustomPage {
 export interface AdvancedAddonsSettings {
   courier_enabled: boolean;
   courier_provider: 'steadfast' | 'pathao' | 'redx' | 'none';
+  courier_auto_sync_enabled?: boolean;
   steadfast_api_key: string;
   steadfast_secret: string;
   pathao_client_id: string;

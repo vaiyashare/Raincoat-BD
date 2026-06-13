@@ -155,31 +155,43 @@ export async function addOrderToFirestore(order: RaincoatOrder): Promise<void> {
     return;
   }
 
-  // 1. Write the order immediately to both database instances so user never loses their data!
+  // 1. Write the order in parallel to both database instances so user never loses their data and latency is minimum!
   let succeeded = false;
   let firstError: any = null;
 
-  try {
-    await setDoc(doc(db, 'orders', order.id), cleanedOrder);
-    succeeded = true;
-  } catch (error) {
-    firstError = error;
-    console.warn("Direct addOrderToFirestore failed on custom database:", error);
-  }
+  const customDbWrite = setDoc(doc(db, 'orders', order.id), cleanedOrder)
+    .then(() => {
+      succeeded = true;
+    })
+    .catch((error) => {
+      firstError = error;
+      tripQuotaCircuitBreaker(error);
+      console.warn("Direct addOrderToFirestore failed on custom database:", error);
+    });
 
-  try {
-    await setDoc(doc(defaultDb, 'orders', order.id), cleanedOrder);
-    succeeded = true;
-  } catch (error) {
-    console.warn("Direct addOrderToFirestore failed on default database:", error);
-  }
+  const defaultDbWrite = setDoc(doc(defaultDb, 'orders', order.id), cleanedOrder)
+    .then(() => {
+      succeeded = true;
+    })
+    .catch((error) => {
+      tripQuotaCircuitBreaker(error);
+      console.warn("Direct addOrderToFirestore failed on default database:", error);
+    });
 
-  if (!succeeded && firstError) {
-    tripQuotaCircuitBreaker(firstError);
-    handleFirestoreError(firstError, OperationType.WRITE, path);
-  }
+  // Run database writes in parallel
+  const parallelWrites = Promise.all([customDbWrite, defaultDbWrite]).then(() => {
+    if (!succeeded && firstError) {
+      console.error("Critical: Firestore saving failed on both databases");
+    }
+  });
 
-  // 2. Perform the fraud check asynchronously in the background. Once completed, update both documents.
+  // 2. Race the database writes against a fast 500ms timeout so the client gets instant confirmation
+  // while the cloud synchronization finishes in the background.
+  const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 500));
+
+  await Promise.race([parallelWrites, timeoutPromise]);
+
+  // 3. Perform the fraud check asynchronously in the background. Once completed, update both documents.
   performFraudCheck(order.phone).then(async (fraud) => {
     try {
       await updateDoc(doc(db, 'orders', order.id), {
@@ -824,7 +836,7 @@ export async function getProductsFromFirestore(): Promise<Product[]> {
     const snapshot = await getDocs(q);
     snapshot.forEach((doc) => {
       const data = doc.data() as Product;
-      if (data && data.id && !fetchedIds.has(data.id)) {
+      if (data && data.id && data.title && data.price && !fetchedIds.has(data.id)) {
         results.push(data);
         fetchedIds.add(data.id);
       }
@@ -838,7 +850,7 @@ export async function getProductsFromFirestore(): Promise<Product[]> {
     const snapshotDefault = await getDocs(qDefault);
     snapshotDefault.forEach((doc) => {
       const data = doc.data() as Product;
-      if (data && data.id && !fetchedIds.has(data.id)) {
+      if (data && data.id && data.title && data.price && !fetchedIds.has(data.id)) {
         results.push(data);
         fetchedIds.add(data.id);
       }

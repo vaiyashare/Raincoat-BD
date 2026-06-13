@@ -145,6 +145,68 @@ async function startServer() {
     }
   });
 
+  // API Route: FraudShield BD Proxy - Check Customer
+  app.post("/api/fraudshield/check", async (req, res) => {
+    try {
+      const apiKey = req.headers['x-api-key'] || req.body.apiKey;
+      const { phone } = req.body;
+
+      if (!apiKey) {
+        return res.status(401).json({ success: false, error: "Unauthorized", message: "FraudShield API Key is missing." });
+      }
+
+      const response = await fetch("https://fraudshield.bd/api/customer/check", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        body: JSON.stringify({ phone })
+      });
+
+      const text = await response.text();
+      try {
+        const data = JSON.parse(text);
+        res.status(response.status).json(data);
+      } catch (e) {
+        res.status(response.status).json({ success: false, error: "Upstream Error", message: text || "Invalid response from upstream" });
+      }
+    } catch (err: any) {
+      console.error("FraudShield Check Proxy Error:", err);
+      res.status(500).json({ success: false, error: "Server error", message: err.message });
+    }
+  });
+
+  // API Route: FraudShield BD Proxy - Check Usage Stats and User Status
+  app.get("/api/fraudshield/usage", async (req, res) => {
+    try {
+      const apiKey = req.headers['x-api-key'];
+      if (!apiKey) {
+        return res.status(401).json({ success: false, error: "Unauthorized", message: "FraudShield API Key is missing." });
+      }
+
+      const response = await fetch("https://fraudshield.bd/api/usage/daily-limit", {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Accept": "application/json"
+        }
+      });
+
+      const text = await response.text();
+      try {
+        const data = JSON.parse(text);
+        res.status(response.status).json(data);
+      } catch (e) {
+        res.status(response.status).json({ success: false, error: "Upstream Error", message: text || "Invalid response from upstream" });
+      }
+    } catch (err: any) {
+      console.error("FraudShield Limit Proxy Error:", err);
+      res.status(500).json({ success: false, error: "Server error", message: err.message });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

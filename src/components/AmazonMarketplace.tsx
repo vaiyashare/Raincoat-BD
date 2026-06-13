@@ -26,7 +26,48 @@ interface AmazonMarketplaceProps {
 }
 
 export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceProps) {
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<Product[]>(() => {
+    const list = localStorage.getItem('raincoat_shop_products');
+    if (list) {
+      try {
+        const parsed = JSON.parse(list);
+        if (parsed && parsed.length > 0) return parsed;
+      } catch (e) {}
+    }
+    // Static premium defaults so homepage never flashes empty
+    return [
+      {
+        id: 'p-1',
+        title: 'প্রিমিয়াম ওয়াটারপ্রুফ রেইনকোট জ্যাকেট ও প্যান্ট সেট (Navy Blue & Black)',
+        description: 'ডাবল পার্ট প্রিমিয়াম ফ্যাব্রিক ও হিট সিলিং টেকনোলজি সহ বর্ষাকালের সেরা রেনকোট গিয়ার।',
+        price: 990,
+        image: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=600',
+        category: 'রেইনকোট',
+        sizes: ['XL', 'XXL', '3XL', '4XL'],
+        colors: ['Black', 'Navy Blue']
+      },
+      {
+        id: 'p-2',
+        title: 'হেভি ডিউটি ওয়াটারপ্রুফ মোটরসাইকেল সু কাভার (Shoe Guard)',
+        description: 'বর্ষায় বাইক ট্রাভেলে আপনার জুতো কাঁদা জল থেকে শতভাগ শুকনো রাখতে জুতো প্রোটেক্টর শু কাভার।',
+        price: 490,
+        image: 'https://images.unsplash.com/photo-1622434641406-a158123450f9?auto=format&fit=crop&q=80&w=600',
+        category: 'বাইকিং গিয়ার',
+        sizes: ['M', 'L', 'XL'],
+        colors: ['Black']
+      },
+      {
+        id: 'p-3',
+        title: 'ডাবল পার্ট উইন্ডপ্রুফ আমব্রেলা ছাতা (Premium Laptop Defense)',
+        description: 'ভারী ঝড়ে উল্টে যাবে না এমন বিশেষ উইন্ড কন্ডাক্টর ও ইউভি কোটিং সমৃদ্ধ ছাতা।',
+        price: 680,
+        image: 'https://images.unsplash.com/photo-1510200378107-1601ee036683?auto=format&fit=crop&q=80&w=600',
+        category: 'অনুষঙ্গ',
+        sizes: ['Universal'],
+        colors: ['Black', 'Blue']
+      }
+    ];
+  });
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [cartCount, setCartCount] = useState(0);

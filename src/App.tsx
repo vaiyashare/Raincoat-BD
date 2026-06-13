@@ -651,6 +651,17 @@ export default function App() {
     );
   }
 
+  // Show global confirmation screen if order is successfully submitted on ANY page
+  if (submittedOrder) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 sm:p-6 font-sans">
+        <div className="max-w-2xl w-full">
+          <Receipt order={submittedOrder} onClose={handleBackToShopping} />
+        </div>
+      </div>
+    );
+  }
+
   // Handle Track Order routing (Separate Tab/Page View)
   if (isTrackOrderRoute) {
     return (

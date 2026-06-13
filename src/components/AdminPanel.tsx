@@ -28,7 +28,7 @@ import {
   getAdvancedAddonsSettingsFromFirestore,
   db
 } from '../lib/firebase';
-import { collection, query, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, updateDoc, getDoc } from 'firebase/firestore';
 
 import { trackPixelEvent, trackTikTokEvent } from '../lib/tracking';
 import { normalizeWhatsAppPhone } from '../lib/whatsapp';
@@ -350,6 +350,72 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   const [editingTrackingOrderId, setEditingTrackingOrderId] = useState<string | null>(null);
   const [tempTrackingId, setTempTrackingId] = useState<string>('');
 
+  // Live Courier API Lookup (FraudShield)
+  const [fraudShieldApiKey, setFraudShieldApiKey] = useState(() => {
+    return localStorage.getItem('fraudshield_api_key') || 'cf_60WHme2hAhhBWOBAHAbEjo05MDZg7xE4';
+  });
+  const [courierLoadingState, setCourierLoadingState] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    const loadFraudShieldKey = async () => {
+      try {
+        const docRef = doc(db, 'settings', 'fraudshield');
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.fraudShieldApiKey) {
+            setFraudShieldApiKey(data.fraudShieldApiKey);
+            localStorage.setItem('fraudshield_api_key', data.fraudShieldApiKey);
+          }
+        }
+      } catch (err) {
+        console.warn("Could not load FraudShield API Key in AdminPanel:", err);
+      }
+    };
+    loadFraudShieldKey();
+  }, []);
+
+  const handleCourierApiLookup = async (orderId: string, phone: string) => {
+    if (!phone) return;
+    const cleanNum = phone.trim().replace(/[-\s+]/g, '');
+    
+    setCourierLoadingState(prev => ({ ...prev, [orderId]: true }));
+    
+    try {
+      const response = await fetch('/api/fraudshield/check', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': fraudShieldApiKey
+        },
+        body: JSON.stringify({ phone: cleanNum })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const total = data?.courierData?.summary?.total_parcel ?? 0;
+        const successRate = data?.courierData?.summary?.success_ratio ?? 0;
+        const level = data?.fraudRiskScore?.level || 'safe';
+        const label = data?.fraudRiskScore?.label || 'নিরাপদ বায়ার';
+
+        // Update in Firestore to cache it forever
+        await updateOrderInFirestore(orderId, {
+          courierTotalParcel: total,
+          courierSuccessRatio: successRate,
+          fraudScore: data?.fraudRiskScore?.score ?? 0,
+          fraudStatus: level === 'scammer' ? 'Scammer' : level === 'warning' ? 'Warning' : 'Safe',
+          fraudReason: label
+        });
+      } else {
+        console.warn('Failed to fetch courier lookup stats from server');
+      }
+    } catch (err) {
+      console.error('Error during live courier API lookup:', err);
+    } finally {
+      setCourierLoadingState(prev => ({ ...prev, [orderId]: false }));
+    }
+  };
+
   // Audio Alerts and Toast Notification States
   const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
     return localStorage.getItem('admin_orders_sound') !== 'false';
@@ -415,7 +481,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     }
   };
 
-  // Load courier settings on mount
+  // Load courier settings on mount and when activeTab changes
   useEffect(() => {
     const loadCourierSettings = async () => {
       try {
@@ -428,7 +494,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       }
     };
     loadCourierSettings();
-  }, []);
+  }, [activeTab]);
 
   const fetchSteadfastStatus = async (orderId: string) => {
     const apiKey = courierSettings?.steadfast_api_key || 'jtoxickzs13bhwpmmyjk7k9lnxkslet2';
@@ -438,6 +504,17 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       ...prev,
       [orderId]: { status: prev[orderId]?.status || '', loading: true }
     }));
+
+    const getMappedStatus = (courierStatus: string) => {
+      switch (courierStatus?.toLowerCase()) {
+        case 'delivered':
+          return 'Delivered';
+        case 'cancelled':
+          return 'Cancelled';
+        default:
+          return null;
+      }
+    };
 
     try {
       // Find the order in the orders state to check if it has a trackingId
@@ -454,10 +531,25 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       });
       const data = await response.json();
       if (data && data.status === 200) {
+        const deliveryStatus = data.delivery_status || 'unknown';
         setSteadfastStatuses(prev => ({
           ...prev,
-          [orderId]: { status: data.delivery_status || 'unknown', loading: false }
+          [orderId]: { status: deliveryStatus, loading: false }
         }));
+
+        // Auto-sync status if enabled
+        if (courierSettings?.courier_auto_sync_enabled) {
+          const mappedStatus = getMappedStatus(deliveryStatus);
+          if (mappedStatus && targetOrder && targetOrder.status !== mappedStatus) {
+            updateOrderInFirestore(orderId, { status: mappedStatus })
+              .then(() => {
+                setOrders(prevOrders => prevOrders.map(o => o.id === orderId ? { ...o, status: mappedStatus } : o));
+              })
+              .catch((err) => {
+                console.warn("Failed to auto-sync couriers status update to Firestore:", err);
+              });
+          }
+        }
       } else {
         // If query by tracking code fails, fallback to querying by invoice
         if (type === 'tracking') {
@@ -469,10 +561,25 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
           });
           const fbData = await fbResponse.json();
           if (fbData && fbData.status === 200) {
+            const fbDeliveryStatus = fbData.delivery_status || 'unknown';
             setSteadfastStatuses(prev => ({
               ...prev,
-              [orderId]: { status: fbData.delivery_status || 'unknown', loading: false }
+              [orderId]: { status: fbDeliveryStatus, loading: false }
             }));
+
+            // Auto-sync status if enabled
+            if (courierSettings?.courier_auto_sync_enabled) {
+              const mappedStatus = getMappedStatus(fbDeliveryStatus);
+              if (mappedStatus && targetOrder && targetOrder.status !== mappedStatus) {
+                updateOrderInFirestore(orderId, { status: mappedStatus })
+                  .then(() => {
+                    setOrders(prevOrders => prevOrders.map(o => o.id === orderId ? { ...o, status: mappedStatus } : o));
+                  })
+                  .catch((err) => {
+                    console.warn("Spontaneous auto-sync couriers status update to Firestore failed:", err);
+                  });
+              }
+            }
             return;
           }
         }
@@ -2992,6 +3099,44 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                               </div>
                             )}
                           </div>
+
+                          {/* লাইভ কুরিয়ার ডেটাবেজ এপিআই স্ক্যানার (Courier API Lookup) */}
+                          <div className="mt-2.5 bg-slate-900 text-white rounded-lg p-2 border border-slate-800 space-y-1.5 font-sans">
+                            <div className="flex items-center justify-between border-b border-slate-800 pb-1 mb-1">
+                              <span className="text-[8.5px] uppercase font-black text-indigo-300 tracking-wider flex items-center gap-1">
+                                <Database className="h-2.5 w-2.5 text-indigo-400 shrink-0" />
+                                কুরিয়ার লাইভ স্ক্যানার
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleCourierApiLookup(order.id, order.phone)}
+                                disabled={courierLoadingState[order.id]}
+                                className="text-[8px] bg-indigo-600 hover:bg-indigo-500 text-white px-1.5 py-0.5 rounded font-bold cursor-pointer transition-all disabled:opacity-50"
+                              >
+                                {courierLoadingState[order.id] ? 'চেকিং...' : (order.courierTotalParcel !== undefined ? '🔄 রিফ্রেশ' : '🔍 চেক')}
+                              </button>
+                            </div>
+
+                            {order.courierTotalParcel !== undefined ? (
+                              <div className="grid grid-cols-2 gap-1 text-[9.5px]">
+                                <div className="bg-slate-950 p-1 rounded border border-slate-850">
+                                  <span className="text-[7.5px] text-slate-400 block font-semibold leading-none">মোট পার্সেল</span>
+                                  <span className="font-mono font-black text-slate-100 mt-0.5 block">{order.courierTotalParcel} টি</span>
+                                </div>
+                                <div className="bg-slate-950 p-1 rounded border border-slate-850">
+                                  <span className="text-[7.5px] text-slate-400 block font-semibold leading-none">সফলতার হার</span>
+                                  <span className={`font-mono font-black mt-0.5 block ${
+                                    (order.courierSuccessRatio ?? 0) >= 90 ? 'text-emerald-400' :
+                                    (order.courierSuccessRatio ?? 0) >= 75 ? 'text-amber-400' : 'text-rose-450'
+                                  }`}>{order.courierSuccessRatio ?? 0}%</span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-[8.5px] text-slate-400 italic font-medium leading-normal">
+                                এখনো চেক করা হয়নি। লাইভ চেক করুন!
+                              </div>
+                            )}
+                          </div>
                           
                           {/* কাস্টমার অর্ডার হিস্টোরি ও ডাবল অর্ডার চেকার */}
                           {(() => {
@@ -3787,10 +3932,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
               <button
                 type="button"
                 onClick={() => {
-                  setShowPrintLabelModal(false);
-                  setTimeout(() => {
-                    window.print();
-                  }, 300);
+                  window.print();
                 }}
                 className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition shadow-md cursor-pointer flex items-center gap-1.5"
               >

@@ -44,7 +44,7 @@
   }
   
   /* Make sure our receipt and all of its nested children are fully visible */
-  #order-receipt, #order-receipt * {
+  #order-receipt, #order-receipt *, #print-area-wrapper, #print-area-wrapper * {
     visibility: visible !important;
   }
   
