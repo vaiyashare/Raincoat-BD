@@ -33,6 +33,7 @@ const defaultTripleCards = [
 ];
 
 export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingProps) {
+  const [siteSettings, setSiteSettings] = useState<any>(null);
   const [selectedColor, setSelectedColor] = useState<ProductColor>('Navy Blue');
   const [submittedOrder, setSubmittedOrder] = useState<RaincoatOrder | null>(null);
   const [isCheckoutVisible, setIsCheckoutVisible] = useState(false);
@@ -127,24 +128,110 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
   }, []);
 
   useEffect(() => {
-    const loadTripleCards = () => {
+    const loadSettings = () => {
       getAdvancedAddonsSettingsFromFirestore().then((settings) => {
-        if (settings && settings.bike_triple_cards && settings.bike_triple_cards.length === 3) {
-          setBikeTripleCards(settings.bike_triple_cards);
+        if (settings) {
+          setSiteSettings(settings);
+          if (settings.bike_triple_cards && settings.bike_triple_cards.length === 3) {
+            setBikeTripleCards(settings.bike_triple_cards);
+          } else {
+            setBikeTripleCards(defaultTripleCards);
+          }
         } else {
           setBikeTripleCards(defaultTripleCards);
         }
       }).catch(err => {
-        console.warn("Could not load triple cards settings:", err);
+        console.warn("Could not load triple cards/site settings:", err);
         setBikeTripleCards(defaultTripleCards);
       });
     };
 
-    loadTripleCards();
+    loadSettings();
 
-    window.addEventListener('raincoat_site_settings_updated', loadTripleCards);
-    return () => window.removeEventListener('raincoat_site_settings_updated', loadTripleCards);
+    window.addEventListener('raincoat_site_settings_updated', loadSettings);
+    return () => window.removeEventListener('raincoat_site_settings_updated', loadSettings);
   }, []);
+
+  // Design Customizer helpers for real-time section layout and text customizations
+  const getSectionData = (sectionKey: string) => {
+    const customizations = siteSettings?.section_customizations || {};
+    const defaultData: Record<string, any> = {
+      bikecover_hero: {
+        bgColor: '#090d16',
+        textColor: '#ffffff',
+        textAlign: 'center',
+        fontSize: 'default',
+        image_url: '', // if set, shows the custom banner instead of the slide
+        icon_text: '১০০% প্রিমিয়াম বাইক কভার',
+        title_1: '100% Waterproof &',
+        title_2: 'Dustproof Bike Cover 🛡️',
+        body: 'বাংলাদেশের সকল মডেলের বাইকের জন্য একদম উপযোগী প্রিমিয়াম সাইজ কভার। রোদ, বৃষ্টি, ধুলোবালি কিংবা দাগ থেকে আপনার শখের মোটর বাইককে সম্পূর্ণ নতুনের মতো সতেজ ও সুরক্ষিত রাখুন। সরাসরি চায়না থেকে আমদানিকৃত ৩০০০ মিলি ওজনের ছাতা কাপড়ের তৈরি এই বাইক কভার ২ বছরেরও বেশি অনায়াসে টেকসই থাকবে।',
+        visible_mobile: true,
+        visible_desktop: true,
+        padding_vertical: 'normal'
+      },
+      bikecover_features: {
+        bgColor: '#0f172a',
+        textColor: '#ffffff',
+        textAlign: 'left',
+        fontSize: 'default',
+        image_url: '',
+        icon_text: 'কেন আমাদের বাইক কভার সেরা?',
+        title_1: 'সম্পূর্ণ সুরক্ষার জন্য প্রিমিয়াম ডিজাইন ও কোয়ালিটি ফিচার',
+        title_2: 'আপনার শখের বাইকের সুরক্ষায় আমরা কোনো আপোষ করি না। নিখুঁত সেলাই গ্যারান্টি ও প্রিমিয়াম উপকরণ।',
+        body: '',
+        visible_mobile: true,
+        visible_desktop: true,
+        padding_vertical: 'normal'
+      }
+    };
+
+    return {
+      ...(defaultData[sectionKey] || {
+        bgColor: '',
+        textColor: '',
+        textAlign: 'center',
+        fontSize: 'default',
+        image_url: '',
+        icon_text: '',
+        title_1: '',
+        title_2: '',
+        body: '',
+        visible_mobile: true,
+        visible_desktop: true,
+        padding_vertical: 'normal'
+      }),
+      ...(customizations[sectionKey] || {})
+    };
+  };
+
+  const getAlignClass = (align: 'left' | 'center' | 'right') => {
+    if (align === 'center') return 'text-center items-center lg:items-center lg:text-center';
+    if (align === 'right') return 'text-right items-end lg:items-end lg:text-right';
+    return 'text-left items-start lg:items-start lg:text-left';
+  };
+
+  const getVisibilityClass = (visMobile: boolean, visDesktop: boolean) => {
+    if (!visMobile && !visDesktop) return 'hidden';
+    if (!visMobile) return 'hidden md:block';
+    if (!visDesktop) return 'block md:hidden';
+    return 'block';
+  };
+
+  const getFontSizeClass = (sz: string, defaultClass: string) => {
+    if (sz === 'sm') return 'text-xs sm:text-sm';
+    if (sz === 'md') return 'text-sm sm:text-base';
+    if (sz === 'lg') return 'text-base sm:text-lg md:text-xl';
+    if (sz === 'xl') return 'text-lg sm:text-2xl';
+    if (sz === '2xl') return 'text-xl sm:text-3xl md:text-4xl';
+    return defaultClass;
+  };
+
+  const getPaddingClass = (padding?: 'compact' | 'normal' | 'generous') => {
+    if (padding === 'compact') return 'py-6 sm:py-8';
+    if (padding === 'generous') return 'py-14 sm:py-20';
+    return 'py-10 sm:py-14';
+  };
 
   useEffect(() => {
     // Scroll progress handler
@@ -210,12 +297,12 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
       synced: false,
     };
 
-    try {
-      await addOrderToFirestore(newOrder);
+    // Run the cloud database write in the background so that order confirmation is instantaneous for the user
+    addOrderToFirestore(newOrder).then(() => {
       newOrder.synced = true;
-    } catch (err) {
+    }).catch((err) => {
       console.warn("Direct addOrderToFirestore failed, fallback using local storage syncing:", err);
-    }
+    });
 
     // Sync local raincoat_orders cache as well
     const listJson = localStorage.getItem('raincoat_orders') || '[]';
@@ -274,32 +361,49 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
       </div>
 
       {/* Hero Header Section */}
-      <header className="relative bg-gradient-to-b from-slate-950 to-slate-900 text-white overflow-hidden py-12 sm:py-20 border-b border-slate-800" id="home">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/10 rounded-full blur-[100px] pointer-events-none"></div>
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-orange-600/10 rounded-full blur-[100px] pointer-events-none"></div>
+      {(() => {
+        const bikeHero = getSectionData('bikecover_hero');
+        return (
+          <header 
+            className={`relative text-white overflow-hidden border-b border-slate-800 ${getVisibilityClass(bikeHero.visible_mobile, bikeHero.visible_desktop)} ${getPaddingClass(bikeHero.padding_vertical)}`} 
+            style={{ backgroundColor: bikeHero.bgColor || '#090d16' }}
+            id="home"
+          >
+            <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/10 rounded-full blur-[100px] pointer-events-none"></div>
+            <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-orange-600/10 rounded-full blur-[100px] pointer-events-none"></div>
 
-        <div className="container mx-auto px-4 max-w-7xl relative z-10">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
-            
-            {/* Left Column: Core features / Title */}
-            <div className="lg:col-span-7 space-y-6 text-center lg:text-left">
-              <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-500/10 text-cyan-400 text-xs font-bold rounded-full border border-blue-500/20 uppercase tracking-widest font-sans">
-                <Bike className="h-4 w-4 animate-bounce text-cyan-400" /> ১০০% প্রিমিয়াম বাইক কভার
-              </div>
-              
-              <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-white leading-tight font-sans">
-                100% Waterproof & <br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-orange-200 to-white block mt-2">
-                  Dustproof Bike Cover 🛡️
-                </span>
-              </h1>
-              
-              <p className="text-slate-300 text-sm sm:text-base leading-relaxed max-w-2xl mx-auto lg:mx-0 font-sans">
-                বাংলাদেশের সকল মডেলের বাইকের জন্য একদম উপযোগী প্রিমিয়াম সাইজ কভার। রোদ, বৃষ্টি, ধুলোবালি কিংবা দাগ থেকে আপনার শখের মোটর বাইককে সম্পূর্ণ নতুনের মতো সতেজ ও সুরক্ষিত রাখুন। সরাসরি চায়না থেকে আমদানিকৃত ৩০০০ মিলি ওজনের ছাতা কাপড়ের তৈরি এই বাইক কভার ২ বছরেরও বেশি অনায়াসে টেকসই থাকবে।
-              </p>
+            <div className="container mx-auto px-4 max-w-7xl relative z-10">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+                
+                {/* Left Column: Core features / Title */}
+                <div className={`lg:col-span-7 space-y-6 flex flex-col ${getAlignClass(bikeHero.textAlign)}`}>
+                  {bikeHero.icon_text && (
+                    <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-500/10 text-cyan-400 text-xs font-bold rounded-full border border-blue-500/20 uppercase tracking-widest font-sans">
+                      <Bike className="h-4 w-4 animate-bounce text-cyan-400" /> {bikeHero.icon_text}
+                    </div>
+                  )}
+                  
+                  <h1 
+                    className={`font-black text-white leading-tight font-sans ${getFontSizeClass(bikeHero.fontSize, "text-3xl sm:text-4xl md:text-5xl")}`}
+                    style={{ color: bikeHero.textColor || '#ffffff' }}
+                  >
+                    {bikeHero.title_1} <br />
+                    {bikeHero.title_2 && (
+                      <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-orange-200 to-white block mt-2">
+                        {bikeHero.title_2}
+                      </span>
+                    )}
+                  </h1>
+                  
+                  <p 
+                    className="text-slate-305 text-sm sm:text-base leading-relaxed max-w-2xl font-sans"
+                    style={{ color: bikeHero.textColor ? `${bikeHero.textColor}e0` : '#cbd5e1' }}
+                  >
+                    {bikeHero.body}
+                  </p>
 
               {/* Special Pricing display */}
-              <div className="bg-slate-800/80 backdrop-blur-xs p-5 rounded-2xl border border-slate-700/80 max-w-md mx-auto lg:mx-0">
+              <div className={`bg-slate-800/80 backdrop-blur-xs p-5 rounded-2xl border border-slate-700/80 max-w-md w-full ${bikeHero.textAlign === 'center' ? 'mx-auto' : 'mx-auto lg:mx-0'}`}>
                 <div className="text-center font-sans">
                   <span className="text-xs text-slate-400 block pb-1">সারা বাংলাদেশ ডেলিভারি চার্জ সহ ধামাকা অফার মূল্য </span>
                   <div className="flex justify-center items-center gap-3">
@@ -311,7 +415,7 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
               </div>
 
               {/* Features bullet checklist */}
-              <div className="grid grid-cols-2 gap-y-3.5 gap-x-4 pt-2 text-slate-300 text-xs sm:text-sm font-semibold max-w-md mx-auto lg:mx-0">
+              <div className={`grid grid-cols-2 gap-y-3.5 gap-x-4 pt-2 text-slate-300 text-xs sm:text-sm font-semibold max-w-md w-full ${bikeHero.textAlign === 'center' ? 'mx-auto' : 'mx-auto lg:mx-0'}`}>
                 <div className="flex items-center gap-1.5 font-sans">
                   <CheckCircle2 className="h-4.5 w-4.5 text-emerald-400 shrink-0" /> পানিরোধক (Waterproof 💯%)
                 </div>
@@ -327,7 +431,7 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
               </div>
 
               {/* Call to action orders flow buttons */}
-              <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start pt-3">
+              <div className={`flex flex-col sm:flex-row gap-4 w-full ${bikeHero.textAlign === 'center' ? 'justify-center items-center' : 'justify-center lg:justify-start items-center lg:items-start'} pt-3`}>
                 <button
                   onClick={() => scrollToSection('checkout-form')}
                   className="px-8 py-4 bg-orange-500 hover:bg-orange-600 active:scale-98 text-white font-black text-sm sm:text-base rounded-2xl transition duration-300 shadow-lg shadow-orange-500/25 flex items-center justify-center gap-2 cursor-pointer animate-pulse-subtle"
@@ -343,7 +447,7 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
               </div>
 
               {/* Fast trust highlights */}
-              <div className="flex flex-wrap items-center justify-center lg:justify-start gap-4 pt-4 border-t border-slate-800/80 font-sans">
+              <div className={`flex flex-wrap items-center gap-4 pt-4 border-t border-slate-800/80 font-sans w-full ${bikeHero.textAlign === 'center' ? 'justify-center' : 'justify-center lg:justify-start'}`}>
                 <div className="flex items-center gap-1.5 bg-slate-800/50 px-3 py-1.5 rounded-full border border-slate-850">
                   <ShieldCheck className="h-4 w-4 text-emerald-400" />
                   <span className="text-xs text-slate-300 font-medium">৭ দিনের পরিবর্তন গ্যারান্টি</span>
@@ -356,96 +460,109 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
 
             </div>
 
-            {/* Right Column: Dynamic Slider (Arrows removed to save space!) */}
+            {/* Right Column: Dynamic Slider (or customized single banner) */}
             <div className="lg:col-span-5 relative w-full flex flex-col items-center justify-center">
-              <div className="w-full max-w-sm bg-slate-950 p-6 rounded-3xl border border-slate-800 shadow-2xl space-y-5">
-                
-                {/* Image Showcase Container */}
-                <div className="h-60 rounded-2xl p-5 flex flex-col justify-between text-white relative overflow-hidden transition-all duration-500 shadow-xl border border-slate-850 bg-slate-900">
-                  {/* Background Layer of Slide */}
-                  {slides[activeSlide]?.bgUrl ? (
-                    <img
-                      src={slides[activeSlide].bgUrl}
-                      alt="Banner Background"
-                      className="absolute inset-0 w-full h-full object-cover transition-transform duration-700"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : slides[activeSlide]?.url && !slides[activeSlide]?.bgUrl ? (
-                    // Default behavior if no custom background has been set (full bleed product photo)
-                    <img
-                      src={slides[activeSlide].url}
-                      alt={slides[activeSlide].title}
-                      className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 hover:scale-105"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <div className={`absolute inset-0 bg-gradient-to-br ${slides[activeSlide]?.color || 'from-blue-600 to-indigo-900'}`} />
-                  )}
-
-                  {/* Interactive layered floating product photo if custom background is customized */}
-                  {slides[activeSlide]?.bgUrl && slides[activeSlide]?.url && (
-                    <div className="absolute inset-x-0 bottom-14 top-10 flex items-center justify-center pointer-events-none z-10 p-2">
+              {bikeHero.image_url ? (
+                <div className="w-full max-w-md">
+                  <img
+                    src={bikeHero.image_url}
+                    alt="Customized Bike Cover Banner"
+                    className="w-full rounded-2xl shadow-2xl border border-slate-800 bg-slate-900 object-contain max-h-[380px] p-2"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+              ) : (
+                <div className="w-full max-w-sm bg-slate-950 p-6 rounded-3xl border border-slate-800 shadow-2xl space-y-5">
+                  
+                  {/* Image Showcase Container */}
+                  <div className="h-60 rounded-2xl p-5 flex flex-col justify-between text-white relative overflow-hidden transition-all duration-500 shadow-xl border border-slate-850 bg-slate-900">
+                    {/* Background Layer of Slide */}
+                    {slides[activeSlide]?.bgUrl ? (
+                      <img
+                        src={slides[activeSlide].bgUrl}
+                        alt="Banner Background"
+                        className="absolute inset-0 w-full h-full object-cover transition-transform duration-700"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : slides[activeSlide]?.url && !slides[activeSlide]?.bgUrl ? (
+                      // Default behavior if no custom background has been set (full bleed product photo)
                       <img
                         src={slides[activeSlide].url}
                         alt={slides[activeSlide].title}
-                        className="max-h-full max-w-full object-contain filter drop-shadow-[0_10px_10px_rgba(0,0,0,0.6)]"
+                        className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 hover:scale-105"
                         referrerPolicy="no-referrer"
                       />
+                    ) : (
+                      <div className={`absolute inset-0 bg-gradient-to-br ${slides[activeSlide]?.color || 'from-blue-600 to-indigo-900'}`} />
+                    )}
+
+                    {/* Interactive layered floating product photo if custom background is customized */}
+                    {slides[activeSlide]?.bgUrl && slides[activeSlide]?.url && (
+                      <div className="absolute inset-x-0 bottom-14 top-10 flex items-center justify-center pointer-events-none z-10 p-2">
+                        <img
+                          src={slides[activeSlide].url}
+                          alt={slides[activeSlide].title}
+                          className="max-h-full max-w-full object-contain filter drop-shadow-[0_10px_10px_rgba(0,0,0,0.6)]"
+                          referrerPolicy="no-referrer"
+                        />
+                      </div>
+                    )}
+
+                    {/* Subtle vignette overlay */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-black/30 z-2" />
+
+                    {/* Top line of slide showcase card */}
+                    <div className="flex justify-between items-start relative z-10">
+                      <span className="px-2.5 py-0.5 bg-orange-600 text-white rounded-full text-[9px] font-black uppercase tracking-wider shadow-sm">
+                        {slides[activeSlide]?.badge}
+                      </span>
+                      <Bike className="h-6 w-6 text-white drop-shadow-md animate-pulse shrink-0" />
                     </div>
-                  )}
 
-                  {/* Subtle vignette overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-black/30 z-2" />
+                    {/* Empty mid spacer */}
+                    <div className="h-6 relative z-10" />
 
-                  {/* Top line of slide showcase card */}
-                  <div className="flex justify-between items-start relative z-10">
-                    <span className="px-2.5 py-0.5 bg-orange-600 text-white rounded-full text-[9px] font-black uppercase tracking-wider shadow-sm">
-                      {slides[activeSlide]?.badge}
-                    </span>
-                    <Bike className="h-6 w-6 text-white drop-shadow-md animate-pulse shrink-0" />
-                  </div>
-
-                  {/* Empty mid spacer */}
-                  <div className="h-6 relative z-10" />
-
-                  {/* Bottom title container */}
-                  <div className="bg-slate-950/80 backdrop-blur-xs border border-slate-800/40 p-2.5 rounded-xl relative z-10 text-center">
-                    <div className="text-xs font-black font-sans text-orange-400">
-                      {slides[activeSlide]?.title}
+                    {/* Bottom title container */}
+                    <div className="bg-slate-950/80 backdrop-blur-xs border border-slate-800/40 p-2.5 rounded-xl relative z-10 text-center">
+                      <div className="text-xs font-black font-sans text-orange-400">
+                        {slides[activeSlide]?.title}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Centered Indicators only - Deleted Arrows as requested to save space */}
-                <div className="flex justify-center items-center py-0.5">
-                  <div className="flex gap-1.5 bg-slate-900 border border-slate-800 px-3.5 py-1.5 rounded-full shadow-md">
-                    {slides.map((_, i) => (
-                      <button
-                        key={i} 
-                        onClick={() => setActiveSlide(i)}
-                        className={`h-1.5 rounded-full transition-all duration-300 cursor-pointer ${activeSlide === i ? 'w-5 bg-orange-400' : 'w-1.5 bg-slate-700 hover:bg-slate-500'}`}
-                        aria-label={`Go to slide ${i+1}`}
-                      />
-                    ))}
+                  {/* Centered Indicators only - Deleted Arrows as requested to save space */}
+                  <div className="flex justify-center items-center py-0.5">
+                    <div className="flex gap-1.5 bg-slate-900 border border-slate-800 px-3.5 py-1.5 rounded-full shadow-md">
+                      {slides.map((_, i) => (
+                        <button
+                          key={i} 
+                          onClick={() => setActiveSlide(i)}
+                          className={`h-1.5 rounded-full transition-all duration-300 cursor-pointer ${activeSlide === i ? 'w-5 bg-orange-400' : 'w-1.5 bg-slate-700 hover:bg-slate-500'}`}
+                          aria-label={`Go to slide ${i+1}`}
+                        />
+                      ))}
+                    </div>
                   </div>
-                </div>
 
-                {/* Active Slide Specs */}
-                <div className="space-y-1 bg-slate-900/40 p-3 rounded-xl border border-slate-850/40 font-sans text-xs">
-                  <div className="text-amber-305 font-bold flex items-center gap-1 text-[11px] text-orange-400">
-                    <Sparkles className="h-3.5 w-3.5 text-orange-400 shrink-0" /> {slides[activeSlide]?.price}
+                  {/* Active Slide Specs */}
+                  <div className="space-y-1 bg-slate-900/40 p-3 rounded-xl border border-slate-850/40 font-sans text-xs">
+                    <div className="text-amber-305 font-bold flex items-center gap-1 text-[11px] text-orange-400">
+                      <Sparkles className="h-3.5 w-3.5 text-orange-400 shrink-0" /> {slides[activeSlide]?.price}
+                    </div>
+                    <p className="text-slate-350 leading-relaxed text-[11px] sm:text-xs">
+                      {slides[activeSlide]?.description}
+                    </p>
                   </div>
-                  <p className="text-slate-350 leading-relaxed text-[11px] sm:text-xs">
-                    {slides[activeSlide]?.description}
-                  </p>
-                </div>
 
-              </div>
+                </div>
+              )}
             </div>
 
           </div>
         </div>
       </header>
+    );
+  })()}
 
       {/* Embedded Live Video Section */}
       <section className="py-12 bg-slate-950 border-b border-slate-800" id="live-video">
@@ -905,7 +1022,7 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
                       <label className="text-xs font-semibold text-slate-300 block">অর্ডার নোট বা বিশেষ নির্দেশনা (ঐচ্ছিক):</label>
                       <input
                         type="text"
-                        placeholder="যেমন: লাল বা কালো কভার হবে"
+                        placeholder="যেমন: কখন নিতে পারবেন বা অমুক স্থানে বা ৫ টার আগে এমন"
                         value={orderNotes}
                         onChange={(e)=>setOrderNotes(e.target.value)}
                         className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 text-white focus:outline-none"

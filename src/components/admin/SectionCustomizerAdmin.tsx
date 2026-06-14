@@ -257,48 +257,96 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
     });
   };
 
+  // Helper to compress images browser-side using HTML5 canvas
+  const compressImage = (file: File, maxWidth = 800, maxHeight = 800, quality = 0.55): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          if (width > maxWidth || height > maxHeight) {
+            if (width > height) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            } else {
+              width = Math.round((width * maxHeight) / height);
+              height = maxHeight;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            // Export compressed JPEG as base64 to ensure small file size
+            const base64 = canvas.toDataURL('image/jpeg', quality);
+            resolve(base64);
+          } else {
+            resolve(e.target?.result as string);
+          }
+        };
+        img.onerror = () => {
+          resolve(e.target?.result as string);
+        };
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = () => {
+        resolve('');
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
   // Upload/Compress card image in browser
-  const handleCardImageUpload = (index: number, file: File) => {
+  const handleCardImageUpload = async (index: number, file: File) => {
     const validExtensions = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
     if (!validExtensions.includes(file.type)) {
       alert('শুধুমাত্র JPG, PNG অথবা WEBP ইমেজ আপলোড করা যাবে!');
       return;
     }
-    if (file.size > 1.2 * 1024 * 1024) {
-      alert('ইমেজের সাইজ অতিরিক্ত বড় (১.২ মেগাবাইটের নীচে ইমেজ ট্রাই করুন)!');
+    if (file.size > 10 * 1024 * 1024) {
+      alert('ইমেজের সাইজ অতিরিক্ত বড় (১০ মেগাবাইটের নীচে ইমেজ ট্রাই করুন)!');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (event.target?.result) {
-        const base64 = event.target.result as string;
-        handleUpdateCardValue(index, 'imageUrl', base64);
+    try {
+      const compressedBase64 = await compressImage(file);
+      if (compressedBase64) {
+        handleUpdateCardValue(index, 'imageUrl', compressedBase64);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.error("Card Image compression failed", err);
+      alert('ছবি প্রসেস করতে ব্যর্থ হয়েছে। অনুগ্রহ করে অন্য ছবি চেষ্টা করুন।');
+    }
   };
 
   // Upload/Compress general section image in browser
-  const handleSectionImageUpload = (sectionKey: string, file: File) => {
+  const handleSectionImageUpload = async (sectionKey: string, file: File) => {
     const validExtensions = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
     if (!validExtensions.includes(file.type)) {
       alert('শুধুমাত্র JPG, PNG অথবা WEBP ইমেজ আপলোড করা যাবে!');
       return;
     }
-    if (file.size > 1.2 * 1024 * 1024) {
-      alert('ইমেজের সাইজ অতিরিক্ত বড় (১.২ মেগাবাইটের নীচে ইমেজ ট্রাই করুন)!');
+    if (file.size > 10 * 1024 * 1024) {
+      alert('ইমেজের সাইজ অতিরিক্ত বড় (১০ মেগাবাইটের নীচে ইমেজ ট্রাই করুন)!');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (event.target?.result) {
-        const base64 = event.target.result as string;
-        handleUpdateValue(sectionKey, 'image_url', base64);
+    try {
+      const compressedBase64 = await compressImage(file);
+      if (compressedBase64) {
+        handleUpdateValue(sectionKey, 'image_url', compressedBase64);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.error("Section Image compression failed", err);
+      alert('ছবি প্রসেস করতে ব্যর্থ হয়েছে। অনুগ্রহ করে অন্য ছবি চেষ্টা করুন।');
+    }
   };
 
   // Commit changes to cloud Firestore seamlessly

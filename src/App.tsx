@@ -525,6 +525,25 @@ export default function App() {
     setOrdersCount(prev => prev + 1);
     setRecentOrderForToast(order); // Trigger immediate success toast feedback!
 
+    // Cache the latest order so that any newly opened Thank You page tab on the same domain can access it
+    localStorage.setItem('latest_submitted_order', JSON.stringify(order));
+
+    // Determine target URL product name slug based on parameters
+    let productSlug = 'raincoat';
+    if (order.bikeModel || window.location.pathname.includes('bikecover') || window.location.hash.includes('bikecover')) {
+      productSlug = 'bikecover';
+    } else if (order.orderNotes && (order.orderNotes.toLowerCase().includes('cover') || order.orderNotes.toLowerCase().includes('কভার'))) {
+      productSlug = 'bikecover';
+    }
+    
+    // Open the confirmation/Thank You page in a new browser tab instantly
+    try {
+      const thankYouUrl = `/thankyou-${productSlug}`;
+      window.open(thankYouUrl, '_blank');
+    } catch (err) {
+      console.warn("Popup block mechanism prevented window.open from starting a new tab:", err);
+    }
+
     // Save order details directly to Firestore
     addOrderToFirestore(order)
       .then(() => {
@@ -622,6 +641,7 @@ export default function App() {
   const isWriteReviewRoute = currentPath === '/write-review' || currentHash === '#/write-review' || currentHash === '#write-review';
   const isRaincoatLandingRoute = currentPath === '/raincoat' || currentHash === '#/raincoat' || currentHash === '#raincoat';
   const isBikeCoverLandingRoute = currentPath === '/bikecover' || currentHash === '#/bikecover' || currentHash === '#bikecover';
+  const isThankYouRoute = currentPath.startsWith('/thankyou-') || currentHash.startsWith('#/thankyou-') || currentHash.startsWith('#thankyou-');
 
   // Check if hash matches a custom page slug from custom landing pages collection
   let activeCustomPage = null;
@@ -651,15 +671,57 @@ export default function App() {
     );
   }
 
-  // Handle global Customer Order Confirmation Receipt View
-  if (submittedOrder) {
-    return (
-      <div className="min-h-screen bg-slate-50 relative selection:bg-blue-600 selection:text-white py-12 px-4 flex items-center justify-center font-sans">
-        <div className="w-full max-w-4xl">
-          <Receipt order={submittedOrder} onClose={handleBackToShopping} />
+  // Handle global Customer Order Confirmation Receipt / Thank You Page View
+  let thankYouOrder = submittedOrder;
+  if (!thankYouOrder && isThankYouRoute) {
+    const cached = localStorage.getItem('latest_submitted_order');
+    if (cached) {
+      try {
+        thankYouOrder = JSON.parse(cached);
+      } catch (err) {
+        console.error("Failed to parse latest submitted order from localStorage:", err);
+      }
+    }
+  }
+
+  if (isThankYouRoute || submittedOrder) {
+    if (thankYouOrder) {
+      return (
+        <div className="min-h-screen bg-slate-50 relative selection:bg-blue-600 selection:text-white py-12 px-4 flex items-center justify-center font-sans">
+          <div className="w-full max-w-4xl">
+            <Receipt 
+              order={thankYouOrder} 
+              onClose={() => {
+                if (isThankYouRoute) {
+                  // If on a dedicated thank you tab/page, go to main home page
+                  window.location.href = '/';
+                } else {
+                  handleBackToShopping();
+                }
+              }} 
+            />
+          </div>
         </div>
-      </div>
-    );
+      );
+    } else if (isThankYouRoute) {
+      return (
+        <div className="min-h-screen bg-slate-50 relative py-12 px-4 flex items-center justify-center font-sans text-center">
+          <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-8 shadow-xl">
+            <div className="w-16 h-16 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">
+              ⚠️
+            </div>
+            <h2 className="text-xl font-bold text-slate-800 mb-2">সাম্প্রতিক কোনো অর্ডার পাওয়া যায়নি</h2>
+            <p className="text-sm text-slate-500 mb-6 font-medium">অর্ডার করার পর এই পেজটিতে আপনার রসিদ জেনারেট হয়ে যাবে।</p>
+            <button
+              onClick={() => { window.location.href = '/'; }}
+              className="py-3 px-6 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl transition text-sm cursor-pointer inline-flex items-center gap-1.5 focus:ring-2 focus:ring-orange-500 focus:outline-none"
+            >
+              হোমপেজে ফিরে যান
+            </button>
+          </div>
+        </div>
+      );
+    }
   }
 
   // Handle Track Order routing (Separate Tab/Page View)

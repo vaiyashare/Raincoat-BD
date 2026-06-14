@@ -276,11 +276,15 @@ export default function OrderForm({
     };
 
     // Save of final order first to ensure core purchase is never blocked by secondary actions
-    try {
-      await addOrderToFirestore(newOrder);
+    // Run the cloud database write in the background so that order confirmation is instantaneous for the user
+    addOrderToFirestore(newOrder).then(() => {
       console.log("Successfully connected order to database Firestore!");
       newOrder.synced = true;
+    }).catch((err) => {
+      console.warn("Non-critical background save failed:", err);
+    });
 
+    try {
       // Execute secondary, non-critical database updates asynchronously with isolated catch handlers
       deleteIncompleteOrderFromFirestore(sessionId).catch((err) => {
         console.warn("Non-critical: Failed to delete incomplete draft order:", err);
@@ -292,7 +296,7 @@ export default function OrderForm({
         });
       }
     } catch (err) {
-      console.error("Critical Firebase error saving order:", err);
+      console.error("Non-critical post-processing error:", err);
     }
 
     // Dispatch Facebook Pixel / Conversion API Purchase Event with real purchase data & Advanced User Matching

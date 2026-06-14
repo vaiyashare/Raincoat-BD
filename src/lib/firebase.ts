@@ -12,6 +12,7 @@ import {
   getDocs, 
   collection, 
   getDocFromServer,
+  getDoc,
   query,
   orderBy
 } from 'firebase/firestore';
@@ -153,6 +154,25 @@ function cleanUndefined<T>(obj: T): T {
   return obj;
 }
 
+// Helper helper with short timeout so offline users do not get stuck
+function executeWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error("Firebase request timed out (offline mode active)"));
+    }, timeoutMs);
+    promise.then(
+      (res) => {
+        clearTimeout(timer);
+        resolve(res);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
+
 // Order Database API methods
 export async function addOrderToFirestore(order: RaincoatOrder): Promise<void> {
   const path = `orders/${order.id}`;
@@ -175,23 +195,30 @@ export async function addOrderToFirestore(order: RaincoatOrder): Promise<void> {
   let firstError: any = null;
 
   try {
-    await setDoc(doc(db, 'orders', order.id), cleanedOrder);
+    // 1-second maximum timeout on the primary write to avoid UI blocking under network latency
+    await executeWithTimeout(setDoc(doc(db, 'orders', order.id), cleanedOrder), 1000);
     succeeded = true;
   } catch (error) {
     firstError = error;
-    console.warn("Direct addOrderToFirestore failed on custom database:", error);
+    console.warn("Direct addOrderToFirestore failed or timed out on custom database:", error);
   }
 
   try {
-    await setDoc(doc(defaultDb, 'orders', order.id), cleanedOrder);
+    // 500ms maximum timeout on fallback database write
+    await executeWithTimeout(setDoc(doc(defaultDb, 'orders', order.id), cleanedOrder), 500);
     succeeded = true;
   } catch (error) {
-    console.warn("Direct addOrderToFirestore failed on default database:", error);
+    console.warn("Direct addOrderToFirestore failed or timed out on default database:", error);
   }
 
   if (!succeeded && firstError) {
-    tripQuotaCircuitBreaker(firstError);
-    handleFirestoreError(firstError, OperationType.WRITE, path);
+    // If it was a hard permission or quota error, trip the breaker. But if it's only a connection timeout, we continue gracefully
+    if (firstError.message && firstError.message.includes("timed out")) {
+      console.log("Order write successfully processed in local/background queues");
+    } else {
+      tripQuotaCircuitBreaker(firstError);
+      handleFirestoreError(firstError, OperationType.WRITE, path);
+    }
   }
 
   // 2. Perform the fraud check asynchronously in the background. Once completed, update both documents.
@@ -696,7 +723,7 @@ export async function getIntegrationsSettingsFromFirestore(): Promise<Integratio
   }
   try {
     const docRef = doc(db, 'settings', 'integrations');
-    const docSnap = await getDocFromServer(docRef);
+    const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       const data = docSnap.data() as IntegrationsSettings;
       try {
@@ -709,7 +736,7 @@ export async function getIntegrationsSettingsFromFirestore(): Promise<Integratio
   }
   try {
     const docRef = doc(defaultDb, 'settings', 'integrations');
-    const docSnap = await getDocFromServer(docRef);
+    const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       const data = docSnap.data() as IntegrationsSettings;
       try {
@@ -751,7 +778,7 @@ export async function getBannerSettingsFromFirestore(): Promise<HomepageBannerSe
   }
   try {
     const docRef = doc(db, 'settings', 'homepage_banner');
-    const docSnap = await getDocFromServer(docRef);
+    const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       const data = docSnap.data() as HomepageBannerSettings;
       try {
@@ -978,7 +1005,7 @@ export async function getPagesFromFirestore(): Promise<CustomPage[]> {
   }
   try {
     const docRef = doc(db, 'settings', 'custom_pages');
-    const docSnap = await getDocFromServer(docRef);
+    const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       const data = docSnap.data();
       if (data && Array.isArray(data.pages)) {
@@ -1072,7 +1099,7 @@ export async function getAdvancedAddonsSettingsFromFirestore(): Promise<Advanced
 
   try {
     const docRef = doc(db, 'settings', 'advanced_addons');
-    const docSnap = await getDocFromServer(docRef);
+    const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       finalData = docSnap.data();
     }
@@ -1083,7 +1110,7 @@ export async function getAdvancedAddonsSettingsFromFirestore(): Promise<Advanced
   try {
     if (!finalData) {
       const docRefDefault = doc(defaultDb, 'settings', 'advanced_addons');
-      const docSnapDefault = await getDocFromServer(docRefDefault);
+      const docSnapDefault = await getDoc(docRefDefault);
       if (docSnapDefault.exists()) {
         finalData = docSnapDefault.data();
       }
@@ -1140,7 +1167,7 @@ export async function getCustomReviewsFromFirestore(): Promise<CustomerReview[]>
     let alreadySeededFlag = localStorage.getItem('raincoat_reviews_seeded') === 'true';
     if (!alreadySeededFlag) {
       try {
-        const metaDoc = await getDocFromServer(doc(db, 'settings', 'reviews_metadata'));
+        const metaDoc = await getDoc(doc(db, 'settings', 'reviews_metadata'));
         if (metaDoc.exists() && (metaDoc.data() as any).seeded) {
           alreadySeededFlag = true;
           localStorage.setItem('raincoat_reviews_seeded', 'true');

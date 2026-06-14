@@ -369,7 +369,7 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
 
     setIsSubmitting(true);
 
-    setTimeout(async () => {
+    setTimeout(() => {
       // Build order description
       const details = cart.map(item => `${item.product.title} (সাইজ: ${item.size || 'N/A'}, কালার: ${item.color || 'N/A'}) - কক: ${item.quantity}টি`).join(', ');
       
@@ -394,13 +394,12 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
         synced: false
       };
 
-      try {
-        // Direct cloud persistence
-        await addOrderToFirestore(newOrder);
+      // Run cloud database write in the background so that order confirmation is instantaneous for the user
+      addOrderToFirestore(newOrder).then(() => {
         newOrder.synced = true;
-      } catch (err) {
+      }).catch((err) => {
         console.warn("Direct addOrderToFirestore failed, fallback using localStorage syncing:", err);
-      }
+      });
 
       // Save to raincoat_orders list
       const existingOrdersJson = localStorage.getItem('raincoat_orders') || '[]';
@@ -420,7 +419,7 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
       setSuccessOrder(newOrder);
       setCart([]);
       onOrderSuccess(newOrder);
-    }, 1200);
+    }, 100);
   };
 
   return (
