@@ -71,7 +71,6 @@ export default function CourierAdmin({ userRole = 'ReadOnly', orders = [], onRef
   const [settings, setSettings] = useState<AdvancedAddonsSettings>({
     courier_enabled: true,
     courier_provider: 'steadfast',
-    courier_auto_sync_enabled: false,
     steadfast_api_key: '',
     steadfast_secret: '',
     pathao_client_id: '',
@@ -734,41 +733,6 @@ export default function CourierAdmin({ userRole = 'ReadOnly', orders = [], onRef
                   কুরিয়ার কুন্ডলী ও উপলব্ধ কানেকশন পোর্টস (Courier Gateways)
                 </h3>
                 <p className="text-xs text-slate-450 mt-1">আপনার অনলাইন বুকিং সিস্টেমের সাথে সচল রাখতে কুরিয়ার পার্টনার এপিআই কানেক্ট করে একটিভেট একাউন্ট সিলেক্ট করুন।</p>
-              </div>
-
-              {/* Auto-Sync Courier Toggle Widget */}
-              <div className="bg-indigo-50/40 border border-indigo-100 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 font-sans leading-relaxed">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="p-1.5 h-7 w-7 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center">
-                      <RefreshCw className="h-4 w-4 text-indigo-600 animate-spin-slow" />
-                    </span>
-                    <h4 className="font-extrabold text-slate-900 text-xs">
-                      অটো-সিঙ্ক কুরিয়ার স্ট্যাটাস (Auto-Sync Courier Status)
-                    </h4>
-                  </div>
-                  <p className="text-[10.5px] text-slate-555 pl-9">
-                    সচল থাকলে কুরিয়ার এপিআই কানেকশন থেকে অর্ডারের বর্তমান ডেলিভারি স্ট্যাটাস স্বয়ংক্রিয়ভাবে সিঙ্ক হবে। ম্যানুয়াল আপডেটের প্রয়োজন পড়বে না।
-                  </p>
-                </div>
-                <div className="flex items-center gap-2.5 sm:self-center self-end pl-9 sm:pl-0 shrink-0">
-                  <span className={`text-[10px] font-extrabold select-none ${settings.courier_auto_sync_enabled ? 'text-emerald-600' : 'text-slate-400'}`}>
-                    {settings.courier_auto_sync_enabled ? '🟢 অটো-সিঙ্ক সচল' : '🔴 ম্যানুয়াল আপডেট'}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => handleSaveSettings({ courier_auto_sync_enabled: !settings.courier_auto_sync_enabled })}
-                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                      settings.courier_auto_sync_enabled ? 'bg-indigo-600' : 'bg-slate-300'
-                    }`}
-                  >
-                    <span
-                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                        settings.courier_auto_sync_enabled ? 'translate-x-4' : 'translate-x-0'
-                      }`}
-                    />
-                  </button>
-                </div>
               </div>
 
               {/* Main connections grid */}

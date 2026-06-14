@@ -18,13 +18,79 @@ const validateBDPhone = (num: string): boolean => {
 /**
  * Runs active real-time checks and API lookups on phone + email combinations.
  */
-export async function performFraudCheck(phone: string, email?: string): Promise<FraudCheckResult> {
+export async function performFraudCheck(phone: string, email?: string, customApiKey?: string): Promise<FraudCheckResult> {
   let score = 0;
   let reasonList: string[] = [];
   
   const cleanPhone = phone.trim().replace(/[-\s+]/g, '');
   const targetPhone = cleanPhone.startsWith('88') ? cleanPhone.substring(2) : cleanPhone;
   
+  // Try calling the real FraudShield API via proxy first
+  let apiKey = customApiKey;
+  if (!apiKey) {
+    try {
+      const cached = localStorage.getItem('raincoat_advanced_addons_fallback');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        apiKey = parsed.fraudshield_api_key;
+      }
+    } catch (_) {}
+  }
+  // Default fallback API key provided by user
+  if (!apiKey) {
+    apiKey = 'cf_vfA41OBSERvLwHFTFZMXgTct2o8kcxEP';
+  }
+
+  if (apiKey) {
+    try {
+      const res = await fetch('/api/fraudshield/check', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          phone: targetPhone,
+          apiKey: apiKey
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.fraudRiskScore) {
+          const scoreVal = data.fraudRiskScore.score !== undefined ? data.fraudRiskScore.score : 0;
+          let shieldStatus: 'Safe' | 'Warning' | 'High Risk' | 'Scammer' = 'Safe';
+          if (scoreVal >= 75) {
+            shieldStatus = 'Scammer';
+          } else if (scoreVal >= 45) {
+            shieldStatus = 'High Risk';
+          } else if (scoreVal >= 20) {
+            shieldStatus = 'Warning';
+          }
+
+          const shieldLabel = data.fraudRiskScore.label || 'Safe';
+          const successRatio = data.courierData?.summary?.success_ratio || 0;
+          const totalParcel = data.courierData?.summary?.total_parcel || 0;
+          const successParcel = data.courierData?.summary?.success_parcel || 0;
+          
+          let reasonText = `FraudShield: ${shieldLabel} (রিস্ক: ${scoreVal}%) • ডেলিভারি সফলতা: ${successRatio}% (${successParcel}/${totalParcel})`;
+          
+          // Add first consumer review info if available
+          if (data.reviews && data.reviews.length > 0) {
+            reasonText += ` • রিভিউ: "${data.reviews[0].comment}"`;
+          }
+
+          return {
+            score: scoreVal,
+            status: shieldStatus,
+            reason: reasonText.substring(0, 500) // limit size
+          };
+        }
+      }
+    } catch (e) {
+      console.warn("FraudShield API check failed, falling back to heuristics:", e);
+    }
+  }
+
+  // Fallback heuristics:
   // 1. Initial Format Validation
   if (!validateBDPhone(targetPhone)) {
     score += 45;

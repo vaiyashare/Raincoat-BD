@@ -60,8 +60,6 @@ export interface RaincoatOrder {
   trackingId?: string;
   whatsappConsent?: boolean;
   synced?: boolean;
-  courierTotalParcel?: number;
-  courierSuccessRatio?: number;
 }
 
 export interface IncompleteOrder {
@@ -180,7 +178,6 @@ export interface CustomPage {
 export interface AdvancedAddonsSettings {
   courier_enabled: boolean;
   courier_provider: 'steadfast' | 'pathao' | 'redx' | 'none';
-  courier_auto_sync_enabled?: boolean;
   steadfast_api_key: string;
   steadfast_secret: string;
   pathao_client_id: string;
@@ -217,6 +214,10 @@ export interface AdvancedAddonsSettings {
   track_lead: boolean;
   track_purchase: boolean;
   track_initiate_checkout: boolean;
+
+  // FraudShield API Custom Configuration (Manually modifiable & saved in Cloud Firestore)
+  fraudshield_api_key?: string;
+  fraudshield_api_secret?: string;
 
   // Site Configuration Customization
   site_title?: string;

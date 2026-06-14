@@ -26,9 +26,11 @@ import {
   addOrderToFirestore,
   sendFirebasePasswordReset,
   getAdvancedAddonsSettingsFromFirestore,
-  db
+  db,
+  handleFirestoreError,
+  OperationType
 } from '../lib/firebase';
-import { collection, query, onSnapshot, doc, updateDoc, getDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 
 import { trackPixelEvent, trackTikTokEvent } from '../lib/tracking';
 import { normalizeWhatsAppPhone } from '../lib/whatsapp';
@@ -343,6 +345,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   const [copiedMessage, setCopiedMessage] = useState('');
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [showPrintLabelModal, setShowPrintLabelModal] = useState(false);
+  const [isCreatingTestOrder, setIsCreatingTestOrder] = useState(false);
   
   // Steadfast Sync Status States
   const [courierSettings, setCourierSettings] = useState<any>(null);
@@ -350,71 +353,9 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   const [editingTrackingOrderId, setEditingTrackingOrderId] = useState<string | null>(null);
   const [tempTrackingId, setTempTrackingId] = useState<string>('');
 
-  // Live Courier API Lookup (FraudShield)
-  const [fraudShieldApiKey, setFraudShieldApiKey] = useState(() => {
-    return localStorage.getItem('fraudshield_api_key') || 'cf_60WHme2hAhhBWOBAHAbEjo05MDZg7xE4';
-  });
-  const [courierLoadingState, setCourierLoadingState] = useState<Record<string, boolean>>({});
-
-  useEffect(() => {
-    const loadFraudShieldKey = async () => {
-      try {
-        const docRef = doc(db, 'settings', 'fraudshield');
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          if (data.fraudShieldApiKey) {
-            setFraudShieldApiKey(data.fraudShieldApiKey);
-            localStorage.setItem('fraudshield_api_key', data.fraudShieldApiKey);
-          }
-        }
-      } catch (err) {
-        console.warn("Could not load FraudShield API Key in AdminPanel:", err);
-      }
-    };
-    loadFraudShieldKey();
-  }, []);
-
-  const handleCourierApiLookup = async (orderId: string, phone: string) => {
-    if (!phone) return;
-    const cleanNum = phone.trim().replace(/[-\s+]/g, '');
-    
-    setCourierLoadingState(prev => ({ ...prev, [orderId]: true }));
-    
-    try {
-      const response = await fetch('/api/fraudshield/check', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': fraudShieldApiKey
-        },
-        body: JSON.stringify({ phone: cleanNum })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const total = data?.courierData?.summary?.total_parcel ?? 0;
-        const successRate = data?.courierData?.summary?.success_ratio ?? 0;
-        const level = data?.fraudRiskScore?.level || 'safe';
-        const label = data?.fraudRiskScore?.label || 'নিরাপদ বায়ার';
-
-        // Update in Firestore to cache it forever
-        await updateOrderInFirestore(orderId, {
-          courierTotalParcel: total,
-          courierSuccessRatio: successRate,
-          fraudScore: data?.fraudRiskScore?.score ?? 0,
-          fraudStatus: level === 'scammer' ? 'Scammer' : level === 'warning' ? 'Warning' : 'Safe',
-          fraudReason: label
-        });
-      } else {
-        console.warn('Failed to fetch courier lookup stats from server');
-      }
-    } catch (err) {
-      console.error('Error during live courier API lookup:', err);
-    } finally {
-      setCourierLoadingState(prev => ({ ...prev, [orderId]: false }));
-    }
-  };
+  // Completed Orders Pagination States
+  const [completedPage, setCompletedPage] = useState<number>(1);
+  const [completedPageSize, setCompletedPageSize] = useState<number>(100);
 
   // Audio Alerts and Toast Notification States
   const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
@@ -481,7 +422,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     }
   };
 
-  // Load courier settings on mount and when activeTab changes
+  // Load courier settings on mount
   useEffect(() => {
     const loadCourierSettings = async () => {
       try {
@@ -494,7 +435,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       }
     };
     loadCourierSettings();
-  }, [activeTab]);
+  }, []);
 
   const fetchSteadfastStatus = async (orderId: string) => {
     const apiKey = courierSettings?.steadfast_api_key || 'jtoxickzs13bhwpmmyjk7k9lnxkslet2';
@@ -504,17 +445,6 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       ...prev,
       [orderId]: { status: prev[orderId]?.status || '', loading: true }
     }));
-
-    const getMappedStatus = (courierStatus: string) => {
-      switch (courierStatus?.toLowerCase()) {
-        case 'delivered':
-          return 'Delivered';
-        case 'cancelled':
-          return 'Cancelled';
-        default:
-          return null;
-      }
-    };
 
     try {
       // Find the order in the orders state to check if it has a trackingId
@@ -531,25 +461,10 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       });
       const data = await response.json();
       if (data && data.status === 200) {
-        const deliveryStatus = data.delivery_status || 'unknown';
         setSteadfastStatuses(prev => ({
           ...prev,
-          [orderId]: { status: deliveryStatus, loading: false }
+          [orderId]: { status: data.delivery_status || 'unknown', loading: false }
         }));
-
-        // Auto-sync status if enabled
-        if (courierSettings?.courier_auto_sync_enabled) {
-          const mappedStatus = getMappedStatus(deliveryStatus);
-          if (mappedStatus && targetOrder && targetOrder.status !== mappedStatus) {
-            updateOrderInFirestore(orderId, { status: mappedStatus })
-              .then(() => {
-                setOrders(prevOrders => prevOrders.map(o => o.id === orderId ? { ...o, status: mappedStatus } : o));
-              })
-              .catch((err) => {
-                console.warn("Failed to auto-sync couriers status update to Firestore:", err);
-              });
-          }
-        }
       } else {
         // If query by tracking code fails, fallback to querying by invoice
         if (type === 'tracking') {
@@ -561,25 +476,10 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
           });
           const fbData = await fbResponse.json();
           if (fbData && fbData.status === 200) {
-            const fbDeliveryStatus = fbData.delivery_status || 'unknown';
             setSteadfastStatuses(prev => ({
               ...prev,
-              [orderId]: { status: fbDeliveryStatus, loading: false }
+              [orderId]: { status: fbData.delivery_status || 'unknown', loading: false }
             }));
-
-            // Auto-sync status if enabled
-            if (courierSettings?.courier_auto_sync_enabled) {
-              const mappedStatus = getMappedStatus(fbDeliveryStatus);
-              if (mappedStatus && targetOrder && targetOrder.status !== mappedStatus) {
-                updateOrderInFirestore(orderId, { status: mappedStatus })
-                  .then(() => {
-                    setOrders(prevOrders => prevOrders.map(o => o.id === orderId ? { ...o, status: mappedStatus } : o));
-                  })
-                  .catch((err) => {
-                    console.warn("Spontaneous auto-sync couriers status update to Firestore failed:", err);
-                  });
-              }
-            }
             return;
           }
         }
@@ -715,10 +615,53 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     return `https://api.whatsapp.com/send?phone=${formattedPhone}&text=${encodeURIComponent(message)}`;
   };
 
-  const getPhoneRiskBadge = (phone: string | undefined, order?: any) => {
+  const [checkingFraudOrders, setCheckingFraudOrders] = useState<Record<string, boolean>>({});
+
+  const handleSingleOrderFraudCheck = async (orderId: string, phone: string, isCompletedCollection: boolean) => {
+    if (!orderId || !phone) return;
+    if (checkingFraudOrders[orderId]) return;
+    
+    setCheckingFraudOrders(prev => ({ ...prev, [orderId]: true }));
+    try {
+      let customApiKey = '';
+      try {
+        const cached = localStorage.getItem('raincoat_advanced_addons_fallback');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          customApiKey = parsed.fraudshield_api_key;
+        }
+      } catch (_) {}
+      
+      const { performFraudCheck } = await import('../lib/fraudCheck');
+      const result = await performFraudCheck(phone, undefined, customApiKey);
+
+      const { doc, updateDoc } = await import('firebase/firestore');
+      const collectionName = isCompletedCollection ? 'orders' : 'incomplete_orders';
+      const orderRef = doc(db, collectionName, orderId);
+      
+      await updateDoc(orderRef, {
+        fraudScore: result.score,
+        fraudStatus: result.status,
+        fraudReason: result.reason
+      });
+
+      if (isCompletedCollection) {
+        setOrders(prev => prev.map(o => o.id === orderId ? { ...o, fraudScore: result.score, fraudStatus: result.status, fraudReason: result.reason } : o));
+      } else {
+        setIncompleteOrders(prev => prev.map(o => o.id === orderId ? { ...o, fraudScore: result.score, fraudStatus: result.status, fraudReason: result.reason } : o));
+      }
+    } catch (err) {
+      console.error("Error executing single order fraud check:", err);
+    } finally {
+      setCheckingFraudOrders(prev => ({ ...prev, [orderId]: false }));
+    }
+  };
+
+  const getPhoneRiskBadge = (phone: string | undefined, order?: any, isCompleted: boolean = true) => {
     if (!phone) return null;
     const clean = phone.replace(/[-\s+]/g, '');
-    
+    const isScanning = order && checkingFraudOrders[order.id];
+
     // Check if order has API-derived fraud characteristics stored
     if (order && order.fraudScore !== undefined) {
       const score = order.fraudScore;
@@ -726,17 +669,29 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       if (score >= 75) {
         scoreBadgeColor = 'bg-rose-50 text-rose-700 border-rose-300 animate-pulse border';
       } else if (score >= 45) {
-        scoreBadgeColor = 'bg-amber-50 text-amber-705 text-amber-800 border-amber-300 border';
+        scoreBadgeColor = 'bg-amber-50 text-amber-705 text-amber-850 border-amber-300 border';
       } else if (score >= 20) {
         scoreBadgeColor = 'bg-indigo-50 text-indigo-705 text-indigo-700 border-indigo-200 border';
       }
       return (
         <span 
-          className={`inline-flex flex-col items-start gap-0.5 px-2 py-1 rounded-xl text-[9px] font-sans font-extrabold leading-tight ${scoreBadgeColor}`}
+          className={`inline-flex flex-col items-start gap-1 p-2 rounded-xl text-[9px] font-sans font-extrabold leading-tight ${scoreBadgeColor}`}
           title={order.fraudReason || 'Verified via Fraud API'}
         >
-          <span>🛡️ এপিআই রিস্ক স্কোর: {score}%</span>
-          <span className="text-[7.5px] font-normal text-slate-500 italic inline-block">{order.fraudReason || 'নিরাপদ কাস্টমার'}</span>
+          <span className="flex items-center gap-1">🛡️ এপিআই রিস্ক স্কোর: {score}%</span>
+          <span className="text-[7.5px] font-normal text-slate-550 block break-all">{order.fraudReason || 'নিরাপদ কাস্টমার'}</span>
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleSingleOrderFraudCheck(order.id, phone, isCompleted);
+            }}
+            disabled={isScanning}
+            className="text-[8px] text-indigo-600 hover:text-indigo-850 font-black underline cursor-pointer shrink-0 mt-0.5"
+            title="লাইভ স্ক্যান রি-চেক করুন"
+          >
+            {isScanning ? 'স্ক্যান হচ্ছে...' : 'রি-চেক স্ক্যান ⚡'}
+          </button>
         </span>
       );
     }
@@ -744,8 +699,19 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     const isBlacklisted = blacklist.some((b: any) => b.phone === clean);
     if (isBlacklisted) {
       return (
-        <span className="inline-flex items-center gap-1 text-[9px] font-black px-1.5 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 animate-pulse uppercase">
-          🚨 ফ্রাড (Blocklisted)
+        <span className="inline-flex flex-col gap-1 items-start p-1.5 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 animate-pulse">
+          <span className="text-[9px] font-black uppercase">🚨 ফ্রাড (Blocklisted)</span>
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (order && order.id) handleSingleOrderFraudCheck(order.id, phone, isCompleted);
+            }}
+            disabled={isScanning}
+            className="text-[8px] text-indigo-600 hover:text-indigo-850 font-black underline cursor-pointer"
+          >
+            {isScanning ? 'স্ক্যান হচ্ছে...' : '১-ক্লিক এপিআই চেক'}
+          </button>
         </span>
       );
     }
@@ -753,8 +719,19 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     const isValidFormat = /^(?:\+88|88)?(01[3-9]\d{8})$/.test(clean);
     if (!isValidFormat) {
       return (
-        <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-rose-50 text-rose-600 border border-rose-150">
-          ⚠️ ভুয়া নাম্বার (Fake/Wrong Size)
+        <span className="inline-flex flex-col gap-1 items-start p-1.5 rounded-xl bg-rose-50 text-rose-600 border border-rose-150">
+          <span className="text-[9px] font-bold">⚠️ ভুয়া নাম্বার (Fake/Wrong Size)</span>
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (order && order.id) handleSingleOrderFraudCheck(order.id, phone, isCompleted);
+            }}
+            disabled={isScanning}
+            className="text-[8px] text-indigo-600 hover:text-indigo-850 font-black underline cursor-pointer"
+          >
+            {isScanning ? 'স্ক্যান হচ্ছে...' : '১-ক্লিক এপিআই চেক'}
+          </button>
         </span>
       );
     }
@@ -762,15 +739,43 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     const count = orders.filter(o => o.phone.replace(/[-\s+]/g, '') === clean).length;
     if (count > 2) {
       return (
-        <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200">
-          ⚠️ বারবার অর্ডার ({count} বার)
+        <span className="inline-flex flex-col gap-1 items-start p-1.5 rounded-xl bg-amber-50 text-amber-700 border border-amber-200">
+          <span className="text-[9px] font-bold">⚠️ বারবার অর্ডার ({count} বার)</span>
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (order && order.id) handleSingleOrderFraudCheck(order.id, phone, isCompleted);
+            }}
+            disabled={isScanning}
+            className="text-[8px] text-indigo-500 hover:text-indigo-700 font-extrabold underline cursor-pointer"
+          >
+            {isScanning ? 'স্ক্যান হচ্ছে...' : '১-ক্লিক এপিআই চেক'}
+          </button>
         </span>
       );
     }
     
     return (
-      <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100">
-        🛡️ নিরাপদ (Safe)
+      <span className="inline-flex flex-col gap-1 items-start p-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100">
+        <span className="text-[9px] font-bold">🛡️ আনচেকড (Safe Potential)</span>
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (order && order.id) {
+              handleSingleOrderFraudCheck(order.id, phone, isCompleted);
+            }
+          }}
+          disabled={isScanning}
+          className="text-[8.5px] text-indigo-600 hover:text-indigo-850 font-black underline cursor-pointer"
+        >
+          {isScanning ? (
+            <span className="animate-pulse">স্ক্যান হচ্ছে...</span>
+          ) : (
+            <span>১-ক্লিক এপিআই চেক</span>
+          )}
+        </button>
       </span>
     );
   };
@@ -866,6 +871,44 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     }
   };
 
+  const handleCreateTestOrder = async () => {
+    setIsCreatingTestOrder(true);
+    try {
+      const orderId = 'ORD-' + Math.floor(100000 + Math.random() * 900000);
+      const now = new Date().toISOString();
+      const mockOrder = {
+        id: orderId,
+        name: 'অভিষেক দেবনাথ',
+        village: '১৬২, কাজীপুর রোড, শান্তিবাগ',
+        policeStation: 'পল্টন',
+        district: 'ঢাকা',
+        phone: '01712345678',
+        size: 'XL',
+        color: 'Navy Blue',
+        weight: 74,
+        heightFeet: 5,
+        heightInches: 8,
+        price: 1650,
+        status: 'Pending',
+        isConfirmed: false,
+        bikeModel: 'Yamaha FZS V3',
+        createdAt: now,
+        fraudScore: 8,
+        fraudStatus: 'Safe',
+        fraudReason: 'সিস্টেম টেস্ট অর্ডার',
+        orderNotes: 'টেস্ট রেইনকোট অর্ডার (লাইভ ট্র্যাকিং চেক)',
+        whatsappConsent: true,
+        synced: true
+      };
+      await addOrderToFirestore(mockOrder as any);
+      alert(`টেস্ট অর্ডার সফলভাবে তৈরি হয়েছে! ID: ${orderId}`);
+    } catch (err: any) {
+      alert(`টেস্ট অর্ডার তৈরি ব্যর্থ হয়েছে: ${err.message || err}`);
+    } finally {
+      setIsCreatingTestOrder(false);
+    }
+  };
+
   const loadOrders = async () => {
     onRefreshOrdersCount();
 
@@ -921,6 +964,9 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       onRefreshOrdersCount();
     }, (error) => {
       console.warn("Real-time orders sync error:", error);
+      try {
+        handleFirestoreError(error, OperationType.LIST, 'orders');
+      } catch (_) {}
     });
 
     // Set up real-time listener for incomplete draft orders in Firestore
@@ -937,6 +983,9 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       onRefreshOrdersCount();
     }, (error) => {
       console.warn("Real-time incomplete orders sync error:", error);
+      try {
+        handleFirestoreError(error, OperationType.LIST, 'incompleteOrders');
+      } catch (_) {}
     });
 
     return () => {
@@ -1796,6 +1845,16 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   const filteredScammerCount = filteredOrders.filter(o => o.fraudScore !== undefined && o.fraudScore >= 75).length;
 
   const isStandAlone = window.location.pathname === '/admin' || window.location.hash === '#/admin' || window.location.hash === '#admin';
+
+  // Completed Orders Pagination calculations
+  const startIndex = (completedPage - 1) * completedPageSize;
+  const paginatedOrders = filteredOrders.slice(startIndex, startIndex + completedPageSize);
+  const totalCompletedPages = Math.ceil(filteredOrders.length / completedPageSize) || 1;
+
+  // Auto-reset completed order page to 1 when filters or page size changes
+  useEffect(() => {
+    setCompletedPage(1);
+  }, [searchTerm, filterSize, filterStatus, filterDistrict, dateFilter, customStartDate, customEndDate, completedPageSize]);
 
   // If NOT logged in, block and show elegant standalone admin credentials check
   if (!isLoggedIn) {
@@ -2807,6 +2866,14 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
             {/* Admin utilities */}
             <div className="flex items-center gap-2.5 w-full sm:w-auto overflow-x-auto justify-end">
               <button
+                disabled={isCreatingTestOrder}
+                onClick={handleCreateTestOrder}
+                className="p-2 bg-gradient-to-r from-teal-500 to-indigo-600 hover:from-teal-600 hover:to-indigo-700 text-white rounded-lg transition flex items-center justify-center gap-1.5 text-xs font-bold cursor-pointer shadow-xs disabled:opacity-50"
+                title="টেস্ট রেইনকোট অর্ডার ক্রিয়েট করুন"
+              >
+                <Sparkles className={`h-3.5 w-3.5 ${isCreatingTestOrder ? 'animate-spin' : ''}`} /> টেস্ট অর্ডার তৈরি করুন
+              </button>
+              <button
                 onClick={loadOrders}
                 className="p-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-slate-600 transition flex items-center justify-center gap-1.5 text-xs font-bold cursor-pointer"
               >
@@ -2922,39 +2989,39 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
           )}
 
           {/* Orders log table */}
-          <div className="overflow-x-auto rounded-xl border border-slate-200 max-h-[450px]">
+          <div className="overflow-x-auto rounded-xl border border-slate-200 max-h-[1000px] min-h-[450px] shadow-sm bg-white">
             {activeTab === 'completed' ? (
               <table className="w-full text-xs text-left text-slate-500">
                 <thead className="bg-slate-100 text-slate-700 uppercase font-mono text-[10px] tracking-wider sticky top-0 z-10 border-b border-slate-200">
                   <tr>
-                    <th scope="col" className="px-3 py-3 text-center min-w-[75px] font-sans">
-                      <div className="flex flex-col items-center justify-center gap-1">
+                    <th scope="col" className="px-3 py-2 text-center min-w-[75px] font-sans">
+                      <div className="flex flex-col items-center justify-center gap-0.5">
                         <span className="text-[9px] font-sans font-bold tracking-normal leading-none uppercase">Select</span>
                         <input 
                           type="checkbox"
-                          className="rounded border-slate-300 text-indigo-600 focus:ring-0 cursor-pointer h-3.5 w-3.5"
-                          checked={filteredOrders.length > 0 && filteredOrders.every(o => selectedOrderIds.includes(o.id))}
+                          className="rounded border-slate-300 text-indigo-600 focus:ring-0 cursor-pointer h-3.2 w-3.2"
+                          checked={paginatedOrders.length > 0 && paginatedOrders.every(o => selectedOrderIds.includes(o.id))}
                           onChange={(e) => {
                             if (e.target.checked) {
-                              const newSelected = Array.from(new Set([...selectedOrderIds, ...filteredOrders.map(o => o.id)]));
+                              const newSelected = Array.from(new Set([...selectedOrderIds, ...paginatedOrders.map(o => o.id)]));
                               setSelectedOrderIds(newSelected);
                             } else {
-                              const filteredIds = filteredOrders.map(o => o.id);
-                              setSelectedOrderIds(selectedOrderIds.filter(id => !filteredIds.includes(id)));
+                              const paginatedIds = paginatedOrders.map(o => o.id);
+                              setSelectedOrderIds(selectedOrderIds.filter(id => !paginatedIds.includes(id)));
                             }
                           }}
                         />
                       </div>
                     </th>
-                    <th scope="col" className="px-4 py-3">গ্রাহক ও ফোন</th>
-                    <th scope="col" className="px-4 py-3">ঠিকানা</th>
-                    <th scope="col" className="px-3 py-3 text-center">সাইজ/কালার</th>
-                    <th scope="col" className="px-3 py-3 text-center">ওজন ও উচ্চতা</th>
-                    <th scope="col" className="px-3 py-3 text-right">মূল্য (Price)</th>
-                    <th scope="col" className="px-4 py-3 text-center">অর্ডার কনফার্ম</th>
-                    <th scope="col" className="px-4 py-3 text-center">ডেলিভারি স্থিতি</th>
-                    <th scope="col" className="px-4 py-3 text-center">Steadfast সিঙ্ক</th>
-                    <th scope="col" className="px-4 py-3 text-center">মুছে ফেলুন</th>
+                    <th scope="col" className="px-4 py-2">গ্রাহক ও ফোন</th>
+                    <th scope="col" className="px-4 py-2">ঠিকানা</th>
+                    <th scope="col" className="px-3 py-2 text-center">সাইজ/কালার</th>
+                    <th scope="col" className="px-3 py-2 text-center">ওজন ও উচ্চতা</th>
+                    <th scope="col" className="px-3 py-2 text-right">মূল্য (Price)</th>
+                    <th scope="col" className="px-4 py-2 text-center">অর্ডার কনফার্ম</th>
+                    <th scope="col" className="px-4 py-2 text-center">ডেলিভারি স্থিতি</th>
+                    <th scope="col" className="px-4 py-2 text-center">Steadfast সিঙ্ক</th>
+                    <th scope="col" className="px-4 py-2 text-center">মুছে ফেলুন</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-sans">
@@ -2965,13 +3032,13 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                       </td>
                     </tr>
                   ) : (
-                    filteredOrders.map((order) => (
-                      <tr key={order.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-3 py-3.5 text-center">
-                          <div className="flex flex-col items-center justify-center gap-1">
+                    paginatedOrders.map((order) => (
+                      <tr key={order.id} className="hover:bg-slate-50 transition-colors border-b border-slate-100">
+                        <td className="px-3 py-1.5 text-center">
+                          <div className="flex flex-col items-center justify-center gap-0.5">
                             <input 
                               type="checkbox"
-                              className="rounded border-slate-300 text-indigo-600 focus:ring-0 cursor-pointer h-3.5 w-3.5"
+                              className="rounded border-slate-300 text-indigo-600 focus:ring-0 cursor-pointer h-3.2 w-3.2"
                               checked={selectedOrderIds.includes(order.id)}
                               onChange={(e) => {
                                 if (e.target.checked) {
@@ -2984,66 +3051,66 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                             <span className="text-[9px] text-slate-400 font-sans font-medium leading-none select-none">Select</span>
                           </div>
                         </td>
-                        <td className="px-4 py-3.5">
-                          <div className="font-extrabold text-slate-900">{order.name}</div>
-                          <div className="font-mono text-[11px] text-slate-600 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                        <td className="px-4 py-1.5">
+                          <div className="font-extrabold text-slate-900 leading-tight">{order.name}</div>
+                          <div className="font-mono text-[10.5px] text-slate-600 mt-0.5 flex items-center gap-1 flex-wrap">
                             <span>{order.phone}</span>
                             <a
                               href={`tel:${order.phone}`}
-                              className="inline-flex items-center justify-center p-1 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200 transition-all cursor-pointer"
+                              className="inline-flex items-center justify-center p-0.5 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200 transition-all cursor-pointer"
                               title="সরাসরি কল করুন"
                             >
-                              <Phone className="h-3 w-3" />
+                              <Phone className="h-2.5 w-2.5" />
                             </a>
                             <a
                               href={getWhatsAppUrlCompleted(order)}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center justify-center p-1 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-150 transition-all cursor-pointer hover:border-emerald-300"
+                              className="inline-flex items-center justify-center p-0.5 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-150 transition-all cursor-pointer hover:border-emerald-300"
                               title="WhatsApp এ নিশ্চিতকরণ মেসেজ পাঠান"
                             >
-                              <svg className="h-3 w-3 fill-emerald-600" viewBox="0 0 24 24">
+                              <svg className="h-2.5 w-2.5 fill-emerald-600" viewBox="0 0 24 24">
                                 <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.497-5.73-1.446L0 24zm6.59-4.846c1.6.95 3.188 1.449 4.825 1.451 5.436 0 9.86-4.37 9.864-9.799.002-2.63-1.023-5.101-2.885-6.963C16.588 1.981 14.111.957 11.488.957c-5.43 0-9.85 4.37-9.854 9.799-.001 1.918.52 3.79 1.51 5.4l-.994 3.631 3.907-.98zm11.233-6.983c-.3-.149-1.764-.868-2.038-.967-.272-.098-.471-.148-.669.149-.197.297-.767.966-.94 1.164-.173.199-.347.223-.647.074-.3-.149-1.265-.465-2.41-1.483-.89-.792-1.49-1.77-1.665-2.07-.173-.296-.018-.456.13-.605.134-.133.3-.347.45-.52.149-.174.199-.297.298-.495.1-.2.05-.371-.025-.52-.075-.148-.669-1.611-.916-2.206-.24-.579-.487-.501-.669-.51l-.57-.01c-.197 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.764-.719 2.012-1.412.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m0 0" />
                               </svg>
                             </a>
                             {getPhoneRiskBadge(order.phone, order)}
                           </div>
-                          <div className="text-[9px] text-slate-400 font-mono mt-0.5">অর্ডার আইডি: {order.id}</div>
-                          <div className="text-[9px] text-indigo-500 mt-0.5 italic">{formatBanglaDate(order.createdAt)}</div>
+                          <div className="text-[9px] text-slate-400 font-mono mt-0.5 flex flex-wrap gap-x-1.5 items-center">
+                            <span>আইডি: #{order.id?.replace('ord-', '').slice(0, 8)}</span>
+                            <span className="text-indigo-500 italic">{formatBanglaDate(order.createdAt)}</span>
+                          </div>
                           
                           {/* কন্টেইনার এ কনসাইনমেন্ট/ট্র্যাকিং আইডি ম্যানুয়াল বা অটো প্রদর্শন ও এডিট অপশন */}
-                          <div className="mt-2 text-[10.5px]">
+                          <div className="mt-1 text-[9.5px]">
                             {order.trackingId ? (
-                              <div className="flex flex-col gap-1 items-start bg-blue-50/50 p-1.5 rounded-lg border border-blue-100">
-                                <span className="text-[9px] uppercase font-black text-blue-700 block">কুরিয়ার কনসাইনমেন্ট আইডি (Consignment ID)</span>
+                              <div className="flex items-center gap-1.5 flex-wrap bg-blue-50/40 px-1 py-0.5 rounded border border-blue-100">
+                                <span className="text-[8px] uppercase font-bold text-blue-750">কুরিয়ার কনসাইনমেন্ট:</span>
                                 {editingTrackingOrderId === order.id ? (
-                                  <div className="flex items-center gap-1 mt-0.5">
+                                  <div className="flex items-center gap-1">
                                     <input
                                       type="text"
                                       autoFocus
                                       value={tempTrackingId}
                                       onChange={(e) => setTempTrackingId(e.target.value)}
                                       placeholder="কনসাইনমেন্ট আইডি"
-                                      className="px-1.5 py-0.5 text-[10px] border border-slate-300 rounded bg-white w-28 outline-none focus:border-indigo-500 font-mono"
+                                      className="px-1.5 py-0.5 text-[9px] border border-slate-300 rounded bg-white w-28 outline-none focus:border-indigo-500 font-mono"
                                     />
                                     <button
                                       onClick={() => handleSaveManualTracking(order.id, tempTrackingId)}
-                                      className="p-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded border border-emerald-300 cursor-pointer transition-all"
-                                      title="সংরক্ষণ করুন"
+                                      className="p-0.5 bg-emerald-100 text-emerald-700 rounded border border-emerald-300 cursor-pointer"
                                     >
-                                      <Check className="h-3 w-3" />
+                                      <Check className="h-2.5 w-2.5" />
                                     </button>
                                     <button
                                       onClick={() => setEditingTrackingOrderId(null)}
-                                      className="p-1 bg-slate-100 hover:bg-slate-250 text-slate-600 rounded border border-slate-300 cursor-pointer transition-all"
-                                      title="বাতিল করুন"
+                                      className="p-0.5 bg-slate-100 text-slate-600 rounded border border-slate-300 cursor-pointer"
                                     >
-                                      <X className="h-3 w-3" />
+                                      <X className="h-2.5 w-2.5" />
                                     </button>
                                   </div>
                                 ) : (
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="font-mono text-[10.5px] font-black text-slate-800 bg-white border border-slate-200 px-1 py-0.2 rounded shadow-2xs">
+                                  <div className="flex items-center gap-1 flex-wrap">
+                                    <span className="font-mono text-[9px] font-black text-slate-800 bg-white border border-slate-200 px-1 py-0.2 rounded">
                                       📦 {order.trackingId}
                                     </span>
                                     <button
@@ -3051,7 +3118,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                                         setEditingTrackingOrderId(order.id);
                                         setTempTrackingId(order.trackingId || '');
                                       }}
-                                      className="text-[9px] text-blue-600 hover:text-indigo-700 font-bold hover:underline cursor-pointer"
+                                      className="text-[8px] text-blue-600 hover:text-indigo-700 font-semibold hover:underline cursor-pointer"
                                     >
                                       সম্পাদনা
                                     </button>
@@ -3061,28 +3128,26 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                             ) : (
                               <div>
                                 {editingTrackingOrderId === order.id ? (
-                                  <div className="flex items-center gap-1 mt-1">
+                                  <div className="flex items-center gap-1">
                                     <input
                                       type="text"
                                       autoFocus
                                       value={tempTrackingId}
                                       onChange={(e) => setTempTrackingId(e.target.value)}
                                       placeholder="কনসাইনমেন্ট আইডি"
-                                      className="px-1.5 py-0.5 text-[10px] border border-slate-300 rounded bg-white w-32 outline-none focus:border-indigo-500 font-mono"
+                                      className="px-1.5 py-0.5 text-[9px] border border-slate-300 rounded bg-white w-32 outline-none focus:border-indigo-500 font-mono"
                                     />
                                     <button
                                       onClick={() => handleSaveManualTracking(order.id, tempTrackingId)}
                                       className="p-0.5 bg-emerald-50 text-emerald-600 rounded border border-emerald-250 cursor-pointer"
-                                      title="সংরক্ষণ করুন"
                                     >
-                                      <Check className="h-3 w-3" />
+                                      <Check className="h-2.5 w-2.5" />
                                     </button>
                                     <button
                                       onClick={() => setEditingTrackingOrderId(null)}
                                       className="p-0.5 bg-slate-50 text-slate-500 rounded border border-slate-200 cursor-pointer"
-                                      title="বাতিল করুন"
                                     >
-                                      <X className="h-3 w-3" />
+                                      <X className="h-2.5 w-2.5" />
                                     </button>
                                   </div>
                                 ) : (
@@ -3091,49 +3156,11 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                                       setEditingTrackingOrderId(order.id);
                                       setTempTrackingId('');
                                     }}
-                                    className="text-[9.5px] text-indigo-600 hover:text-indigo-800 font-extrabold bg-indigo-50 hover:bg-indigo-100/80 px-2 py-0.5 rounded border border-indigo-200/50 cursor-pointer inline-flex items-center gap-1 mt-1 transition-all"
+                                    className="text-[8.5px] text-indigo-600 hover:text-indigo-850 font-bold bg-indigo-50/50 hover:bg-indigo-100 px-1.5 py-0.5 rounded border border-indigo-200/30 cursor-pointer inline-flex items-center gap-0.5"
                                   >
-                                    + কুরিয়ার এন্ট্রি আইডি যুক্ত করুন
+                                    + কুরিয়ার আইডি
                                   </button>
                                 )}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* লাইভ কুরিয়ার ডেটাবেজ এপিআই স্ক্যানার (Courier API Lookup) */}
-                          <div className="mt-2.5 bg-slate-900 text-white rounded-lg p-2 border border-slate-800 space-y-1.5 font-sans">
-                            <div className="flex items-center justify-between border-b border-slate-800 pb-1 mb-1">
-                              <span className="text-[8.5px] uppercase font-black text-indigo-300 tracking-wider flex items-center gap-1">
-                                <Database className="h-2.5 w-2.5 text-indigo-400 shrink-0" />
-                                কুরিয়ার লাইভ স্ক্যানার
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleCourierApiLookup(order.id, order.phone)}
-                                disabled={courierLoadingState[order.id]}
-                                className="text-[8px] bg-indigo-600 hover:bg-indigo-500 text-white px-1.5 py-0.5 rounded font-bold cursor-pointer transition-all disabled:opacity-50"
-                              >
-                                {courierLoadingState[order.id] ? 'চেকিং...' : (order.courierTotalParcel !== undefined ? '🔄 রিফ্রেশ' : '🔍 চেক')}
-                              </button>
-                            </div>
-
-                            {order.courierTotalParcel !== undefined ? (
-                              <div className="grid grid-cols-2 gap-1 text-[9.5px]">
-                                <div className="bg-slate-950 p-1 rounded border border-slate-850">
-                                  <span className="text-[7.5px] text-slate-400 block font-semibold leading-none">মোট পার্সেল</span>
-                                  <span className="font-mono font-black text-slate-100 mt-0.5 block">{order.courierTotalParcel} টি</span>
-                                </div>
-                                <div className="bg-slate-950 p-1 rounded border border-slate-850">
-                                  <span className="text-[7.5px] text-slate-400 block font-semibold leading-none">সফলতার হার</span>
-                                  <span className={`font-mono font-black mt-0.5 block ${
-                                    (order.courierSuccessRatio ?? 0) >= 90 ? 'text-emerald-400' :
-                                    (order.courierSuccessRatio ?? 0) >= 75 ? 'text-amber-400' : 'text-rose-450'
-                                  }`}>{order.courierSuccessRatio ?? 0}%</span>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="text-[8.5px] text-slate-400 italic font-medium leading-normal">
-                                এখনো চেক করা হয়নি। লাইভ চেক করুন!
                               </div>
                             )}
                           </div>
@@ -3161,34 +3188,31 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                             const hasRepeatOrder = repeatOrdersIn3Days.length > 0;
 
                             return (
-                              <div className="mt-2.5 space-y-1.5 border-t border-slate-100 pt-2">
-                                <div className="text-[10px] font-bold flex items-center gap-1 text-slate-700">
-                                  <span>👤 বিগত অর্ডার সংখ্যা:</span>
-                                  <span className={`px-1.5 py-0.2 rounded font-mono font-black ${totalPreviousCount > 1 ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-600'}`}>
+                              <div className="mt-1 space-y-1 border-t border-slate-100 pt-1 text-[9px]">
+                                <div className="font-semibold flex items-center gap-1 text-slate-650 flex-wrap leading-none">
+                                  <span>👤 বিগত অর্ডার:</span>
+                                  <span className={`px-1 py-0.2 rounded-xs font-mono font-bold text-[9.5px] ${totalPreviousCount > 1 ? 'bg-indigo-50 text-indigo-700 font-extrabold' : 'text-slate-500'}`}>
                                     {totalPreviousCount} টি
                                   </span>
+                                  {totalPreviousCount > 1 && (
+                                    <span className="text-[8px] text-slate-450 block max-w-[170px] truncate" title={customerHistory.map(h => `${h.size}(${h.color === 'Black' ? 'কালো' : 'ব্লু'})`).join(', ')}>
+                                      ({customerHistory.map(h => `${h.size}(${h.color === 'Black' ? 'কালো' : 'ব্লু'})`).join(', ')})
+                                    </span>
+                                  )}
                                 </div>
-                                {totalPreviousCount > 1 && (
-                                  <div className="text-[9px] text-slate-500 font-semibold max-w-[200px] leading-tight">
-                                    ইতিহাস: {customerHistory.map(h => `${h.size}(${h.color === 'Black' ? 'কালো' : 'ব্লু'})`).join(', ')}
-                                  </div>
-                                )}
                                 {hasRepeatOrder && (
-                                  <div className="mt-1 flex items-start gap-1 p-1 bg-red-50 border border-red-200 text-red-800 rounded-lg text-[9px] font-extrabold animate-pulse max-w-[220px]">
-                                    <ShieldAlert className="h-3 w-3 text-red-600 shrink-0 mt-0.5" />
-                                    <div>
-                                      <div className="text-red-700 font-black">⚠️ ৩ দিনের মধ্যে ডাবল অর্ডার!</div>
-                                      <div className="font-semibold mt-0.5 text-slate-600">আইডি: {repeatOrdersIn3Days.map(r => r.id.replace('ord-', '#')).join(', ')}</div>
-                                    </div>
+                                  <div className="flex items-center gap-1 p-0.5 bg-red-50 border border-red-150 text-red-700 rounded text-[8.5px] font-bold animate-pulse max-w-[180px]">
+                                    <ShieldAlert className="h-2.5 w-2.5 text-red-600 shrink-0" />
+                                    <span className="truncate">৩ দিনে ডাবল: #{repeatOrdersIn3Days[0].id.replace('ord-', '').slice(0, 5)}</span>
                                   </div>
                                 )}
                               </div>
                             );
                           })()}
                         </td>
-                        <td className="px-4 py-3.5 max-w-[180px]">
+                        <td className="px-4 py-1.5 max-w-[180px]">
                           <div className="text-slate-800 block leading-tight font-medium">{order.village}</div>
-                          <div className="text-[10px] text-slate-500 mt-1 flex flex-wrap gap-1 items-center">
+                          <div className="text-[10px] text-slate-505 mt-0.5 flex flex-wrap gap-1 items-center">
                             {[order.policeStation, order.district].filter(Boolean).join(', ') ? (
                               <span>{[order.policeStation, order.district].filter(Boolean).join(', ')}</span>
                             ) : null}
@@ -3197,56 +3221,56 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                             </span>
                           </div>
                           {order.orderNotes && (
-                            <div className="mt-1.5 p-1 rounded-lg bg-blue-50 border border-blue-100/50 text-[10px] text-blue-800 font-semibold leading-relaxed">
+                            <div className="mt-1 p-1 rounded bg-blue-50 border border-blue-100/50 text-[9.5px] text-blue-800 font-semibold leading-relaxed">
                               📝 <span className="text-slate-500 font-bold">নোট:</span> {order.orderNotes}
                             </div>
                           )}
                         </td>
-                        <td className="px-3 py-3.5 text-center">
-                          <span className="bg-indigo-50 border border-indigo-100 text-indigo-700 font-extrabold px-1.5 py-0.5 rounded font-mono block w-fit mx-auto text-[10px]">
+                        <td className="px-3 py-1.5 text-center">
+                          <span className="bg-indigo-50 border border-indigo-100/50 text-indigo-700 font-extrabold px-1.5 py-0.5 rounded font-mono inline-block text-[9.5px]">
                             {order.size}
                           </span>
-                          <span className="text-[9px] text-slate-500 mt-1 block">
+                          <span className="text-[8.5px] text-slate-500 mt-0.5 block">
                             ({order.color === 'Black' ? 'কালো' : 'নেভি ব্লু'})
                           </span>
                         </td>
-                        <td className="px-3 py-3.5 text-center font-mono text-[10px] text-slate-600">
+                        <td className="px-3 py-1.5 text-center font-mono text-[9.5px] text-slate-600">
                           <div>{order.weight} kg</div>
                           <div className="text-slate-400">{order.heightFeet}’{order.heightInches}”</div>
                         </td>
-                        <td className="px-3 py-3.5 text-right font-mono font-bold text-slate-900">
+                        <td className="px-3 py-1.5 text-right font-mono font-bold text-slate-900 text-[10px]">
                           {order.price} TK
                         </td>
                         
                         {/* Order confirmation checkbox panel */}
-                        <td className="px-4 py-3.5 text-center">
+                        <td className="px-4 py-1.5 text-center">
                           <button
                             onClick={() => handleToggleConfirmOrder(order.id)}
-                            className={`px-3 py-1.5 rounded-full text-[10px] font-extrabold border transition-all cursor-pointer flex items-center justify-center gap-1 mx-auto ${
+                            className={`px-2 py-1 rounded-full text-[9px] font-bold border transition-all cursor-pointer flex items-center justify-center gap-1 mx-auto ${
                               order.isConfirmed
-                                ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
+                                ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30 font-extrabold'
                                 : 'bg-amber-500/5 text-amber-600 border-amber-500/20'
                             }`}
                           >
                             {order.isConfirmed ? (
                               <>
-                                <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 fill-emerald-600/10" />
+                                <ShieldCheck className="h-3 w-3 text-emerald-600 fill-emerald-600/10" />
                                 কনফার্মড
                               </>
                             ) : (
                               <>
-                                <div className="h-2 w-2 rounded-full bg-amber-500 animate-ping mr-0.5" />
+                                <div className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-ping mr-0.5" />
                                 কনফার্ম করুন
                               </>
                             )}
                           </button>
                         </td>
 
-                        <td className="px-4 py-3.5 text-center">
+                        <td className="px-4 py-1.5 text-center">
                           <select
                             value={order.status}
                             onChange={(e) => handleChangeStatus(order.id, e.target.value as any)}
-                            className={`px-2 py-1 text-[10px] rounded-lg border font-bold focus:outline-none ${
+                            className={`px-1.5 py-0.5 text-[9.5px] rounded border font-bold focus:outline-none cursor-pointer ${
                               order.status === 'Pending' ? 'bg-amber-50 text-amber-700 border-amber-200' :
                               order.status === 'Shipped' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
                               order.status === 'Delivered' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
@@ -3262,16 +3286,16 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                             <option value="Canceled Fake Order">ফেক বাতিল (Canceled Fake Order)</option>
                           </select>
                         </td>
-                        <td className="px-4 py-3.5 text-center min-w-[125px]">
+                        <td className="px-4 py-1.5 text-center min-w-[115px]">
                           {(() => {
                             const info = steadfastStatuses[order.id];
                             if (!info) {
                               return (
                                 <button
                                   onClick={() => fetchSteadfastStatus(order.id)}
-                                  className="px-2 py-1 bg-slate-100 hover:bg-slate-200 border border-slate-250 text-slate-600 rounded text-[9px] font-bold cursor-pointer inline-flex items-center gap-1.5 transition-all shadow-xs"
+                                  className="px-1.5 py-0.5 bg-slate-50 hover:bg-slate-150 border border-slate-200 text-slate-600 rounded text-[8.5px] font-bold cursor-pointer inline-flex items-center gap-1 transition-all"
                                 >
-                                  <RefreshCw className="h-2.5 w-2.5" />
+                                  <RefreshCw className="h-2 w-2" />
                                   চেক সিঙ্ক
                                 </button>
                               );
@@ -3279,8 +3303,8 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
 
                             if (info.loading) {
                               return (
-                                <span className="inline-flex items-center gap-1.5 text-[9px] font-bold text-slate-500 animate-pulse bg-slate-50 border border-slate-150 px-2 py-1 rounded">
-                                  <RefreshCw className="h-2.5 w-2.5 animate-spin" />
+                                <span className="inline-flex items-center gap-1 text-[8.5px] font-bold text-slate-500 animate-pulse bg-slate-50 border border-slate-150 px-1.5 py-0.5 rounded">
+                                  <RefreshCw className="h-2 w-2 animate-spin" />
                                   লোডিং...
                                 </span>
                               );
@@ -3288,48 +3312,48 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
 
                             const { text, style } = getSteadfastStatusLabelAndStyle(info.status);
                             return (
-                              <div className="flex flex-col items-center gap-1.5 justify-center">
-                                <span className={`px-2 py-1 rounded-sm text-[8.5px] text-center font-bold font-sans shrink-0 inline-block leading-tight shadow-2xs ${style}`}>
+                              <div className="flex flex-col items-center gap-1 justify-center">
+                                <span className={`px-1.5 py-0.5 rounded-sm text-[8px] text-center font-bold tracking-tight shrink-0 inline-block leading-none ${style}`}>
                                   {text}
                                 </span>
                                 <button
                                   onClick={() => fetchSteadfastStatus(order.id)}
-                                  className="text-[8.5px] text-slate-450 hover:text-indigo-600 font-bold inline-flex items-center gap-0.5 cursor-pointer"
+                                  className="text-[8px] text-slate-450 hover:text-indigo-600 font-semibold inline-flex items-center gap-0.5 cursor-pointer"
                                   title="পুনরায় যাচাই করুন"
                                 >
-                                  <RefreshCw className="h-2.5 w-2.5" />
+                                  <RefreshCw className="h-2 w-2" />
                                   রিলোড
                                 </button>
                               </div>
                             );
                           })()}
                         </td>
-                        <td className="px-4 py-3.5 text-center min-w-[150px]">
+                        <td className="px-4 py-1.5 text-center min-w-[120px]">
                           {deletingOrderId === order.id ? (
-                            <div className="flex items-center justify-center gap-1.5 animate-fadeIn">
+                            <div className="flex items-center justify-center gap-1 animate-fadeIn">
                               <button
                                 onClick={() => handleDelete(order.id)}
-                                className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold shadow-sm transition-all"
+                                className="px-1.5 py-0.5 bg-red-650 hover:bg-red-750 text-white rounded text-[9px] font-bold shadow-xs transition-all"
                                 title="মুছে ফেলা নিশ্চিত করুন"
                               >
-                                কনফার্ম করুন
+                                কনফার্ম
                               </button>
                               <button
                                 onClick={() => setDeletingOrderId(null)}
-                                className="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[10px] font-bold shadow-sm transition-all"
+                                className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[9px] font-bold shadow-xs transition-all"
                                 title="বাতিল করুন"
                               >
                                 বাতিল
                               </button>
                             </div>
                           ) : (
-                            <div className="flex items-center justify-center gap-1.5">
+                            <div className="flex items-center justify-center gap-1">
                               <button
                                 onClick={() => handleStartEditOrder(order)}
-                                className="p-1.5 hover:bg-indigo-50 text-indigo-600 hover:text-indigo-800 rounded-lg transition-all cursor-pointer inline-flex items-center justify-center border border-indigo-100/50"
+                                className="p-1 hover:bg-indigo-50 text-indigo-600 hover:text-indigo-800 rounded transition-all cursor-pointer inline-flex items-center justify-center border border-indigo-100/50"
                                 title="অর্ডার সংশোধন (Edit)"
                               >
-                                <Edit className="h-3.5 w-3.5" />
+                                <Edit className="h-3.2 w-3.2" />
                               </button>
                               <button
                                 onClick={() => {
@@ -3339,10 +3363,10 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                                   }
                                   setDeletingOrderId(order.id);
                                 }}
-                                className="p-1.5 hover:bg-rose-50 text-rose-500 hover:text-rose-700 rounded-lg transition-all cursor-pointer inline-flex items-center justify-center border border-rose-100/50"
+                                className="p-1 hover:bg-rose-50 text-rose-500 hover:text-rose-700 rounded transition-all cursor-pointer inline-flex items-center justify-center border border-rose-100/50"
                                 title="মুছে ফেলুন"
                               >
-                                <Trash2 className="h-3.5 w-3.5" />
+                                <Trash2 className="h-3.2 w-3.2" />
                               </button>
                             </div>
                           )}
@@ -3401,7 +3425,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                                     <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.497-5.73-1.446L0 24zm6.59-4.846c1.6.95 3.188 1.449 4.825 1.451 5.436 0 9.86-4.37 9.864-9.799.002-2.63-1.023-5.101-2.885-6.963C16.588 1.981 14.111.957 11.488.957c-5.43 0-9.85 4.37-9.854 9.799-.001 1.918.52 3.79 1.51 5.4l-.994 3.631 3.907-.98zm11.233-6.983c-.3-.149-1.764-.868-2.038-.967-.272-.098-.471-.148-.669.149-.197.297-.767.966-.94 1.164-.173.199-.347.223-.647.074-.3-.149-1.265-.465-2.41-1.483-.89-.792-1.49-1.77-1.665-2.07-.173-.296-.018-.456.13-.605.134-.133.3-.347.45-.52.149-.174.199-.297.298-.495.1-.2.05-.371-.025-.52-.075-.148-.669-1.611-.916-2.206-.24-.579-.487-.501-.669-.51l-.57-.01c-.197 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.764-.719 2.012-1.412.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m0 0" />
                                   </svg>
                                 </a>
-                                {getPhoneRiskBadge(draft.phone, draft)}
+                                {getPhoneRiskBadge(draft.phone, draft, false)}
                               </>
                             ) : (
                               <span className="text-slate-300 italic">নাম্বার দেয়নি</span>
@@ -3500,6 +3524,56 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
               </table>
             )}
           </div>
+
+          {/* Completed Orders Pagination controls */}
+          {activeTab === 'completed' && (
+            <div className="mt-3 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600 font-sans shadow-2xs">
+              <div className="flex items-center gap-2 flex-wrap text-center sm:text-left">
+                <span>মোট সফল অর্ডার: <strong className="text-slate-900 font-extrabold">{filteredOrders.length}টি</strong></span>
+                <span className="text-slate-300">|</span>
+                <span>দেখা যাচ্ছে: <strong className="text-slate-900 font-bold">{filteredOrders.length === 0 ? 0 : startIndex + 1} - {Math.min(startIndex + completedPageSize, filteredOrders.length)}টি</strong></span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  disabled={completedPage === 1}
+                  onClick={() => setCompletedPage(p => Math.max(1, p - 1))}
+                  className="px-2.5 py-1.5 bg-white border border-slate-250 hover:bg-slate-50 disabled:bg-slate-100 disabled:opacity-50 text-slate-700 disabled:text-slate-400 font-bold rounded-lg cursor-pointer transition-all flex items-center gap-1 select-none"
+                >
+                  ◀ পূর্ববর্তী
+                </button>
+                <div className="flex items-center gap-1">
+                  <span className="font-mono bg-white border border-slate-250 px-2 py-1.5 rounded-lg text-slate-800 font-bold">
+                    {completedPage}
+                  </span>
+                  <span className="text-slate-400 font-mono">/ {totalCompletedPages}</span>
+                </div>
+                <button
+                  disabled={completedPage >= totalCompletedPages}
+                  onClick={() => setCompletedPage(p => Math.min(totalCompletedPages, p + 1))}
+                  className="px-2.5 py-1.5 bg-white border border-slate-250 hover:bg-slate-50 disabled:bg-slate-100 disabled:opacity-50 text-slate-700 disabled:text-slate-400 font-bold rounded-lg cursor-pointer transition-all flex items-center gap-1 select-none"
+                >
+                  পরবর্তী ▶
+                </button>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <span>প্রতি পাতায়:</span>
+                <select
+                  value={completedPageSize}
+                  onChange={(e) => setCompletedPageSize(Number(e.target.value))}
+                  className="bg-white border border-slate-250 px-2 py-1 rounded-md text-xs font-bold text-slate-700 cursor-pointer outline-none focus:border-indigo-500"
+                >
+                  <option value={10}>১০ টা</option>
+                  <option value={20}>২০ টা</option>
+                  <option value={50}>৫০ টা</option>
+                  <option value={100}>১০০ টা</option>
+                  <option value={200}>২০০ টা</option>
+                  <option value={500}>৫০০ টা</option>
+                </select>
+              </div>
+            </div>
+          )}
         </>
       ) : null}
 
@@ -3932,7 +4006,10 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
               <button
                 type="button"
                 onClick={() => {
-                  window.print();
+                  setShowPrintLabelModal(false);
+                  setTimeout(() => {
+                    window.print();
+                  }, 300);
                 }}
                 className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition shadow-md cursor-pointer flex items-center gap-1.5"
               >

@@ -58,7 +58,7 @@ async function testConnection() {
 testConnection();
 
 // Mandatory Error Handling schemas from Skill specification
-enum OperationType {
+export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',
   DELETE = 'delete',
@@ -68,7 +68,7 @@ enum OperationType {
 }
 
 // Circuit breaker state to protect against Firestore Quota Exceeded limits
-let isQuotaTripped = false;
+export let isQuotaTripped = false;
 try {
   // Clear any historical blockages immediately so client resumes real-time operations
   localStorage.removeItem('firestore_quota_tripped');
@@ -88,10 +88,14 @@ function tripQuotaCircuitBreaker(error: any) {
     errMsg.includes('quota metric')
   ) {
     console.warn("⚠️ FIRESTORE QUOTA ALERT: A Firestore quota limitation has occurred.", errMsg);
+    isQuotaTripped = true;
+    try {
+      localStorage.setItem('firestore_quota_tripped', 'true');
+    } catch (_) {}
   }
 }
 
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   tripQuotaCircuitBreaker(error);
   const errMsg = error instanceof Error ? error.message : String(error);
   const isQuota = errMsg.includes('Quota limit exceeded') || 
@@ -104,6 +108,17 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
     error: errMsg,
     operationType,
     path,
+    authInfo: {
+      userId: auth.currentUser?.uid || null,
+      email: auth.currentUser?.email || null,
+      emailVerified: auth.currentUser?.emailVerified || null,
+      isAnonymous: auth.currentUser?.isAnonymous || null,
+      tenantId: auth.currentUser?.tenantId || null,
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
     timestamp: new Date().toISOString()
   };
 
@@ -155,43 +170,31 @@ export async function addOrderToFirestore(order: RaincoatOrder): Promise<void> {
     return;
   }
 
-  // 1. Write the order in parallel to both database instances so user never loses their data and latency is minimum!
+  // 1. Write the order immediately to both database instances so user never loses their data!
   let succeeded = false;
   let firstError: any = null;
 
-  const customDbWrite = setDoc(doc(db, 'orders', order.id), cleanedOrder)
-    .then(() => {
-      succeeded = true;
-    })
-    .catch((error) => {
-      firstError = error;
-      tripQuotaCircuitBreaker(error);
-      console.warn("Direct addOrderToFirestore failed on custom database:", error);
-    });
+  try {
+    await setDoc(doc(db, 'orders', order.id), cleanedOrder);
+    succeeded = true;
+  } catch (error) {
+    firstError = error;
+    console.warn("Direct addOrderToFirestore failed on custom database:", error);
+  }
 
-  const defaultDbWrite = setDoc(doc(defaultDb, 'orders', order.id), cleanedOrder)
-    .then(() => {
-      succeeded = true;
-    })
-    .catch((error) => {
-      tripQuotaCircuitBreaker(error);
-      console.warn("Direct addOrderToFirestore failed on default database:", error);
-    });
+  try {
+    await setDoc(doc(defaultDb, 'orders', order.id), cleanedOrder);
+    succeeded = true;
+  } catch (error) {
+    console.warn("Direct addOrderToFirestore failed on default database:", error);
+  }
 
-  // Run database writes in parallel
-  const parallelWrites = Promise.all([customDbWrite, defaultDbWrite]).then(() => {
-    if (!succeeded && firstError) {
-      console.error("Critical: Firestore saving failed on both databases");
-    }
-  });
+  if (!succeeded && firstError) {
+    tripQuotaCircuitBreaker(firstError);
+    handleFirestoreError(firstError, OperationType.WRITE, path);
+  }
 
-  // 2. Race the database writes against a fast 500ms timeout so the client gets instant confirmation
-  // while the cloud synchronization finishes in the background.
-  const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 500));
-
-  await Promise.race([parallelWrites, timeoutPromise]);
-
-  // 3. Perform the fraud check asynchronously in the background. Once completed, update both documents.
+  // 2. Perform the fraud check asynchronously in the background. Once completed, update both documents.
   performFraudCheck(order.phone).then(async (fraud) => {
     try {
       await updateDoc(doc(db, 'orders', order.id), {

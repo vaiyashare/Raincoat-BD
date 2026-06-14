@@ -5,6 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>bazarsodaie</title>
     <script>
+      // Redefine window.fetch as a writable/configurable property to prevent "Cannot set property fetch of #<Window> which has only a getter" 
+      // crashes caused by external tracking scripts or analytics managers that attempt to decorate fetch.
+      try {
+        var originalFetch = window.fetch;
+        var currentFetch = originalFetch;
+        Object.defineProperty(window, 'fetch', {
+          get: function() {
+            return currentFetch;
+          },
+          set: function(newFetch) {
+            currentFetch = newFetch;
+          },
+          configurable: true,
+          enumerable: true
+        });
+      } catch (e) {
+        console.warn("Could not redefine window.fetch standard behavior:", e);
+      }
+
       if (window.opener && window.location.hash && window.location.hash.includes('access_token')) {
         window.opener.postMessage({
           type: 'GOOGLE_SHEETS_AUTH_SUCCESS',

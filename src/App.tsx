@@ -651,11 +651,11 @@ export default function App() {
     );
   }
 
-  // Show global confirmation screen if order is successfully submitted on ANY page
+  // Handle global Customer Order Confirmation Receipt View
   if (submittedOrder) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 sm:p-6 font-sans">
-        <div className="max-w-2xl w-full">
+      <div className="min-h-screen bg-slate-50 relative selection:bg-blue-600 selection:text-white py-12 px-4 flex items-center justify-center font-sans">
+        <div className="w-full max-w-4xl">
           <Receipt order={submittedOrder} onClose={handleBackToShopping} />
         </div>
       </div>

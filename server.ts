@@ -145,14 +145,17 @@ async function startServer() {
     }
   });
 
-  // API Route: FraudShield BD Proxy - Check Customer
+  // API Route: FraudShield check proxy
   app.post("/api/fraudshield/check", async (req, res) => {
     try {
-      const apiKey = req.headers['x-api-key'] || req.body.apiKey;
+      const apiKey = req.headers['x-fraudshield-api-key'] || req.body.apiKey;
       const { phone } = req.body;
 
       if (!apiKey) {
-        return res.status(401).json({ success: false, error: "Unauthorized", message: "FraudShield API Key is missing." });
+        return res.status(400).json({ success: false, error: "Unauthorized", message: "API key is required." });
+      }
+      if (!phone) {
+        return res.status(400).json({ success: false, error: "Validation failed", message: "Phone number is required." });
       }
 
       const response = await fetch("https://fraudshield.bd/api/customer/check", {
@@ -169,21 +172,22 @@ async function startServer() {
       try {
         const data = JSON.parse(text);
         res.status(response.status).json(data);
-      } catch (e) {
-        res.status(response.status).json({ success: false, error: "Upstream Error", message: text || "Invalid response from upstream" });
+      } catch (_) {
+        res.status(response.status).json({ success: false, error: "Invalid response", message: text || "Invalid response from FraudShield API" });
       }
     } catch (err: any) {
-      console.error("FraudShield Check Proxy Error:", err);
+      console.error("FraudShield API Proxy Error:", err);
       res.status(500).json({ success: false, error: "Server error", message: err.message });
     }
   });
 
-  // API Route: FraudShield BD Proxy - Check Usage Stats and User Status
-  app.get("/api/fraudshield/usage", async (req, res) => {
+  // API Route: FraudShield daily limit check proxy
+  app.get("/api/fraudshield/daily-limit", async (req, res) => {
     try {
-      const apiKey = req.headers['x-api-key'];
+      const apiKey = req.headers['x-fraudshield-api-key'] || req.query.apiKey;
+
       if (!apiKey) {
-        return res.status(401).json({ success: false, error: "Unauthorized", message: "FraudShield API Key is missing." });
+        return res.status(400).json({ success: false, error: "Unauthorized", message: "API key is required." });
       }
 
       const response = await fetch("https://fraudshield.bd/api/usage/daily-limit", {
@@ -198,11 +202,11 @@ async function startServer() {
       try {
         const data = JSON.parse(text);
         res.status(response.status).json(data);
-      } catch (e) {
-        res.status(response.status).json({ success: false, error: "Upstream Error", message: text || "Invalid response from upstream" });
+      } catch (_) {
+        res.status(response.status).json({ success: false, error: "Invalid response", message: text || "Invalid response from FraudShield API" });
       }
     } catch (err: any) {
-      console.error("FraudShield Limit Proxy Error:", err);
+      console.error("FraudShield limit Proxy Error:", err);
       res.status(500).json({ success: false, error: "Server error", message: err.message });
     }
   });
