@@ -41,8 +41,8 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
   const [name, setName] = useState('');
   const [village, setVillage] = useState('');
   const [phone, setPhone] = useState('');
-  const [selectedDistrict, setSelectedDistrict] = useState('ঢাকা (Dhaka)');
   const [bikeModel, setBikeModel] = useState('');
+  const [orderNotes, setOrderNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [bikeTripleCards, setBikeTripleCards] = useState<any[]>(defaultTripleCards);
@@ -167,74 +167,6 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
     }
   };
 
-  const DISTRICT_LIST = [
-    'বাগেরহাট (Bagerhat)',
-    'বান্দরবান (Bandarban)',
-    'বরগুনা (Barguna)',
-    'বরিশাল (Barishal)',
-    'ভোলা (Bhola)',
-    'বগুড়া (Bogura)',
-    'ব্রাহ্মণবাড়িয়া (Brahmanbaria)',
-    'চাঁদপুর (Chandpur)',
-    'চাঁপাইনওয়াবগঞ্জ (Chapainawabganj)',
-    'চট্টগ্রাম (Chattogram)',
-    'চুয়াডাঙ্গা (Chuadanga)',
-    'কক্সবাজার (Cox’s Bazar)',
-    'কুমিল্লা (Cumilla)',
-    'ঢাকা (Dhaka)',
-    'দিনাজপুর (Dinajpur)',
-    'ফরিদপুর (Faridpur)',
-    'ফেনী (Feni)',
-    'গাইবান্ধা (Gaibandha)',
-    'গাজীপুর (Gazipur)',
-    'গোপালগঞ্জ (Gopalganj)',
-    'হবিগঞ্জ (Habiganj)',
-    'জামালপুর (Jamalpur)',
-    'যশোর (Jashore)',
-    'ঝালকাঠি (Jhalokati)',
-    'ঝিনাইদহ (Jhenaidah)',
-    'জয়পুরহাট (Joypurhat)',
-    'খাগড়াছড়ি (Khagrachhari)',
-    'খুলনা (Khulna)',
-    'কিশোরগঞ্জ (Kishoreganj)',
-    'কুড়িগ্রাম (Kurigram)',
-    'কুষ্টিয়া (Kushtia)',
-    'লক্ষ্মীপুর (Lakshmipur)',
-    'লালমনিরহাট (Lalmonirhat)',
-    'মাদারীপুর (Madaripur)',
-    'মাগুরা (Magura)',
-    'মানিকগঞ্জ (Manikganj)',
-    'মেহেরপুর (Meherpur)',
-    'مৌলভীবাজার (Moulvibazar)',
-    'মৌলভীবাজার (Moulvibazar)',
-    'মুন্সীগঞ্জ (Munshiganj)',
-    'ময়মনসিংহ (Mymensingh)',
-    'নওগাঁ (Naogaon)',
-    'নড়াইল (Narail)',
-    'নারায়ণগঞ্জ (Narayanganj)',
-    'নরসিংদী (Narsingdi)',
-    'নাটোর (Natore)',
-    'নেত্রকোণা (Netrokona)',
-    'নীলফামারী (Nilphamari)',
-    'নোয়াখালী (Noakhali)',
-    'পাবনা (Pabna)',
-    'পঞ্চগড় (Panchagarh)',
-    'পটুয়াখালী (Patuakhali)',
-    'পিরোজপুর (Pirojpur)',
-    'রাজবাড়ি (Rajbari)',
-    'রাজশাহী (Rajshahi)',
-    'রাঙামাটি (Rangamati)',
-    'রংপুর (Rangpur)',
-    'সাতক্ষীরা (Satkhira)',
-    'শরীয়তপুর (Shariatpur)',
-    'শেরপুর (Sherpur)',
-    'সিরাজগঞ্জ (Sirajganj)',
-    'সুনামগঞ্জ (Sunamganj)',
-    'সিলেট (Sylhet)',
-    'টাঙ্গাইল (Tangail)',
-    'ঠাকুরগাঁও (Thakurgaon)'
-  ];
-
   const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
@@ -262,7 +194,7 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
     const newOrder: RaincoatOrder = {
       id: orderId,
       name,
-      village: `${village}, District: ${selectedDistrict}`,
+      village: village.trim(),
       phone: cleanPhone,
       size: 'XL', // Default size mapped for bike covers
       color: selectedColor,
@@ -273,6 +205,7 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
       status: 'Pending',
       isConfirmed: false,
       bikeModel: bikeModel.trim(),
+      orderNotes: orderNotes.trim(),
       createdAt: new Date().toISOString(),
       synced: false,
     };
@@ -967,16 +900,16 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* District selector */}
+                    {/* Order Notes / Extra Instructions */}
                     <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-slate-300 block">জেলা নির্বাচন করুন (District):</label>
-                      <select
-                        value={selectedDistrict}
-                        onChange={(e)=>setSelectedDistrict(e.target.value)}
+                      <label className="text-xs font-semibold text-slate-300 block">অর্ডার নোট বা বিশেষ নির্দেশনা (ঐচ্ছিক):</label>
+                      <input
+                        type="text"
+                        placeholder="যেমন: লাল বা কালো কভার হবে"
+                        value={orderNotes}
+                        onChange={(e)=>setOrderNotes(e.target.value)}
                         className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 text-white focus:outline-none"
-                      >
-                        {DISTRICT_LIST.map(dist => <option key={dist} value={dist}>{dist}</option>)}
-                      </select>
+                      />
                     </div>
 
                     {/* Choose Color */}

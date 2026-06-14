@@ -662,24 +662,53 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     const clean = phone.replace(/[-\s+]/g, '');
     const isScanning = order && checkingFraudOrders[order.id];
 
+    // Compute customer history stats
+    const currentCleanPhone = phone.replace(/\D/g, '').slice(-11);
+    const customerMatches = orders.filter(o => o.phone && o.phone.replace(/\D/g, '').slice(-11) === currentCleanPhone);
+    const totalCount = customerMatches.length;
+    const canceledCount = customerMatches.filter(o => o.status === 'Cancelled' || o.status === 'Canceled' || o.status === 'Canceled Fake Order').length;
+    const cancelRatio = totalCount > 0 ? Math.round((canceledCount / totalCount) * 100) : 0;
+
+    let ratioBadgeColor = 'bg-emerald-50 text-emerald-700 border-emerald-100';
+    if (cancelRatio > 35) {
+      ratioBadgeColor = 'bg-rose-50 text-rose-700 border-rose-300 animate-pulse';
+    } else if (cancelRatio > 0) {
+      ratioBadgeColor = 'bg-amber-50 text-amber-700 border-amber-200';
+    }
+
+    // Render stats companion pill
+    const historyStatsEl = (
+      <span className="inline-flex items-center gap-1 flex-wrap mt-0.5">
+        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 text-[8.5px] font-bold">
+          👤 মোট অর্ডার: {totalCount}টি
+        </span>
+        <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[8.5px] font-bold ${ratioBadgeColor}`}>
+          ❌ বাতিল হার: {cancelRatio}%
+        </span>
+      </span>
+    );
+
+    // Now construct the main fraud alert element
+    let fraudAlertEl = null;
+
     // Check if order has API-derived fraud characteristics stored
     if (order && order.fraudScore !== undefined) {
       const score = order.fraudScore;
-      let scoreBadgeColor = 'bg-emerald-55 bg-emerald-50 text-emerald-700 border-emerald-250 border';
+      let scoreBadgeColor = 'bg-emerald-50 text-emerald-700 border-emerald-250 border';
       if (score >= 75) {
         scoreBadgeColor = 'bg-rose-50 text-rose-700 border-rose-300 animate-pulse border';
       } else if (score >= 45) {
-        scoreBadgeColor = 'bg-amber-50 text-amber-705 text-amber-850 border-amber-300 border';
+        scoreBadgeColor = 'bg-amber-50 text-amber-800 border-amber-300 border';
       } else if (score >= 20) {
-        scoreBadgeColor = 'bg-indigo-50 text-indigo-705 text-indigo-700 border-indigo-200 border';
+        scoreBadgeColor = 'bg-indigo-50 text-indigo-700 border-indigo-200 border';
       }
-      return (
+      fraudAlertEl = (
         <span 
-          className={`inline-flex flex-col items-start gap-1 p-2 rounded-xl text-[9px] font-sans font-extrabold leading-tight ${scoreBadgeColor}`}
+          className={`inline-flex flex-col items-start gap-0.5 p-1 rounded text-[8px] font-sans font-bold leading-tight ${scoreBadgeColor}`}
           title={order.fraudReason || 'Verified via Fraud API'}
         >
-          <span className="flex items-center gap-1">🛡️ এপিআই রিস্ক স্কোর: {score}%</span>
-          <span className="text-[7.5px] font-normal text-slate-550 block break-all">{order.fraudReason || 'নিরাপদ কাস্টমার'}</span>
+          <span className="flex items-center gap-0.5">🛡️ এপিআই রিস্ক: {score}%</span>
+          <span className="text-[7px] font-normal text-slate-500 block break-all leading-none">{order.fraudReason || 'নিরাপদ কাস্টমার'}</span>
           <button
             onClick={(e) => {
               e.preventDefault();
@@ -687,95 +716,101 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
               handleSingleOrderFraudCheck(order.id, phone, isCompleted);
             }}
             disabled={isScanning}
-            className="text-[8px] text-indigo-600 hover:text-indigo-850 font-black underline cursor-pointer shrink-0 mt-0.5"
+            className="text-[7.5px] text-indigo-600 hover:text-indigo-850 font-black underline cursor-pointer shrink-0 mt-0.5"
             title="লাইভ স্ক্যান রি-চেক করুন"
           >
             {isScanning ? 'স্ক্যান হচ্ছে...' : 'রি-চেক স্ক্যান ⚡'}
           </button>
         </span>
       );
+    } else {
+      const isBlacklisted = blacklist.some((b: any) => b.phone === clean);
+      if (isBlacklisted) {
+        fraudAlertEl = (
+          <span className="inline-flex flex-col gap-0.5 items-start p-1 rounded bg-rose-50 text-rose-700 border border-rose-200 animate-pulse text-[8px]">
+            <span className="font-extrabold uppercase text-[7.5px]">🚨 ফ্রাড (Blocklisted)</span>
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (order && order.id) handleSingleOrderFraudCheck(order.id, phone, isCompleted);
+              }}
+              disabled={isScanning}
+              className="text-[7.5px] text-indigo-600 hover:text-indigo-850 font-black underline cursor-pointer"
+            >
+              {isScanning ? 'স্ক্যান হচ্ছে...' : '১-ক্লিক স্ক্যান'}
+            </button>
+          </span>
+        );
+      } else {
+        const isValidFormat = /^(?:\+88|88)?(01[3-9]\d{8})$/.test(clean);
+        if (!isValidFormat) {
+          fraudAlertEl = (
+            <span className="inline-flex flex-col gap-0.5 items-start p-1 rounded bg-rose-50 text-rose-600 border border-rose-150 text-[8px]">
+              <span className="font-bold text-[7.5px]">⚠️ ভুল নাম্বার (Wrong Size)</span>
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (order && order.id) handleSingleOrderFraudCheck(order.id, phone, isCompleted);
+                }}
+                disabled={isScanning}
+                className="text-[7.5px] text-indigo-600 hover:text-indigo-850 font-black underline cursor-pointer"
+              >
+                {isScanning ? 'স্ক্যান হচ্ছে...' : '১-ক্লিক স্ক্যান'}
+              </button>
+            </span>
+          );
+        } else if (totalCount > 2) {
+          fraudAlertEl = (
+            <span className="inline-flex flex-col gap-0.5 items-start p-1 rounded bg-amber-50 text-amber-750 border border-amber-200 text-[8px]">
+              <span className="font-bold text-[7.5px]">⚠️ বারবার অর্ডার ({totalCount} বার)</span>
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (order && order.id) handleSingleOrderFraudCheck(order.id, phone, isCompleted);
+                }}
+                disabled={isScanning}
+                className="text-[7.5px] text-indigo-600 hover:text-indigo-800 font-extrabold underline cursor-pointer"
+              >
+                {isScanning ? 'স্ক্যান হচ্ছে...' : '১-ক্লিক স্ক্যান'}
+              </button>
+            </span>
+          );
+        } else {
+          fraudAlertEl = (
+            <span className="inline-flex flex-col gap-0.5 items-start p-1 rounded bg-slate-50 text-slate-600 border border-slate-200 text-[8px]">
+              <span className="font-bold text-[7.5px]">🛡️ আনচেকড</span>
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (order && order.id) {
+                    handleSingleOrderFraudCheck(order.id, phone, isCompleted);
+                  }
+                }}
+                disabled={isScanning}
+                className="text-[7.5px] text-indigo-600 hover:text-indigo-850 font-black underline cursor-pointer"
+              >
+                {isScanning ? (
+                  <span className="animate-pulse">স্ক্যান হচ্ছে...</span>
+                ) : (
+                  <span>১-ক্লিক স্ক্যান check</span>
+                )}
+              </button>
+            </span>
+          );
+        }
+      }
     }
-    
-    const isBlacklisted = blacklist.some((b: any) => b.phone === clean);
-    if (isBlacklisted) {
-      return (
-        <span className="inline-flex flex-col gap-1 items-start p-1.5 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 animate-pulse">
-          <span className="text-[9px] font-black uppercase">🚨 ফ্রাড (Blocklisted)</span>
-          <button
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              if (order && order.id) handleSingleOrderFraudCheck(order.id, phone, isCompleted);
-            }}
-            disabled={isScanning}
-            className="text-[8px] text-indigo-600 hover:text-indigo-850 font-black underline cursor-pointer"
-          >
-            {isScanning ? 'স্ক্যান হচ্ছে...' : '১-ক্লিক এপিআই চেক'}
-          </button>
-        </span>
-      );
-    }
-    
-    const isValidFormat = /^(?:\+88|88)?(01[3-9]\d{8})$/.test(clean);
-    if (!isValidFormat) {
-      return (
-        <span className="inline-flex flex-col gap-1 items-start p-1.5 rounded-xl bg-rose-50 text-rose-600 border border-rose-150">
-          <span className="text-[9px] font-bold">⚠️ ভুয়া নাম্বার (Fake/Wrong Size)</span>
-          <button
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              if (order && order.id) handleSingleOrderFraudCheck(order.id, phone, isCompleted);
-            }}
-            disabled={isScanning}
-            className="text-[8px] text-indigo-600 hover:text-indigo-850 font-black underline cursor-pointer"
-          >
-            {isScanning ? 'স্ক্যান হচ্ছে...' : '১-ক্লিক এপিআই চেক'}
-          </button>
-        </span>
-      );
-    }
-    
-    const count = orders.filter(o => o.phone.replace(/[-\s+]/g, '') === clean).length;
-    if (count > 2) {
-      return (
-        <span className="inline-flex flex-col gap-1 items-start p-1.5 rounded-xl bg-amber-50 text-amber-700 border border-amber-200">
-          <span className="text-[9px] font-bold">⚠️ বারবার অর্ডার ({count} বার)</span>
-          <button
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              if (order && order.id) handleSingleOrderFraudCheck(order.id, phone, isCompleted);
-            }}
-            disabled={isScanning}
-            className="text-[8px] text-indigo-500 hover:text-indigo-700 font-extrabold underline cursor-pointer"
-          >
-            {isScanning ? 'স্ক্যান হচ্ছে...' : '১-ক্লিক এপিআই চেক'}
-          </button>
-        </span>
-      );
-    }
-    
+
     return (
-      <span className="inline-flex flex-col gap-1 items-start p-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100">
-        <span className="text-[9px] font-bold">🛡️ আনচেকড (Safe Potential)</span>
-        <button
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (order && order.id) {
-              handleSingleOrderFraudCheck(order.id, phone, isCompleted);
-            }
-          }}
-          disabled={isScanning}
-          className="text-[8.5px] text-indigo-600 hover:text-indigo-850 font-black underline cursor-pointer"
-        >
-          {isScanning ? (
-            <span className="animate-pulse">স্ক্যান হচ্ছে...</span>
-          ) : (
-            <span>১-ক্লিক এপিআই চেক</span>
-          )}
-        </button>
+      <span className="inline-flex flex-col items-start gap-1 w-full scale-95 origin-left">
+        <div className="flex items-center gap-1 flex-wrap">
+          {fraudAlertEl}
+          {historyStatsEl}
+        </div>
       </span>
     );
   };
