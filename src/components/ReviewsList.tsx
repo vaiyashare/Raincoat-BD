@@ -274,6 +274,8 @@ export default function ReviewsList() {
                       src={selectedReview.productPhoto} 
                       alt="Product review attach" 
                       className="object-cover max-h-32 sm:max-h-44 w-full" 
+                      referrerPolicy="no-referrer"
+                      loading="lazy"
                     />
                   </div>
                   <span className="text-[8px] text-slate-400 px-1 block text-right">গ্রাহক প্রেরিত ছবি</span>

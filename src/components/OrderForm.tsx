@@ -18,6 +18,8 @@ interface OrderFormProps {
   onChangeSize: (size: Size) => void;
   onChangeColor: (color: ProductColor) => void;
   onOrderSuccess: (order: RaincoatOrder) => void;
+  customButtonText?: string;
+  hideMetrics?: boolean;
 }
 
 const DISTRICT_LIST = [
@@ -93,6 +95,8 @@ export default function OrderForm({
   onChangeSize,
   onChangeColor,
   onOrderSuccess,
+  customButtonText,
+  hideMetrics
 }: OrderFormProps) {
   const [name, setName] = useState('');
   const [village, setVillage] = useState('');
@@ -314,6 +318,7 @@ export default function OrderForm({
     });
 
     setIsSubmitting(false);
+    localStorage.setItem('last_ordered_product_slug', 'raincoat');
     onOrderSuccess(newOrder);
 
     // Reset form fields
@@ -416,64 +421,66 @@ export default function OrderForm({
         </div>
 
         {/* Physical Measurements: Weight & Height */}
-        <div className="bg-blue-50/20 border border-blue-100 p-4 rounded-2xl space-y-4">
-          <h4 className="text-xs font-bold text-slate-850 font-sans flex items-center gap-1.5">
-            <span className="p-1 bg-blue-100 text-blue-700 rounded-md font-bold font-mono">৪</span>
-            আপনার ওজন ও উচ্চতা (সঠিক সাইজ নিশ্চিত করতে) <span className="text-red-500">*</span>
-          </h4>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Weight Input */}
-            <div>
-              <label className="block text-[11px] font-bold text-slate-600 mb-1.5 font-sans flex items-center gap-1" htmlFor="form-weight">
-                <Scale className="h-3.5 w-3.5 text-blue-600" /> ওজন (Weight)
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  id="form-weight"
-                  min="45"
-                  max="150"
-                  value={weight}
-                  onChange={(e) => setWeight(parseInt(e.target.value) || 0)}
-                  className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white text-slate-800 font-sans font-mono font-bold"
-                  required
-                />
-                <span className="text-xs font-bold text-slate-500 shrink-0">কেজি (kg)</span>
+        {!hideMetrics && (
+          <div className="bg-blue-50/20 border border-blue-100 p-4 rounded-2xl space-y-4">
+            <h4 className="text-xs font-bold text-slate-850 font-sans flex items-center gap-1.5">
+              <span className="p-1 bg-blue-100 text-blue-700 rounded-md font-bold font-mono">৪</span>
+              আপনার ওজন ও উচ্চতা (সঠিক সাইজ নিশ্চিত করতে) <span className="text-red-500">*</span>
+            </h4>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Weight Input */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1.5 font-sans flex items-center gap-1" htmlFor="form-weight">
+                  <Scale className="h-3.5 w-3.5 text-blue-600" /> ওজন (Weight)
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    id="form-weight"
+                    min="45"
+                    max="150"
+                    value={weight}
+                    onChange={(e) => setWeight(parseInt(e.target.value) || 0)}
+                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white text-slate-800 font-sans font-mono font-bold"
+                    required
+                  />
+                  <span className="text-xs font-bold text-slate-500 shrink-0">কেজি (kg)</span>
+                </div>
               </div>
-            </div>
 
-            {/* Height Input (Feet & Inches) */}
-            <div>
-              <label className="block text-[11px] font-bold text-slate-650 mb-1.5 font-sans flex items-center gap-1">
-                <Ruler className="h-3.5 w-3.5 text-blue-600" /> উচ্চতা (Height)
-              </label>
-              <div className="flex gap-2">
-                <select
-                  value={heightFeet}
-                  onChange={(e) => setHeightFeet(parseInt(e.target.value))}
-                  className="flex-1 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 text-slate-800 font-sans font-medium"
-                  id="form-height-feet"
-                >
-                  {[5, 6].map((ft) => (
-                    <option key={ft} value={ft}>{ft} ফুট (Feet)</option>
-                  ))}
-                </select>
-                <select
-                  value={heightInches}
-                  onChange={(e) => setHeightInches(parseInt(e.target.value))}
-                  className="flex-1 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 text-slate-800 font-sans font-medium"
-                  id="form-height-inches"
-                >
-                  {Array.from({ length: 12 }).map((_, inch) => (
-                    <option key={inch} value={inch}>{inch} ইঞ্চি (Inches)</option>
-                  ))}
-                </select>
+              {/* Height Input (Feet & Inches) */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-655 mb-1.5 font-sans flex items-center gap-1">
+                  <Ruler className="h-3.5 w-3.5 text-blue-600" /> উচ্চতা (Height)
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    value={heightFeet}
+                    onChange={(e) => setHeightFeet(parseInt(e.target.value))}
+                    className="flex-1 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 text-slate-800 font-sans font-medium"
+                    id="form-height-feet"
+                  >
+                    {[5, 6].map((ft) => (
+                      <option key={ft} value={ft}>{ft} ফুট (Feet)</option>
+                    ))}
+                  </select>
+                  <select
+                    value={heightInches}
+                    onChange={(e) => setHeightInches(parseInt(e.target.value))}
+                    className="flex-1 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 text-slate-800 font-sans font-medium"
+                    id="form-height-inches"
+                  >
+                    {Array.from({ length: 12 }).map((_, inch) => (
+                      <option key={inch} value={inch}>{inch} ইঞ্চি (Inches)</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
+            
           </div>
-          
-        </div>
+        )}
 
         {/* Color Choice */}
         <div>
@@ -622,7 +629,7 @@ export default function OrderForm({
             </span>
           ) : (
             <span className="flex items-center gap-2 font-sans text-white text-lg font-extrabold drop-shadow-[0_1px_1px_rgba(0,0,0,0.2)]">
-              <ShoppingBag className="h-5.5 w-5.5" /> অর্ডার কনফার্ম করুন (ক্যাশ অন ডেলিভারি)
+              <ShoppingBag className="h-5.5 w-5.5" /> {customButtonText || "অর্ডার কনফার্ম করুন (ক্যাশ অন ডেলিভারি)"}
             </span>
           )}
         </button>

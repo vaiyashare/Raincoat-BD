@@ -465,13 +465,13 @@ export default function CourierMonitorAdmin({ orders = [] }: CourierMonitorAdmin
 
                     {/* Consignment tracking ID */}
                     <td className="py-3.5 px-4">
-                      {order.trackingId ? (
+                      {(order.consignmentId || order.trackingId) ? (
                         <div className="flex items-center gap-1.5">
                           <span className="font-mono text-xs font-black text-slate-800 bg-slate-50 border border-slate-100 rounded-lg px-2 py-0.5">
-                            {order.trackingId}
+                            {order.consignmentId || order.trackingId}
                           </span>
                           <button
-                            onClick={() => handleCopy(order.trackingId || '', `track-${order.id}`)}
+                            onClick={() => handleCopy(order.consignmentId || order.trackingId || '', `track-${order.id}`)}
                             className="p-1 hover:bg-slate-200/80 rounded-lg text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
                             title="Copy Consignment ID"
                           >

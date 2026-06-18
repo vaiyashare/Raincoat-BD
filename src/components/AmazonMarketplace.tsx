@@ -481,6 +481,15 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
       localStorage.setItem('raincoat_orders', JSON.stringify(existingList));
 
       // Trigger standard order success callback (Google Sheets sync, etc)
+      const pSlug = checkoutProduct ? (
+        checkoutProduct.id === 'p-2' ? 'shoeguard' :
+        checkoutProduct.id === 'p-3' ? 'umbrella' :
+        checkoutProduct.id === 'p-4' ? 'handgloves' :
+        checkoutProduct.id === 'p-5' ? 'mobileholder' :
+        checkoutProduct.id === 'p-6' ? 'raincover' :
+        'raincoat'
+      ) : 'raincoat';
+      localStorage.setItem('last_ordered_product_slug', pSlug);
       onOrderSuccess(newOrder);
 
       setOrderSuccessMsg(true);

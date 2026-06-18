@@ -23,11 +23,50 @@ import { performFraudCheck } from './fraudCheck';
 
 // Secure in-memory database to comply with "Dont save any of data in Localstore, customers or users background. All data save in cloud and show all in Admin panel."
 const memoryStorageMap = new Map<string, string>();
+const customerKeys = [
+  'raincoat_orders',
+  'raincoat_orders_fallback',
+  'raincoat_incomplete_orders',
+  'raincoat_incomplete_orders_fallback',
+  'raincoat_orders_sync_queue'
+];
+
 const localStorage = {
-  getItem: (key: string) => memoryStorageMap.get(key) || null,
-  setItem: (key: string, value: string) => { memoryStorageMap.set(key, value); },
-  removeItem: (key: string) => { memoryStorageMap.delete(key); },
-  clear: () => { memoryStorageMap.clear(); },
+  getItem: (key: string): string | null => {
+    if (customerKeys.includes(key)) {
+      return memoryStorageMap.get(key) || null;
+    }
+    try {
+      return window.localStorage.getItem(key);
+    } catch (_) {
+      return memoryStorageMap.get(key) || null;
+    }
+  },
+  setItem: (key: string, value: string): void => {
+    if (customerKeys.includes(key)) {
+      memoryStorageMap.set(key, value);
+      return;
+    }
+    try {
+      window.localStorage.setItem(key, value);
+    } catch (_) {
+      memoryStorageMap.set(key, value);
+    }
+  },
+  removeItem: (key: string): void => {
+    if (customerKeys.includes(key)) {
+      memoryStorageMap.delete(key);
+      return;
+    }
+    try {
+      window.localStorage.removeItem(key);
+    } catch (_) {
+      memoryStorageMap.delete(key);
+    }
+  },
+  clear: (): void => {
+    memoryStorageMap.clear();
+  },
 };
 
 // Initialize Firebase App
@@ -70,12 +109,18 @@ export enum OperationType {
 
 // Circuit breaker state to protect against Firestore Quota Exceeded limits
 export let isQuotaTripped = false;
+export function resetQuotaCircuitBreaker() {
+  isQuotaTripped = false;
+  try {
+    localStorage.removeItem('firestore_quota_tripped');
+    localStorage.removeItem('firestore_quota_tripped_persistent');
+    localStorage.removeItem('firestore_quota_tripped_time');
+    sessionStorage.removeItem('firestore_quota_tripped');
+  } catch (_) {}
+}
 try {
   // Clear any historical blockages immediately so client resumes real-time operations
-  localStorage.removeItem('firestore_quota_tripped');
-  localStorage.removeItem('firestore_quota_tripped_persistent');
-  localStorage.removeItem('firestore_quota_tripped_time');
-  sessionStorage.removeItem('firestore_quota_tripped');
+  resetQuotaCircuitBreaker();
 } catch (_) {}
 
 function tripQuotaCircuitBreaker(error: any) {
@@ -195,8 +240,8 @@ export async function addOrderToFirestore(order: RaincoatOrder): Promise<void> {
   let firstError: any = null;
 
   try {
-    // 1-second maximum timeout on the primary write to avoid UI blocking under network latency
-    await executeWithTimeout(setDoc(doc(db, 'orders', order.id), cleanedOrder), 1000);
+    // 30-second generous timeout on the primary write to avoid packet loss and handle high concurrent ad traffic
+    await executeWithTimeout(setDoc(doc(db, 'orders', order.id), cleanedOrder), 30000);
     succeeded = true;
   } catch (error) {
     firstError = error;
@@ -204,8 +249,8 @@ export async function addOrderToFirestore(order: RaincoatOrder): Promise<void> {
   }
 
   try {
-    // 500ms maximum timeout on fallback database write
-    await executeWithTimeout(setDoc(doc(defaultDb, 'orders', order.id), cleanedOrder), 500);
+    // 20-second generous timeout on fallback database write to maximize data safety
+    await executeWithTimeout(setDoc(doc(defaultDb, 'orders', order.id), cleanedOrder), 20000);
     succeeded = true;
   } catch (error) {
     console.warn("Direct addOrderToFirestore failed or timed out on default database:", error);
@@ -350,6 +395,51 @@ export async function getOrdersFromFirestore(): Promise<RaincoatOrder[]> {
   } catch (_) {}
 
   return results;
+}
+
+export async function getOrderByIdFromFirestore(orderId: string): Promise<RaincoatOrder | null> {
+  const path = `orders/${orderId}`;
+  
+  // Try local temporary receipt storage first (safely shared across window.open tabs on same origin)
+  try {
+    const tempParsed = window.localStorage.getItem('temp_receipt_' + orderId);
+    if (tempParsed) {
+      const orderData = JSON.parse(tempParsed) as RaincoatOrder;
+      return orderData;
+    }
+  } catch (_) {}
+
+  // Try custom database first with 2.5sec short timeout
+  try {
+    const docSnap = await executeWithTimeout(getDoc(doc(db, 'orders', orderId)), 2500);
+    if (docSnap.exists()) {
+      return docSnap.data() as RaincoatOrder;
+    }
+  } catch (error) {
+    console.warn("Could not get order from custom database, trying default fallback:", error);
+  }
+
+  // Try default database with 2.5sec short timeout
+  try {
+    const docSnapDefault = await executeWithTimeout(getDoc(doc(defaultDb, 'orders', orderId)), 2500);
+    if (docSnapDefault.exists()) {
+      return docSnapDefault.data() as RaincoatOrder;
+    }
+  } catch (error) {
+    console.warn("Could not get order from default database:", error);
+  }
+
+  // Fallback to local cache memory storage / localStorage fallback
+  const cached = localStorage.getItem('raincoat_orders_fallback') || localStorage.getItem('raincoat_orders');
+  if (cached) {
+    try {
+      const list = JSON.parse(cached) as RaincoatOrder[];
+      const found = list.find(o => o.id === orderId);
+      if (found) return found;
+    } catch (_) {}
+  }
+
+  return null;
 }
 
 // Incomplete Orders Draft API
@@ -688,6 +778,13 @@ export interface IntegrationsSettings {
   whatsapp_message_template?: string;
   tiktok_pixel_id?: string;
   tiktok_pixel_enabled?: boolean;
+  tiktok_capi_enabled?: boolean;
+  tiktok_advanced_matching?: boolean;
+  tiktok_access_token?: string;
+  tiktok_test_event_enabled?: boolean;
+  tiktok_test_event_code?: string;
+  fb_test_event_created_at?: string;
+  tiktok_test_event_created_at?: string;
 }
 
 export async function saveIntegrationsSettingsToFirestore(settings: Partial<IntegrationsSettings>): Promise<void> {
@@ -1279,6 +1376,268 @@ export async function syncCachedOrdersToFirestore(): Promise<void> {
     } catch (_) {}
   }
 }
+
+export interface MenuBarConfig {
+  id: string;
+  brandName: string;
+  visible: boolean;
+  enableCategories: boolean;
+  categoriesIcon?: string;
+  links: { text: string; url: string; isCategory?: boolean }[];
+}
+
+export interface CallingAgent {
+  id: string; // doc ID and username
+  username: string;
+  password?: string;
+  createdAt: string;
+}
+
+export interface CallingAgentLog {
+  id: string;
+  agentUsername: string;
+  action: string;
+  orderId: string;
+  timestamp: string;
+  notes?: string;
+}
+
+// Menu config fetch
+export async function getMenuBarConfigFromFirestore(): Promise<MenuBarConfig> {
+  const defaultMenu: MenuBarConfig = {
+    id: 'menu_bar',
+    brandName: 'Premium Shop',
+    visible: true,
+    enableCategories: true,
+    categoriesIcon: 'LayoutGrid',
+    links: [
+      { text: 'হোম', url: '#home' },
+      { text: 'রেইনকোট', url: '#specification-or-carousel', isCategory: true },
+      { text: 'রিভিউ সমূহ', url: '#reviews' },
+      { text: 'প্রশ্নোত্তর', url: '#faq' },
+      { text: 'অর্ডার ফর্ম', url: '#checkout-form' }
+    ]
+  };
+
+  if (isQuotaTripped) {
+    const cached = localStorage.getItem('raincoat_menu_bar_fallback');
+    return cached ? JSON.parse(cached) : defaultMenu;
+  }
+  try {
+    const docRef = doc(db, 'settings', 'menu_bar');
+    const snap = await getDoc(docRef);
+    if (snap.exists() && snap.data()) {
+      const data = snap.data() as MenuBarConfig;
+      localStorage.setItem('raincoat_menu_bar_fallback', JSON.stringify(data));
+      return data;
+    }
+
+    // Try secondary / default Db if snap doesn't exist
+    try {
+      const snapDefault = await getDoc(doc(defaultDb, 'settings', 'menu_bar'));
+      if (snapDefault.exists() && snapDefault.data()) {
+        const data = snapDefault.data() as MenuBarConfig;
+        localStorage.setItem('raincoat_menu_bar_fallback', JSON.stringify(data));
+        return data;
+      }
+    } catch (_) {}
+
+    // Seed default
+    await setDoc(docRef, defaultMenu);
+    try {
+      await setDoc(doc(defaultDb, 'settings', 'menu_bar'), defaultMenu);
+    } catch (_) {}
+    localStorage.setItem('raincoat_menu_bar_fallback', JSON.stringify(defaultMenu));
+    return defaultMenu;
+  } catch (error) {
+    console.warn("getMenuBarConfigFromFirestore failed:", error);
+    const cached = localStorage.getItem('raincoat_menu_bar_fallback');
+    return cached ? JSON.parse(cached) : defaultMenu;
+  }
+}
+
+// Menu config save
+export async function saveMenuBarConfigToFirestore(config: MenuBarConfig): Promise<void> {
+  const cleaned = cleanUndefined(config);
+  localStorage.setItem('raincoat_menu_bar_fallback', JSON.stringify(config));
+  if (isQuotaTripped) return;
+  try {
+    await setDoc(doc(db, 'settings', 'menu_bar'), cleaned);
+    try {
+      await setDoc(doc(defaultDb, 'settings', 'menu_bar'), cleaned);
+    } catch (_) {}
+  } catch (error) {
+    console.warn("saveMenuBarConfigToFirestore failed:", error);
+  }
+}
+
+// Calling agents list fetch
+export async function getCallingAgentsFromFirestore(): Promise<CallingAgent[]> {
+  const defaultAgent: CallingAgent = {
+    id: '1234',
+    username: '1234',
+    password: '1234',
+    createdAt: new Date().toISOString()
+  };
+
+  if (isQuotaTripped) {
+    const cached = localStorage.getItem('raincoat_calling_agents_fallback');
+    return cached ? JSON.parse(cached) : [defaultAgent];
+  }
+  try {
+    const ref = collection(db, 'callingAgents');
+    const snap = await getDocs(ref);
+    const agents: CallingAgent[] = [];
+    snap.forEach((docSnap) => {
+      agents.push(docSnap.data() as CallingAgent);
+    });
+
+    if (agents.length === 0) {
+      await setDoc(doc(db, 'callingAgents', '1234'), defaultAgent);
+      agents.push(defaultAgent);
+    }
+    localStorage.setItem('raincoat_calling_agents_fallback', JSON.stringify(agents));
+    return agents;
+  } catch (error) {
+    console.warn("getCallingAgentsFromFirestore failed:", error);
+    const cached = localStorage.getItem('raincoat_calling_agents_fallback');
+    return cached ? JSON.parse(cached) : [defaultAgent];
+  }
+}
+
+// Calling agent save
+export async function saveCallingAgentToFirestore(agent: CallingAgent): Promise<void> {
+  const cleaned = cleanUndefined(agent);
+  if (isQuotaTripped) {
+    const cachedStr = localStorage.getItem('raincoat_calling_agents_fallback') || '[]';
+    try {
+      const list = JSON.parse(cachedStr) as CallingAgent[];
+      const idx = list.findIndex(a => a.id === agent.id);
+      if (idx > -1) list[idx] = agent;
+      else list.push(agent);
+      localStorage.setItem('raincoat_calling_agents_fallback', JSON.stringify(list));
+    } catch (_) {}
+    return;
+  }
+  try {
+    await setDoc(doc(db, 'callingAgents', agent.id), cleaned);
+    await getCallingAgentsFromFirestore(); // Will also update cache
+  } catch (error) {
+    console.warn("saveCallingAgentToFirestore failed:", error);
+  }
+}
+
+// Calling agent delete
+export async function deleteCallingAgentFromFirestore(id: string): Promise<void> {
+  if (isQuotaTripped) {
+    const cachedStr = localStorage.getItem('raincoat_calling_agents_fallback') || '[]';
+    try {
+      const list = JSON.parse(cachedStr) as CallingAgent[];
+      const filtered = list.filter(a => a.id !== id);
+      localStorage.setItem('raincoat_calling_agents_fallback', JSON.stringify(filtered));
+    } catch (_) {}
+    return;
+  }
+  try {
+    await deleteDoc(doc(db, 'callingAgents', id));
+  } catch (error) {
+    console.warn("deleteCallingAgentFromFirestore failed:", error);
+  }
+}
+
+// Calling agent logs list
+export async function getCallingAgentLogsFromFirestore(): Promise<CallingAgentLog[]> {
+  if (isQuotaTripped) {
+    const cached = localStorage.getItem('raincoat_agent_logs_fallback');
+    return cached ? JSON.parse(cached) : [];
+  }
+  try {
+    const ref = collection(db, 'callingAgentLogs');
+    const snap = await getDocs(ref);
+    const logs: CallingAgentLog[] = [];
+    snap.forEach((docSnap) => {
+      logs.push(docSnap.data() as CallingAgentLog);
+    });
+    logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+    localStorage.setItem('raincoat_agent_logs_fallback', JSON.stringify(logs));
+    return logs;
+  } catch (error) {
+    console.warn("getCallingAgentLogsFromFirestore failed:", error);
+    const cached = localStorage.getItem('raincoat_agent_logs_fallback');
+    return cached ? JSON.parse(cached) : [];
+  }
+}
+
+// Add logs
+export async function addCallingAgentLogToFirestore(log: CallingAgentLog): Promise<void> {
+  const cleaned = cleanUndefined(log);
+  if (isQuotaTripped) {
+    const cachedStr = localStorage.getItem('raincoat_agent_logs_fallback') || '[]';
+    try {
+      const list = JSON.parse(cachedStr) as CallingAgentLog[];
+      list.push(log);
+      localStorage.setItem('raincoat_agent_logs_fallback', JSON.stringify(list));
+    } catch (_) {}
+    return;
+  }
+  try {
+    await setDoc(doc(db, 'callingAgentLogs', log.id), cleaned);
+  } catch (error) {
+    console.warn("addCallingAgentLogToFirestore failed:", error);
+  }
+}
+
+export interface CallingConfig {
+  id: string;
+  orderExpiryDays: number;
+  confirmExpiryMins: number;
+  cancelExpiryMins: number;
+  maxAttempts: number;
+}
+
+export async function getCallingConfigFromFirestore(): Promise<CallingConfig> {
+  const defaultConfig: CallingConfig = {
+    id: 'calling_config',
+    orderExpiryDays: 3,
+    confirmExpiryMins: 60,
+    cancelExpiryMins: 60,
+    maxAttempts: 3
+  };
+
+  if (isQuotaTripped) {
+    const cached = localStorage.getItem('raincoat_calling_config_fallback');
+    return cached ? JSON.parse(cached) : defaultConfig;
+  }
+  try {
+    const docRef = doc(db, 'settings', 'calling_config');
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data() as CallingConfig;
+      localStorage.setItem('raincoat_calling_config_fallback', JSON.stringify(data));
+      return data;
+    } else {
+      await setDoc(docRef, defaultConfig);
+      localStorage.setItem('raincoat_calling_config_fallback', JSON.stringify(defaultConfig));
+      return defaultConfig;
+    }
+  } catch (error) {
+    console.warn("getCallingConfigFromFirestore failed:", error);
+    const cached = localStorage.getItem('raincoat_calling_config_fallback');
+    return cached ? JSON.parse(cached) : defaultConfig;
+  }
+}
+
+export async function saveCallingConfigToFirestore(config: CallingConfig): Promise<void> {
+  const cleaned = cleanUndefined(config);
+  localStorage.setItem('raincoat_calling_config_fallback', JSON.stringify(config));
+  if (isQuotaTripped) return;
+  try {
+    await setDoc(doc(db, 'settings', 'calling_config'), cleaned);
+  } catch (error) {
+    console.warn("saveCallingConfigToFirestore failed:", error);
+  }
+}
+
 
 
 

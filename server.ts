@@ -145,6 +145,36 @@ async function startServer() {
     }
   });
 
+  // API Route: TikTok Conversions API (CAPI) Proxy
+  app.post("/api/tiktok-capi", async (req, res) => {
+    try {
+      const { pixelId, capiToken, payload } = req.body;
+
+      if (!pixelId || !capiToken || !payload) {
+        return res.status(400).json({ status: 400, message: "pixelId (code), capiToken (token), and payload are required." });
+      }
+
+      // TikTok business track event URL endpoint
+      const response = await fetch("https://business-api.tiktok.com/open_api/v1.3/pixel/track/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Token": capiToken
+        },
+        body: JSON.stringify({
+          pixel_code: pixelId,
+          ...payload
+        })
+      });
+
+      const data = await response.json();
+      res.json(data);
+    } catch (err: any) {
+      console.error("TikTok CAPI Proxy Error:", err);
+      res.status(500).json({ status: 500, message: err.message });
+    }
+  });
+
   // API Route: FraudShield check proxy
   app.post("/api/fraudshield/check", async (req, res) => {
     try {

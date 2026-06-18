@@ -257,6 +257,7 @@ export default function CourierAdmin({ userRole = 'ReadOnly', orders = [], onRef
     setIsSaving(true);
     try {
       let trackingId = '';
+      let consignmentId = '';
       let actualCourierName = '';
 
       if (settings.courier_provider === 'steadfast') {
@@ -284,6 +285,7 @@ export default function CourierAdmin({ userRole = 'ReadOnly', orders = [], onRef
         const result = await response.json();
         if (result.status === 200 && result.consignment) {
           trackingId = result.consignment.tracking_code;
+          consignmentId = String(result.consignment.id || '');
           actualCourierName = 'Steadfast';
         } else {
           throw new Error(result.message || 'Steadfast delivery response code is not 200');
@@ -291,6 +293,7 @@ export default function CourierAdmin({ userRole = 'ReadOnly', orders = [], onRef
       } else {
         const providerKey = settings.courier_provider === 'pathao' ? 'PTH' : 'REDX';
         trackingId = `${providerKey}-${Math.floor(100000 + Math.random() * 900000)}-BD`;
+        consignmentId = trackingId;
         actualCourierName = settings.courier_provider === 'pathao' ? 'Pathao' : 'RedX';
       }
 
@@ -329,6 +332,7 @@ export default function CourierAdmin({ userRole = 'ReadOnly', orders = [], onRef
       await updateDoc(orderDocRef, {
         status: 'Shipped',
         trackingId,
+        consignmentId,
         courierName: newLog.courier,
         shippedAt: new Date().toISOString()
       });
@@ -403,6 +407,7 @@ export default function CourierAdmin({ userRole = 'ReadOnly', orders = [], onRef
       await updateDoc(orderDocRef, {
         status: 'Shipped',
         trackingId,
+        consignmentId: trackingId,
         courierName: actualCourierName,
         shippedAt: new Date().toISOString()
       });

@@ -2,9 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Eye, ShieldAlert, Trash2, ClipboardCopy, FileSpreadsheet, Search, 
   RefreshCw, X, ShieldCheck, CheckSquare, Globe, Database, Sparkles, 
-  Check, ExternalLink, HelpCircle, Flame, ChevronDown, ChevronUp,
+  Check, ExternalLink, HelpCircle, ChevronDown, ChevronUp,
   Lock, Key, LogOut, Settings, ListTodo, AlertOctagon, Layers, Users, Calendar, Phone,
-  Edit, CheckCircle, Printer, Volume2, VolumeX
+  Edit, CheckCircle, Printer, Volume2, VolumeX, ShoppingBag, TrendingUp, Coins
 } from 'lucide-react';
 import { RaincoatOrder, Size, ProductColor, IncompleteOrder } from '../types';
 import { 
@@ -27,8 +27,10 @@ import {
   sendFirebasePasswordReset,
   getAdvancedAddonsSettingsFromFirestore,
   db,
+  defaultDb,
   handleFirestoreError,
-  OperationType
+  OperationType,
+  resetQuotaCircuitBreaker
 } from '../lib/firebase';
 import { collection, query, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 
@@ -37,7 +39,7 @@ import { normalizeWhatsAppPhone } from '../lib/whatsapp';
 
 import PagesAdmin from './admin/PagesAdmin';
 import ProductsAdmin from './admin/ProductsAdmin';
-import IntegrationsAdmin from './admin/IntegrationsAdmin';
+import AdvancedPixelsAdmin from './admin/AdvancedPixelsAdmin';
 import UsersAdmin from './admin/UsersAdmin';
 import BlockingAdmin from './admin/BlockingAdmin';
 import InventoryAdmin from './admin/InventoryAdmin';
@@ -51,6 +53,8 @@ import ReviewsAdmin from './admin/ReviewsAdmin';
 import DailyOrdersChart from './admin/DailyOrdersChart';
 import CourierMonitorAdmin from './admin/CourierMonitorAdmin';
 import SectionCustomizerAdmin from './admin/SectionCustomizerAdmin';
+import MenuBarAdmin from './admin/MenuBarAdmin';
+import CallingAgentsAdmin from './admin/CallingAgentsAdmin';
 
 const getEnglishDistrictName = (order: any): string => {
   const districtValue = order.district ? order.district.trim() : '';
@@ -334,7 +338,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
   const [deletingIncompleteId, setDeletingIncompleteId] = useState<string | null>(null);
   const [editingOrder, setEditingOrder] = useState<RaincoatOrder | null>(null);
-  const [activeTab, setActiveTab] = useState<'completed' | 'incomplete' | 'pages' | 'products' | 'banners' | 'inventory' | 'integrations' | 'users' | 'blocking' | 'media' | 'live-visitors' | 'fraud' | 'advanced_addons' | 'courier_hub' | 'reviews_hub' | 'courier_connections' | 'courier_monitor' | 'section_customizer'>('completed');
+  const [activeTab, setActiveTab] = useState<'completed' | 'incomplete' | 'pages' | 'products' | 'banners' | 'inventory' | 'users' | 'blocking' | 'media' | 'live-visitors' | 'fraud' | 'advanced_addons' | 'courier_hub' | 'reviews_hub' | 'courier_connections' | 'courier_monitor' | 'section_customizer' | 'pixels' | 'menu_bar_settings' | 'calling_agents_management'>('completed');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSize, setFilterSize] = useState<string>('All');
   const [filterStatus, setFilterStatus] = useState<string>('All');
@@ -342,6 +346,24 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   const [dateFilter, setDateFilter] = useState<string>('all');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
+  const [selectedSpecificDay, setSelectedSpecificDay] = useState<string>('');
+  const [selectedSpecificMonth, setSelectedSpecificMonth] = useState<string>('');
+  const [dateSelectTab, setDateSelectTab] = useState<'all' | 'day' | 'week' | 'month' | 'custom'>('all');
+
+  useEffect(() => {
+    if (dateFilter === 'all') {
+      setDateSelectTab('all');
+    } else if (dateFilter === 'today' || dateFilter === 'yesterday' || dateFilter === 'specificDay') {
+      setDateSelectTab('day');
+    } else if (dateFilter === 'thisWeek' || dateFilter === 'lastWeek' || dateFilter === 'last7' || dateFilter === 'last15') {
+      setDateSelectTab('week');
+    } else if (dateFilter === 'thisMonth' || dateFilter === 'lastMonth' || dateFilter === 'last30' || dateFilter === 'last3Months' || dateFilter === 'last6Months' || dateFilter === 'specificMonth') {
+      setDateSelectTab('month');
+    } else if (dateFilter === 'custom') {
+      setDateSelectTab('custom');
+    }
+  }, [dateFilter]);
+
   const [copiedMessage, setCopiedMessage] = useState('');
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [showPrintLabelModal, setShowPrintLabelModal] = useState(false);
@@ -352,6 +374,23 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   const [steadfastStatuses, setSteadfastStatuses] = useState<{[orderId: string]: { status: string; loading: boolean; error?: string }}>({});
   const [editingTrackingOrderId, setEditingTrackingOrderId] = useState<string | null>(null);
   const [tempTrackingId, setTempTrackingId] = useState<string>('');
+
+  const handlePrintReceipt = (order: RaincoatOrder) => {
+    let pSlug = 'raincoat';
+    if (order.bikeModel) {
+      pSlug = 'bikecover';
+    } else {
+      const savedSlug = localStorage.getItem('last_ordered_product_slug');
+      if (savedSlug) {
+        pSlug = savedSlug;
+      }
+    }
+    try {
+      window.localStorage.setItem('temp_receipt_' + order.id, JSON.stringify(order));
+    } catch (_) {}
+    const fullUrl = `${window.location.origin}${window.location.pathname}#/thankyou-${pSlug}?id=${order.id}`;
+    window.open(fullUrl, '_blank');
+  };
 
   // Completed Orders Pagination States
   const [completedPage, setCompletedPage] = useState<number>(1);
@@ -364,6 +403,66 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   const [alerts, setAlerts] = useState<Array<{ id: string; order: RaincoatOrder }>>([]);
   const triggeredAlertsRef = useRef<Set<string>>(new Set());
   const isInitialLoadRef = useRef(true);
+
+  // Extract all unique active months dynamically from orders & incompleteOrders
+  const availableFilterMonths = React.useMemo(() => {
+    const list: string[] = [];
+    orders.forEach(o => {
+      if (!o.createdAt) return;
+      try {
+        const d = new Date(o.createdAt);
+        if (isNaN(d.getTime())) return;
+        const year = d.getFullYear();
+        const monthNum = String(d.getMonth() + 1).padStart(2, '0');
+        const monthKey = `${year}-${monthNum}`;
+        if (!list.includes(monthKey)) {
+          list.push(monthKey);
+        }
+      } catch (err) {}
+    });
+    incompleteOrders.forEach(o => {
+      if (!o.createdAt) return;
+      try {
+        const d = new Date(o.createdAt);
+        if (isNaN(d.getTime())) return;
+        const year = d.getFullYear();
+        const monthNum = String(d.getMonth() + 1).padStart(2, '0');
+        const monthKey = `${year}-${monthNum}`;
+        if (!list.includes(monthKey)) {
+          list.push(monthKey);
+        }
+      } catch (err) {}
+    });
+    return list.sort((a, b) => b.localeCompare(a));
+  }, [orders, incompleteOrders]);
+
+  // Translate specific months (e.g., "2026-06") or digits to detailed Bangla name representation
+  const getBanglaMonthYearName = (monthKey: string) => {
+    try {
+      const [year, month] = monthKey.split('-');
+      const banglaMonths = [
+        'জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন',
+        'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'
+      ];
+      const mIdx = parseInt(month) - 1;
+      const mName = banglaMonths[mIdx] || month;
+      
+      const banglaDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+      const bnYear = year.split('').map(char => {
+        const idx = parseInt(char);
+        return isNaN(idx) ? char : banglaDigits[idx];
+      }).join('');
+
+      return `${mName} ${bnYear}`;
+    } catch (e) {
+      return monthKey;
+    }
+  };
+
+  const refreshOrdersCountRef = useRef(onRefreshOrdersCount);
+  useEffect(() => {
+    refreshOrdersCountRef.current = onRefreshOrdersCount;
+  }, [onRefreshOrdersCount]);
 
   const playNotificationAudioChime = () => {
     try {
@@ -403,14 +502,6 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     if (soundEnabled) {
       playNotificationAudioChime();
     }
-
-    const alertId = `${order.id}-${Date.now()}`;
-    setAlerts(prev => [...prev, { id: alertId, order }]);
-
-    // Auto close after 12 seconds
-    setTimeout(() => {
-      setAlerts(prev => prev.filter(a => a.id !== alertId));
-    }, 12000);
   };
 
   const toggleSound = () => {
@@ -507,6 +598,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       const orderDocRef = doc(db, 'orders', orderId);
       await updateDoc(orderDocRef, {
         trackingId: trackingVal.trim(),
+        consignmentId: trackingVal.trim(),
         courierName: courierSettings?.courier_provider === 'steadfast' ? 'Steadfast' : courierSettings?.courier_provider === 'pathao' ? 'Pathao' : 'RedX',
         status: 'Shipped'
       });
@@ -899,7 +991,21 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   const loadIncompleteOrders = async () => {
     try {
       const fbIncompletes = await getIncompleteOrdersFromFirestore();
-      const sorted = [...fbIncompletes].sort((a: any, b: any) => new Date(b.lastUpdatedAt || b.createdAt).getTime() - new Date(a.lastUpdatedAt || a.createdAt).getTime());
+      
+      let deletedIds: string[] = [];
+      try {
+        const stored = window.localStorage.getItem('raincoat_deleted_incomplete_ids');
+        if (stored) {
+          deletedIds = JSON.parse(stored);
+        }
+      } catch (_) {}
+
+      let filteredIncompletes = fbIncompletes;
+      if (deletedIds.length > 0) {
+        filteredIncompletes = fbIncompletes.filter(o => !deletedIds.includes(o.id));
+      }
+
+      const sorted = [...filteredIncompletes].sort((a: any, b: any) => new Date(b.lastUpdatedAt || b.createdAt).getTime() - new Date(a.lastUpdatedAt || a.createdAt).getTime());
       setIncompleteOrders(sorted);
     } catch (e) {
       console.error("Failed to load incomplete orders from Firestore:", e);
@@ -945,12 +1051,26 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   };
 
   const loadOrders = async () => {
-    onRefreshOrdersCount();
+    refreshOrdersCountRef.current();
 
     // Fetch active e-commerce orders from Firestore database
     try {
       const fbOrders = await getOrdersFromFirestore();
-      const sortedOrders = [...fbOrders].sort((a, b) => {
+      
+      let deletedIds: string[] = [];
+      try {
+        const stored = window.localStorage.getItem('raincoat_deleted_order_ids');
+        if (stored) {
+          deletedIds = JSON.parse(stored);
+        }
+      } catch (_) {}
+
+      let filteredOrders = fbOrders;
+      if (deletedIds.length > 0) {
+        filteredOrders = fbOrders.filter(o => !deletedIds.includes(o.id));
+      }
+
+      const sortedOrders = [...filteredOrders].sort((a, b) => {
         const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
         const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
         return timeB - timeA;
@@ -958,7 +1078,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       setOrders(sortedOrders);
       
       await loadIncompleteOrders();
-      onRefreshOrdersCount();
+      refreshOrdersCountRef.current();
     } catch (err) {
       console.warn("Could not connect database or read Firestore records:", err);
     }
@@ -972,7 +1092,65 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       setShowSheetsSection(true);
     }
 
-    // Set up real-time listener for orders in Firestore
+    const ordersDbMap: { [id: string]: RaincoatOrder } = {};
+    const ordersDefaultDbMap: { [id: string]: RaincoatOrder } = {};
+
+    const updateMergedOrders = () => {
+      const mergedMap = { ...ordersDefaultDbMap, ...ordersDbMap };
+      let mergedList = Object.values(mergedMap);
+      
+      let deletedIds: string[] = [];
+      try {
+        const stored = window.localStorage.getItem('raincoat_deleted_order_ids');
+        if (stored) {
+          deletedIds = JSON.parse(stored);
+        }
+      } catch (_) {}
+
+      if (deletedIds.length > 0) {
+        mergedList = mergedList.filter(o => !deletedIds.includes(o.id));
+      }
+
+      mergedList.sort((a, b) => {
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      });
+      
+      setOrders(mergedList);
+      refreshOrdersCountRef.current();
+    };
+
+    const incompleteDbMap: { [id: string]: IncompleteOrder } = {};
+    const incompleteDefaultDbMap: { [id: string]: IncompleteOrder } = {};
+
+    const updateMergedIncompletes = () => {
+      const mergedMap = { ...incompleteDefaultDbMap, ...incompleteDbMap };
+      let mergedList = Object.values(mergedMap);
+      
+      let deletedIds: string[] = [];
+      try {
+        const stored = window.localStorage.getItem('raincoat_deleted_incomplete_ids');
+        if (stored) {
+          deletedIds = JSON.parse(stored);
+        }
+      } catch (_) {}
+
+      if (deletedIds.length > 0) {
+        mergedList = mergedList.filter(o => !deletedIds.includes(o.id));
+      }
+
+      mergedList.sort((a, b) => {
+        const timeA = a.lastUpdatedAt || a.createdAt ? new Date(a.lastUpdatedAt || a.createdAt).getTime() : 0;
+        const timeB = b.lastUpdatedAt || b.createdAt ? new Date(b.lastUpdatedAt || b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      });
+      
+      setIncompleteOrders(mergedList);
+      refreshOrdersCountRef.current();
+    };
+
+    // Set up real-time listener for orders in Firestore (Primary Custom DB)
     const qOrders = query(collection(db, 'orders'));
     const unsubscribeOrders = onSnapshot(qOrders, (snapshot) => {
       // Check for actually added documents after initial load
@@ -984,50 +1162,86 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       });
       isInitialLoadRef.current = false;
 
-      const fbOrders: RaincoatOrder[] = [];
+      // Clear the map first so deleted records are removed
+      for (const key in ordersDbMap) {
+        delete ordersDbMap[key];
+      }
+
       snapshot.forEach((doc) => {
-        fbOrders.push(doc.data() as RaincoatOrder);
+        const orderData = doc.data() as RaincoatOrder;
+        if (orderData && orderData.id) {
+          ordersDbMap[orderData.id] = orderData;
+        }
       });
-      
-      fbOrders.sort((a, b) => {
-        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return timeB - timeA;
-      });
-      
-      setOrders(fbOrders);
-      onRefreshOrdersCount();
+      updateMergedOrders();
     }, (error) => {
-      console.warn("Real-time orders sync error:", error);
-      try {
-        handleFirestoreError(error, OperationType.LIST, 'orders');
-      } catch (_) {}
+      console.warn("Real-time orders DB sync error:", error);
     });
 
-    // Set up real-time listener for incomplete draft orders in Firestore
+    // Set up real-time listener for orders in Firestore (Fallback Default DB)
+    const qOrdersDefault = query(collection(defaultDb, 'orders'));
+    const unsubscribeOrdersDefault = onSnapshot(qOrdersDefault, (snapshot) => {
+      // Clear the map first so deleted records are removed
+      for (const key in ordersDefaultDbMap) {
+        delete ordersDefaultDbMap[key];
+      }
+
+      snapshot.forEach((doc) => {
+         const orderData = doc.data() as RaincoatOrder;
+         if (orderData && orderData.id) {
+           ordersDefaultDbMap[orderData.id] = orderData;
+         }
+      });
+      updateMergedOrders();
+    }, (error) => {
+      console.warn("Real-time default DB orders sync error:", error);
+    });
+
+    // Set up real-time listener for incomplete draft orders in Firestore (Primary Custom DB)
     const qIncompletes = query(collection(db, 'incompleteOrders'));
     const unsubscribeIncompletes = onSnapshot(qIncompletes, (snapshot) => {
-      const fbIncompletes: IncompleteOrder[] = [];
+      // Clear the map first so deleted records are removed
+      for (const key in incompleteDbMap) {
+        delete incompleteDbMap[key];
+      }
+
       snapshot.forEach((doc) => {
-        fbIncompletes.push(doc.data() as IncompleteOrder);
+        const draftData = doc.data() as IncompleteOrder;
+        if (draftData && draftData.id) {
+          incompleteDbMap[draftData.id] = draftData;
+        }
       });
-      
-      fbIncompletes.sort((a, b) => new Date(b.lastUpdatedAt || b.createdAt).getTime() - new Date(a.lastUpdatedAt || a.createdAt).getTime());
-      
-      setIncompleteOrders(fbIncompletes);
-      onRefreshOrdersCount();
+      updateMergedIncompletes();
     }, (error) => {
-      console.warn("Real-time incomplete orders sync error:", error);
-      try {
-        handleFirestoreError(error, OperationType.LIST, 'incompleteOrders');
-      } catch (_) {}
+      console.warn("Real-time incomplete orders DB sync error:", error);
+    });
+
+    // Set up real-time listener for incomplete draft orders in Firestore (Fallback Default DB)
+    const qIncompletesDefault = query(collection(defaultDb, 'incompleteOrders'));
+    const unsubscribeIncompletesDefault = onSnapshot(qIncompletesDefault, (snapshot) => {
+      // Clear the map first so deleted records are removed
+      for (const key in incompleteDefaultDbMap) {
+        delete incompleteDefaultDbMap[key];
+      }
+
+      snapshot.forEach((doc) => {
+         const draftData = doc.data() as IncompleteOrder;
+         if (draftData && draftData.id) {
+           incompleteDefaultDbMap[draftData.id] = draftData;
+         }
+      });
+      updateMergedIncompletes();
+    }, (error) => {
+      console.warn("Real-time default DB incomplete orders sync error:", error);
     });
 
     return () => {
       unsubscribeOrders();
+      unsubscribeOrdersDefault();
       unsubscribeIncompletes();
+      unsubscribeIncompletesDefault();
     };
-  }, [onRefreshOrdersCount]);
+  }, []);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1258,6 +1472,16 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       alert('দুঃখিত, আপনার অ্যাকাউন্টে কোনো ডেটা মুছে ফেলার (Delete) অনুমতি দেওয়া হয়নি!');
       return;
     }
+
+    try {
+      const stored = window.localStorage.getItem('raincoat_deleted_order_ids');
+      const deletedIds = stored ? JSON.parse(stored) : [];
+      if (!deletedIds.includes(id)) {
+        deletedIds.push(id);
+        window.localStorage.setItem('raincoat_deleted_order_ids', JSON.stringify(deletedIds));
+      }
+    } catch (_) {}
+
     const updated = orders.filter(o => o.id !== id);
     setOrders(updated);
     onRefreshOrdersCount();
@@ -1274,6 +1498,16 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       alert('দুঃখিত, আপনার অ্যাকাউন্টে ড্রাফট ডেটা মুছে ফেলার (Delete) অনুমতি দেওয়া হয়নি!');
       return;
     }
+
+    try {
+      const stored = window.localStorage.getItem('raincoat_deleted_incomplete_ids');
+      const deletedIds = stored ? JSON.parse(stored) : [];
+      if (!deletedIds.includes(id)) {
+        deletedIds.push(id);
+        window.localStorage.setItem('raincoat_deleted_incomplete_ids', JSON.stringify(deletedIds));
+      }
+    } catch (_) {}
+
     const updated = incompleteOrders.filter(o => o.id !== id);
     setIncompleteOrders(updated);
 
@@ -1290,6 +1524,19 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       return;
     }
     if (confirm('আপনি নিশ্চিতভাবে সকল ইনকমপ্লিট ড্রাফট মুছে ফেলতে চান?')) {
+      const activeIds = incompleteOrders.map(o => o.id);
+
+      try {
+        const stored = window.localStorage.getItem('raincoat_deleted_incomplete_ids');
+        const deletedIds = stored ? JSON.parse(stored) : [];
+        activeIds.forEach(id => {
+          if (!deletedIds.includes(id)) {
+            deletedIds.push(id);
+          }
+        });
+        window.localStorage.setItem('raincoat_deleted_incomplete_ids', JSON.stringify(deletedIds));
+      } catch (_) {}
+
       // Delete each from Firestore
       incompleteOrders.forEach(o => {
         deleteIncompleteOrderFromFirestore(o.id).catch((err) => {
@@ -1802,6 +2049,34 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
         const lastDayOfLastYear = new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59, 999);
         return createdAt >= firstDayOfLastYear && createdAt <= lastDayOfLastYear;
       }
+      case 'specificDay': {
+        if (!selectedSpecificDay) return true;
+        const targetDay = new Date(selectedSpecificDay);
+        return createdAt >= getStartOfDay(targetDay) && createdAt <= getEndOfDay(targetDay);
+      }
+      case 'thisWeek': {
+        const currentDay = now.getDay();
+        const startOfWeek = getStartOfDay(now);
+        startOfWeek.setDate(now.getDate() - currentDay);
+        return createdAt >= startOfWeek && createdAt <= todayEnd;
+      }
+      case 'lastWeek': {
+        const currentDay = now.getDay();
+        const startOfLastWeek = getStartOfDay(now);
+        startOfLastWeek.setDate(now.getDate() - currentDay - 7);
+        const endOfLastWeek = getEndOfDay(now);
+        endOfLastWeek.setDate(now.getDate() - currentDay - 1);
+        return createdAt >= startOfLastWeek && createdAt <= endOfLastWeek;
+      }
+      case 'specificMonth': {
+        if (!selectedSpecificMonth) return true;
+        const [yearStr, monthStr] = selectedSpecificMonth.split('-');
+        const year = parseInt(yearStr);
+        const monthIndex = parseInt(monthStr) - 1;
+        const startOfMonth = new Date(year, monthIndex, 1, 0, 0, 0, 0);
+        const endOfMonth = new Date(year, monthIndex + 1, 0, 23, 59, 59, 999);
+        return createdAt >= startOfMonth && createdAt <= endOfMonth;
+      }
       case 'custom': {
         if (!customStartDate) return true;
         const start = getStartOfDay(new Date(customStartDate));
@@ -1889,7 +2164,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   // Auto-reset completed order page to 1 when filters or page size changes
   useEffect(() => {
     setCompletedPage(1);
-  }, [searchTerm, filterSize, filterStatus, filterDistrict, dateFilter, customStartDate, customEndDate, completedPageSize]);
+  }, [searchTerm, filterSize, filterStatus, filterDistrict, dateFilter, customStartDate, customEndDate, selectedSpecificDay, selectedSpecificMonth, completedPageSize]);
 
   // If NOT logged in, block and show elegant standalone admin credentials check
   if (!isLoggedIn) {
@@ -2026,16 +2301,18 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   }
 
   return (
-    <div className={isStandAlone ? "min-h-screen w-full bg-slate-100 flex flex-col font-sans" : "fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-sm flex justify-center items-center p-4 font-sans"}>
-      <div className={isStandAlone ? "bg-white w-full shadow-2xl min-h-screen flex flex-col" : "bg-white rounded-3xl w-full max-w-5xl shadow-2xl overflow-hidden border border-slate-200 max-h-[90vh] flex flex-col"}>
+    <div className={isStandAlone ? "min-h-screen w-full bg-slate-100 flex flex-col font-sans" : "fixed inset-0 z-50 overflow-y-auto bg-slate-950/95 backdrop-blur-[6px] flex justify-center items-center p-4 sm:p-6 font-sans"}>
+      <div className={isStandAlone ? "bg-white w-full shadow-2xl min-h-screen flex flex-col" : "bg-white rounded-3xl w-full max-w-7xl lg:max-w-[94%] xl:max-w-[1440px] shadow-[0_25px_60px_-15px_rgba(0,0,0,0.35)] overflow-hidden border border-slate-250 max-h-[92vh] h-[92vh] flex flex-col transition-all duration-300"}>
         
-        {/* Header */}
-        <div className="bg-slate-900 text-white p-5 justify-between flex items-center shrink-0">
-          <div className="flex items-center gap-2.5">
-            <ShieldAlert className="h-6 w-6 text-yellow-400 shrink-0 animate-pulse" />
+        {/* Header - Premium sleek slate bar with high-contrast text */}
+        <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 text-white p-4.5 justify-between flex items-center shrink-0 border-b border-indigo-950/50 shadow-md">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-indigo-505/10 bg-indigo-500/15 border border-indigo-500/25 flex items-center justify-center text-indigo-400 shadow-sm shrink-0">
+              <ShieldAlert className="h-5.5 w-5.5 animate-pulse text-yellow-400" />
+            </div>
             <div>
-              <h3 className="text-lg sm:text-xl font-bold font-sans">অর্ডার কিউ ও অ্যাডমিন ড্যাশবোর্ড (লগইন করা আছে)</h3>
-              <p className="text-slate-400 text-[10px] sm:text-xs">গ্রাহকদের লাইভ অর্ডার বুকিং, ড্রাফট ও গুগল শিট লাইভ সিঙ্ক ইঞ্জিন</p>
+              <h3 className="text-sm sm:text-base font-black tracking-tight font-sans">অর্ডার কিউ ও অ্যাডমিন ড্যাশবোর্ড <span className="bg-emerald-500/10 text-emerald-450 border border-emerald-500/20 px-2 py-0.5 rounded-md text-[10px] font-black font-mono ml-1.5 uppercase tracking-wider">SECURE SESSION</span></h3>
+              <p className="text-zinc-400 text-[10px] sm:text-[11px] font-medium font-sans">গ্রাহকদের লাইভ অর্ডার বুকিং, পেইজ মেকিং ও গুগল শিট রিয়েল-টাইম লাইভ সিঙ্ক ইঞ্জিন</p>
             </div>
           </div>
           <div className="flex items-center gap-2 relative">
@@ -2301,17 +2578,17 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                 📦 স্টক ইনভেন্টরি
               </button>
 
-              {/* 7. পিক্সেল ইন্টিগ্রেশন */}
+              {/* 7. পিক্সেল ও ইন্টিগ্রেশন ম্যানেজার */}
               <button
                 type="button"
-                onClick={() => setActiveTab('integrations')}
+                onClick={() => setActiveTab('pixels')}
                 className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 ${
-                  activeTab === 'integrations'
+                  activeTab === 'pixels'
                     ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10 font-extrabold'
                     : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
                 }`}
               >
-                🌐 পিক্সেল ইন্টিগ্রেশন
+                ⚡ পিক্সেল ও ইন্টিগ্রেশন ম্যানেজার
               </button>
 
               {/* 8. টিম ইউজারস */}
@@ -2337,10 +2614,10 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                     : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
                 }`}
               >
-                🛡️ স্প্যাম ডাইরেক্ট
+                🛡️  স্প্যাম ডাইরেক্ট
               </button>
 
-              {/* 9b. ফ্রাড চেক ট্র্যাকিং */}
+              {/* 9b. ফ্রাড ফিল্টারিং API */}
               <button
                 type="button"
                 onClick={() => setActiveTab('fraud')}
@@ -2396,13 +2673,13 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                 🎨 ভিজ্যুয়াল পেজ ও ডিজাইন কাস্টমাইজার
               </button>
 
-              {/* 12. কুরিয়ার এপিআই ইন্টিগ্রেশন */}
+              {/* 12. কুরিয়ার বুকিং ও কুন্ডলী */}
               <button
                 type="button"
                 onClick={() => setActiveTab('courier_hub')}
                 className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
-                  activeTab === 'courier_hub' || activeTab === 'courier_connections'
-                    ? 'bg-gradient-to-r from-blue-650 to-indigo-650 text-white shadow-md shadow-blue-650/10 font-extrabold'
+                  activeTab === 'courier_hub'
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/10 font-extrabold'
                     : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
                 }`}
               >
@@ -2437,6 +2714,32 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                 <span className="flex h-1.5 w-1.5 rounded-full bg-amber-400 animate-ping absolute right-2.5 top-2.5" />
                 📸 কাস্টমার রিভিউজ
               </button>
+
+              {/* 14. টপ মেনুবার কাস্টমাইজার */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('menu_bar_settings')}
+                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
+                  activeTab === 'menu_bar_settings'
+                    ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/10 font-extrabold'
+                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                }`}
+              >
+                🛠️ টপ মেনুবার এডিটর
+              </button>
+
+              {/* 15. সেলস কলিং এজেন্টস */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('calling_agents_management')}
+                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
+                  activeTab === 'calling_agents_management'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/10 font-extrabold'
+                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                }`}
+              >
+                📞 সেলস কলিং এজেন্টস
+              </button>
             </div>
           </div>
 
@@ -2445,35 +2748,188 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
 
           {(activeTab === 'completed' || activeTab === 'incomplete') ? (
             <>
+              {/* Database & Google Sheets Real-time Integration Live Sync Dashboard Widget */}
+              <div id="live-data-sync-dashboard-widget" className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col md:flex-row items-stretch justify-between gap-4 shadow-xs select-none">
+                <div className="flex flex-wrap items-center gap-3.5 flex-1">
+                  {/* Title / Info segment */}
+                  <div className="text-left space-y-1 pr-4 md:border-r border-slate-200">
+                    <span className="text-[9px] bg-indigo-500/10 text-indigo-700 font-extrabold uppercase px-2 py-0.5 rounded-md border border-indigo-500/10 inline-block font-sans">
+                      🔄 লাইভ ডাটা সিঙ্ক ড্যাশবোর্ড
+                    </span>
+                    <h5 className="text-xs font-black text-slate-800">রিয়েল-টাইম ডাটা সিঙ্ক্রোনাইজেশন</h5>
+                  </div>
+
+                  {/* Firebase Firestore Cloud Database widget */}
+                  <div className="bg-white border text-left border-slate-200 rounded-xl p-2.5 flex items-center gap-3 shadow-xs font-sans">
+                    <div className="p-2 bg-amber-500/10 rounded-lg text-amber-600 animate-pulse">
+                      <Database className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5 font-bold text-slate-700 text-xs font-sans">
+                        ফায়ারবেস ক্লাউড ডেটাবেস
+                        <span className="flex h-2 w-2 relative">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                      </div>
+                      <span className="text-[9.5px] text-emerald-600 font-extrabold block font-sans">সক্রিয় রিয়েল-টাইম সিঙ্ক • ১০০% নিরাপদ</span>
+                    </div>
+                  </div>
+
+                  {/* Google Sheets Live Database widget */}
+                  <div className="bg-white border text-left border-slate-200 rounded-xl p-2.5 flex items-center gap-3 shadow-xs min-w-[240px] font-sans">
+                    <div className={`p-2 rounded-lg ${getAccessToken() && sheetsConfig.spreadsheetId ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-500'}`}>
+                      <FileSpreadsheet className="h-4 w-4" />
+                    </div>
+                    <div className="flex-1 min-w-0 font-sans">
+                      <div className="flex items-center gap-1.5 font-bold text-slate-700 text-xs">
+                        গুগল স্প্রেডশিট ডেটাবেস
+                        {getAccessToken() && sheetsConfig.spreadsheetId ? (
+                          <span className="flex h-2 w-2 relative">
+                            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${sheetsConfig.autoSync ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
+                            <span className={`relative inline-flex rounded-full h-2 w-2 ${sheetsConfig.autoSync ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
+                          </span>
+                        ) : (
+                          <span className="w-2 h-2 rounded-full bg-slate-300" />
+                        )}
+                      </div>
+                      <span className="text-[9.5px] font-bold block truncate">
+                        {getAccessToken() && sheetsConfig.spreadsheetId ? (
+                          sheetsConfig.autoSync ? (
+                            <span className="text-emerald-600 font-extrabold">অটো-সিঙ্ক সক্রিয় (রিয়েল-টাইম)</span>
+                          ) : (
+                            <span className="text-amber-600 font-extrabold">ম্যানুয়াল স্ট্যান্ডবাই মোড</span>
+                          )
+                        ) : (
+                          <span className="text-rose-500 font-bold">ইন্টিগ্রেশন সম্পন্ন করা হয়নি</span>
+                        )}
+                      </span>
+                      {sheetsConfig.lastSyncTime && (
+                        <span className="text-[8.5px] text-slate-400 block font-normal font-sans">
+                          সর্বশেষ সিঙ্ক: {new Date(sheetsConfig.lastSyncTime).toLocaleTimeString('bn-BD')}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Direct Action buttons */}
+                <div className="flex items-center gap-2 self-center shrink-0">
+                  {getAccessToken() && sheetsConfig.spreadsheetId ? (
+                    <button
+                      type="button"
+                      disabled={isSyncing}
+                      onClick={handleSyncAllOrders}
+                      className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-extrabold rounded-xl text-xs transition cursor-pointer flex items-center gap-1.5 shadow-sm shadow-indigo-600/15"
+                    >
+                      <RefreshCw className={`h-3 w-3 ${isSyncing ? 'animate-spin' : ''}`} />
+                      {isSyncing ? 'সিঙ্ক হচ্ছে...' : 'এখনই সিঙ্ক'}
+                    </button>
+                  ) : null}
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      resetQuotaCircuitBreaker();
+                      window.localStorage.removeItem('raincoat_deleted_order_ids');
+                      window.localStorage.removeItem('raincoat_deleted_incomplete_ids');
+                      setCopiedMessage("ডেটাবেস পুনরায় কানেক্ট করা হচ্ছে ও সব হাইড হওয়া ডাটা রিকভার করা হচ্ছে...");
+                      await loadOrders();
+                      setTimeout(() => {
+                        setCopiedMessage("ডেটাবেস সফলভাবে কানেক্ট করা হয়েছে এবং সমস্ত পুরাতন ও নতুন ডাটা রিস্টোর করা হয়েছে!");
+                        setTimeout(() => setCopiedMessage(""), 5000);
+                      }, 1000);
+                    }}
+                    className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-xs transition cursor-pointer flex items-center gap-1.5 shadow-sm shadow-emerald-500/20"
+                  >
+                    <Database className="h-3 w-3" />
+                    ডেটাবেস কানেক্ট ও রিকভার
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowSheetsSection(true);
+                      setTimeout(() => {
+                        const elem = document.getElementById('sheets-section-container') || document.querySelector('.fa-file-spreadsheet');
+                        if (elem) elem.scrollIntoView({ behavior: 'smooth' });
+                      }, 200);
+                    }}
+                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 font-extrabold rounded-xl text-xs transition cursor-pointer"
+                  >
+                    সেটিংস
+                  </button>
+                </div>
+              </div>
+
               {/* Quick stats cards */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="p-4 bg-slate-50 border border-slate-100/90 rounded-2xl flex flex-col justify-between">
-                  <div>
-                    <span className="text-[10px] text-slate-500 font-bold uppercase block">মোট অর্ডার সংখ্যা</span>
-                    <span className="text-2xl font-black text-slate-800 font-mono">{filteredOrders.length} টি</span>
+                {/* 1. Total Orders */}
+                <div className="group relative p-4.5 bg-gradient-to-br from-slate-50 to-white hover:from-slate-100/70 border border-slate-200/80 rounded-2xl flex flex-col justify-between shadow-[0_4px_12px_-5px_rgba(15,23,42,0.05)] hover:shadow-[0_8px_20px_-6px_rgba(99,102,241,0.12)] hover:-translate-y-0.5 transition-all duration-300">
+                  <div className="flex justify-between items-start">
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wider block font-sans">মোট অর্ডার সংখ্যা</span>
+                      <span className="text-2xl font-black text-slate-850 font-mono tracking-tight">{filteredOrders.length} <span className="text-xs font-bold text-slate-400">টি</span></span>
+                    </div>
+                    <div className="p-2 sm:p-2.5 bg-indigo-500/10 text-indigo-600 rounded-xl group-hover:scale-110 transition-transform duration-300">
+                      <ShoppingBag className="h-4 sm:h-4.5 w-4 sm:w-4.5" />
+                    </div>
                   </div>
-                  <span className="text-[10px] text-slate-400 font-bold block mt-1 font-sans">সর্বমোট: {orders.length} টি</span>
+                  <div className="border-t border-slate-100 pt-2.5 mt-3 flex justify-between items-center text-[10px] text-slate-400 font-bold font-sans">
+                    <span>লাইফটাইম অর্ডার</span>
+                    <span className="text-slate-600 font-mono">{orders.length} টি</span>
+                  </div>
                 </div>
-                <div className="p-4 bg-slate-50 border border-slate-100/90 rounded-2xl relational flex flex-col justify-between">
-                  <div>
-                    <span className="text-[10px] text-slate-500 font-bold uppercase block">কনফার্মড অর্ডার</span>
-                    <span className="text-2xl font-black text-emerald-600 font-mono">{filteredConfirmedCount} টি</span>
+
+                {/* 2. Confirmed Orders */}
+                <div className="group relative p-4.5 bg-gradient-to-br from-emerald-50/30 to-white hover:from-emerald-50/50 border border-emerald-150 border-emerald-100 rounded-2xl flex flex-col justify-between shadow-[0_4px_12px_-5px_rgba(15,23,42,0.05)] hover:shadow-[0_8px_20px_-6px_rgba(16,185,129,0.12)] hover:-translate-y-0.5 transition-all duration-300">
+                  <div className="flex justify-between items-start">
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-emerald-600 font-extrabold uppercase tracking-wider block font-sans">কনফার্মড অর্ডার</span>
+                      <span className="text-2xl font-black text-emerald-700 font-mono tracking-tight">{filteredConfirmedCount} <span className="text-xs font-bold text-emerald-400">টি</span></span>
+                    </div>
+                    <div className="p-2 sm:p-2.5 bg-emerald-500/10 text-emerald-600 rounded-xl group-hover:scale-110 transition-transform duration-300">
+                      <CheckCircle className="h-4 sm:h-4.5 w-4 sm:w-4.5" />
+                    </div>
                   </div>
-                  <span className="text-[10px] text-slate-400 font-bold block mt-1 font-sans">সর্বমোট: {orders.filter(o => o.isConfirmed).length} টি</span>
+                  <div className="border-t border-emerald-50/50 pt-2.5 mt-3 flex justify-between items-center text-[10px] text-emerald-500/80 font-bold font-sans">
+                    <span>লাইফটাইম কনফার্মড</span>
+                    <span className="text-emerald-700 font-mono">{orders.filter(o => o.isConfirmed).length} টি</span>
+                  </div>
                 </div>
-                <div className="p-4 bg-orange-50 border border-orange-100 rounded-2xl flex flex-col justify-between">
-                  <div>
-                    <span className="text-[10px] text-orange-600 font-bold uppercase block">ইনকমপ্লিট ড্রাফটস</span>
-                    <span className="text-2xl font-black text-orange-700 font-mono">{filteredIncompleteCount} টি</span>
+
+                {/* 3. Incomplete Drafts */}
+                <div className="group relative p-4.5 bg-gradient-to-br from-amber-50/30 to-white hover:from-amber-50/50 border border-amber-150 border-amber-100 rounded-2xl flex flex-col justify-between shadow-[0_4px_12px_-5px_rgba(15,23,42,0.05)] hover:shadow-[0_8px_20px_-6px_rgba(245,158,11,0.12)] hover:-translate-y-0.5 transition-all duration-300">
+                  <div className="flex justify-between items-start">
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-amber-600 font-extrabold uppercase tracking-wider block font-sans">ইনকমপ্লিট ড্রাফটস</span>
+                      <span className="text-2xl font-black text-amber-700 font-mono tracking-tight">{filteredIncompleteCount} <span className="text-xs font-bold text-amber-500">টি</span></span>
+                    </div>
+                    <div className="p-2 sm:p-2.5 bg-amber-500/10 text-amber-650 rounded-xl group-hover:scale-110 transition-transform duration-300">
+                      <Layers className="h-4 sm:h-4.5 w-4 sm:w-4.5" />
+                    </div>
                   </div>
-                  <span className="text-[10px] text-orange-400 font-bold block mt-1 font-sans">সর্বমোট: {incompleteOrders.length} টি</span>
+                  <div className="border-t border-amber-50/50 pt-2.5 mt-3 flex justify-between items-center text-[10px] text-amber-600/80 font-bold font-sans">
+                    <span>লাইফটাইম ড্রাফট</span>
+                    <span className="text-amber-700 font-mono">{incompleteOrders.length} টি</span>
+                  </div>
                 </div>
-                <div className="p-4 bg-blue-50 border border-blue-100 rounded-2xl flex flex-col justify-between">
-                  <div>
-                    <span className="text-[10px] text-blue-500 font-bold uppercase block">মোট সম্ভাব্য বিক্রি</span>
-                    <span className="text-2xl font-black text-blue-850 font-mono">{filteredRevenue} TK</span>
+
+                {/* 4. Potential Revenue */}
+                <div className="group relative p-4.5 bg-gradient-to-br from-violet-50/30 to-white hover:from-violet-50/50 border border-violet-150 border-violet-100 rounded-2xl flex flex-col justify-between shadow-[0_4px_12px_-5px_rgba(15,23,42,0.05)] hover:shadow-[0_8px_20px_-6px_rgba(139,92,246,0.12)] hover:-translate-y-0.5 transition-all duration-300">
+                  <div className="flex justify-between items-start">
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-violet-600 font-extrabold uppercase tracking-wider block font-sans">মোট সম্ভাব্য বিক্রি</span>
+                      <span className="text-2xl font-black text-slate-800 font-mono tracking-tight">{filteredRevenue.toLocaleString()} <span className="text-xs font-bold text-slate-400">TK</span></span>
+                    </div>
+                    <div className="p-2 sm:p-2.5 bg-violet-500/10 text-violet-600 rounded-xl group-hover:scale-110 transition-transform duration-300">
+                      <Coins className="h-4 sm:h-4.5 w-4 sm:w-4.5" />
+                    </div>
                   </div>
-                  <span className="text-[10px] text-blue-400 font-bold block mt-1 font-sans">সর্বমোট: {totalRevenue} TK</span>
+                  <div className="border-t border-violet-50/50 pt-2.5 mt-3 flex justify-between items-center text-[10px] text-violet-600/80 font-bold font-sans">
+                    <span>লাইফটাইম সম্ভাব্য বিক্রি</span>
+                    <span className="text-slate-700 font-mono">{totalRevenue.toLocaleString()} TK</span>
+                  </div>
                 </div>
               </div>
 
@@ -2494,190 +2950,543 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                   </div>
                   <div className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-1 font-mono text-[10px] font-bold text-indigo-300 shrink-0 flex items-center gap-1.5 leading-none">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    LIVE COURIER SECURE: ACTIVE
-                  </div>
-                </div>
-
-                {/* Metrics Breakdown Grid */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 font-sans">
-                  {/* Metric 1 */}
-                  <div className="p-3 bg-white/5 border border-white/5 rounded-xl flex flex-col justify-between">
-                    <div>
-                      <span className="text-[9px] text-slate-400 font-extrabold uppercase block font-sans">মোট অর্ডার স্ক্যান</span>
-                      <span className="text-lg font-black font-mono text-white">{filteredOrders.length} টি</span>
-                    </div>
-                    <span className="text-[8.5px] text-slate-500 block mt-1 truncate">সব ইউনিক নম্বর হিস্ট্রি চেকড</span>
-                  </div>
-
-                  {/* Metric 2 */}
-                  <div className="p-3 bg-white/5 border border-white/5 rounded-xl flex flex-col justify-between">
-                    <div>
-                      <span className="text-[9px] text-emerald-400 font-extrabold uppercase block font-sans">সফল ডেলিভারি (Success)</span>
-                      <span className="text-lg font-black font-mono text-emerald-400">{filteredDeliveredCount} টি</span>
-                    </div>
-                    <span className="text-[8.5px] text-slate-500 block mt-1 truncate">ডেলিভারড স্থিতি সম্পন্ন</span>
-                  </div>
-
-                  {/* Metric 3 */}
-                  <div className="p-3 bg-white/5 border border-white/5 rounded-xl flex flex-col justify-between">
-                    <div>
-                      <span className="text-[9px] text-rose-400 font-extrabold uppercase block font-sans">অর্ডার বাতিল (Cancelled)</span>
-                      <span className="text-lg font-black font-mono text-rose-400">{filteredCancelledCount} টি</span>
-                    </div>
-                    <span className="text-[8.5px] text-slate-500 block mt-1 truncate">গ্রাহক/অ্যাডমিন দ্বারা বাতিল</span>
-                  </div>
-
-                  {/* Metric 4 */}
-                  <div className="p-3 bg-indigo-950/40 border border-indigo-500/20 rounded-xl flex flex-col justify-between">
-                    <div>
-                      <span className="text-[9px] text-indigo-300 font-extrabold uppercase block font-sans">ডেলিভারি সাকসেস রেশিও</span>
-                      <span className="text-lg font-black font-mono text-indigo-200">{filteredSuccessRatio}%</span>
-                    </div>
-                    <span className="text-[8.5px] text-indigo-400 block mt-1 truncate">
-                      {filteredSuccessRatio >= 85 ? '🟢 চমৎকার কার্ব' : filteredSuccessRatio >= 65 ? '🟡 মাঝারি ঝুঁকি' : '🔴 উচ্চ ঝুঁকি'}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Progress bar representing Success Deliveries vs Cancellations */}
-                <div className="space-y-1.5 bg-white/5 p-3 rounded-xl border border-white/5 font-sans">
-                  <div className="flex justify-between items-center text-[10px]">
-                    <span className="text-slate-350 font-bold flex items-center gap-1 font-sans">
-                      📈 ওভারঅল রিয়েল-টাইম সাকসেস গ্রাফ (Delivery vs Cancel)
-                    </span>
-                    <span className="text-indigo-300 font-extrabold font-mono">{filteredSuccessRatio}% সফল ডেলিভারি</span>
-                  </div>
-                  <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden flex">
-                    <div 
-                      className="bg-emerald-500 h-full transition-all duration-500" 
-                      style={{ width: `${filteredSuccessRatio}%` }}
-                    />
-                    <div 
-                      className="bg-rose-500 h-full transition-all duration-500" 
-                      style={{ width: `${100 - filteredSuccessRatio}%` }}
-                    />
-                  </div>
-                  <div className="flex justify-between text-[8px] sm:text-[9px] text-slate-400 font-sans">
-                    <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-emerald-500 rounded-full inline-block" /> সফল ডেলিভারি ({filteredDeliveredCount})</span>
-                    <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-rose-500 rounded-full inline-block" /> ক্যানসেলকৃত / বাতিল ({filteredCancelledCount})</span>
-                  </div>
-                </div>
-
-                {/* Fraud check statistics categorizations */}
-                <div className="grid grid-cols-4 gap-2 text-center pt-1 font-sans">
-                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-2">
-                    <span className="text-[8px] text-emerald-400 font-bold uppercase block font-sans">নিরাপদ (Safe)</span>
-                    <span className="text-xs font-mono font-black text-emerald-300 mt-0.5 block">{filteredSafeCount} টি</span>
-                  </div>
-                  <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-lg p-2">
-                    <span className="text-[8px] text-indigo-300 font-bold uppercase block font-sans">সতর্কতা (Warning)</span>
-                    <span className="text-xs font-mono font-black text-indigo-300 mt-0.5 block">{filteredWarningCount} টি</span>
+           <span className="text-xs font-mono font-black text-indigo-305 mt-0.5 block">{filteredWarningCount} টি</span>
                   </div>
                   <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-2">
-                    <span className="text-[8px] text-amber-500 text-amber-300 font-bold uppercase block font-sans">ঝুঁকিপূর্ণ (High Risk)</span>
-                    <span className="text-xs font-mono font-black text-amber-300 mt-0.5 block">{filteredHighRiskCount} টি</span>
+                    <span className="text-[8px] text-amber-500 font-bold uppercase block font-sans">ঝুঁকিপূর্ণ (High Risk)</span>
+                    <span className="text-xs font-mono font-black text-amber-305 mt-0.5 block">{filteredHighRiskCount} টি</span>
                   </div>
                   <div className="bg-rose-500/10 border border-rose-500/20 rounded-lg p-2">
                     <span className="text-[8px] text-rose-300 font-bold uppercase block font-sans">স্প্যামার (Scammer)</span>
-                    <span className="text-xs font-mono font-black text-rose-300 mt-0.5 block">{filteredScammerCount} টি</span>
+                    <span className="text-xs font-mono font-black text-rose-305 mt-0.5 block">{filteredScammerCount} টি</span>
                   </div>
                 </div>
               </div>
 
-          {/* Google Sheets Integration Card */}
-          <div className="bg-slate-50 border border-slate-200/80 rounded-2xl overflow-hidden shadow-xs">
-            <button
-              onClick={() => setShowSheetsSection(!showSheetsSection)}
-              className="w-full flex items-center justify-between p-4 bg-white hover:bg-slate-50 border-b border-slate-200/60 transition cursor-pointer"
-            >
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-emerald-100 rounded-lg text-emerald-700">
-                  <FileSpreadsheet className="h-5 w-5" />
-                </div>
-                <div className="text-left">
-                  <h4 className="text-sm font-bold text-slate-800 font-sans flex items-center gap-2">
-                    📊 গুগল শিট লাইভ সিঙ্ক ড্যাশবোর্ড (Google Sheets Sync)
-                    {sheetsConfig.connectedEmail ? (
-                      <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-extrabold border border-emerald-200 rounded-full">
-                        কানেক্টেড (Connected)
-                      </span>
-                    ) : (
-                      <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[10px] font-bold border border-slate-200 rounded-full">
-                        ডিসকানেক্টেড
-                      </span>
-                    )}
-                  </h4>
-                  <p className="text-[10px] text-slate-500 font-sans">
-                    রেইনকোট অর্ডারগুলোকে সরাসরি গুগল স্প্রেডশিটে সিঙ্ক করুন এবং সংরক্ষণ করুন।
-                  </p>
-                </div>
-              </div>
-              <div>
-                {showSheetsSection ? (
-                  <ChevronUp className="h-4.5 w-4.5 text-slate-400" />
-                ) : (
-                  <ChevronDown className="h-4.5 w-4.5 text-slate-400" />
-                )}
-              </div>
-            </button>
-
-            {showSheetsSection && (
-              <div className="p-5 space-y-4 font-sans bg-white text-slate-700 border-t border-slate-100">
-                {/* Connection status notification */}
-                {sheetsFeedback.message && (
-                  <div className={`p-3 rounded-xl text-xs font-bold ${
-                    sheetsFeedback.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' :
-                    sheetsFeedback.type === 'error' ? 'bg-rose-50 text-rose-800 border border-rose-200' :
-                    'bg-blue-50 text-blue-800 border border-blue-200'
-                  }`}>
-                    {sheetsFeedback.message}
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  {/* Left Column: Config Panel */}
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-                        ১. গুগল ক্লায়েন্ট আইডি (Google Client ID)
-                        <HelpCircle className="h-3 w-3 text-slate-400 font-bold" />
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. 123456-abcdef.apps.googleusercontent.com"
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700"
-                        value={clientId}
-                        onChange={(e) => setClientId(e.target.value)}
-                        disabled={!!getAccessToken()}
-                      />
+              {/* 📅 তারিখ, সপ্তাহ ও মাস ফিল্টার কন্ট্রোল ড্যাশবোর্ড (Advanced Date, Week & Month Filter Hub) */}
+              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4.5 shadow-sm space-y-4 font-sans">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1 px-2.5 bg-indigo-500 rounded-lg text-white font-black text-[10px] uppercase tracking-wider flex items-center gap-1 leading-none">
+                        <Calendar className="h-3 w-3" />
+                        <span>ফিল্টার হাব</span>
+                      </div>
+                      <h4 className="text-xs font-black text-slate-850 uppercase tracking-wide">
+                        তারিখ, সপ্তাহ ও মাস ভিত্তিক ফিল্টারিং সিস্টেম
+                      </h4>
                     </div>
+                    <p className="text-[10px] text-slate-500 font-semibold leading-none">
+                      নির্দিষ্ট দিন, সপ্তাহ বা মাসের অর্ডার হিস্ট্রি সহজে বিশ্লেষণ ও ট্র্যাক করুন।
+                    </p>
+                  </div>
+                  
+                  {/* Active filter badge status */}
+                  <div className="flex items-center gap-1.5 self-start sm:self-center">
+                    <span className="text-[9.5px] font-bold text-slate-400">সক্রিয় ফিল্টার:</span>
+                    <span className="p-1 px-2.5 bg-indigo-50/75 border border-indigo-100 text-indigo-700 rounded-lg text-[10px] font-black font-sans leading-none flex items-center gap-1 shadow-2xs">
+                      {dateFilter === 'all' && '📅 সবসময়ের অর্ডার্স'}
+                      {dateFilter === 'today' && '📅 আজকের অর্ডার্স'}
+                      {dateFilter === 'yesterday' && '📅 গতকালকের অর্ডার্স'}
+                      {dateFilter === 'specificDay' && `📅 নির্দিষ্ট দিন (${selectedSpecificDay ? selectedSpecificDay : 'বাছাই করুন'})`}
+                      {dateFilter === 'thisWeek' && '📅 চলতি সপ্তাহের অর্ডার্স'}
+                      {dateFilter === 'last7' && '📅 গত ৭ দিনের অর্ডার্স'}
+                      {dateFilter === 'lastWeek' && '📅 গত সপ্তাহের অর্ডার্স'}
+                      {dateFilter === 'last15' && '📅 গত ১৫ দিনের অর্ডার্স'}
+                      {dateFilter === 'last30' && '📅 গত ৩০ দিনের অর্ডার্স'}
+                      {dateFilter === 'thisMonth' && '📅 চলতি মাসের অর্ডার্স'}
+                      {dateFilter === 'lastMonth' && '📅 গত মাসের অর্ডার্স'}
+                      {dateFilter === 'specificMonth' && `📅 নির্দিষ্ট মাস (${selectedSpecificMonth ? getBanglaMonthYearName(selectedSpecificMonth) : 'বাছাই করুন'})`}
+                      {dateFilter === 'custom' && `📅 কাস্টম কেলেন্ডার (${customStartDate ? customStartDate : ''} থেকে ${customEndDate ? customEndDate : ''})`}
+                    </span>
+                    {dateFilter !== 'all' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDateFilter('all');
+                          setSelectedSpecificDay('');
+                          setSelectedSpecificMonth('');
+                          setCustomStartDate('');
+                          setCustomEndDate('');
+                        }}
+                        className="p-1 text-red-500 hover:text-white bg-red-100 hover:bg-red-500 border border-red-200/50 rounded-lg transition-all text-[9.5px] font-black leading-none cursor-pointer"
+                        title="ফিল্টার রিসেট করুন"
+                      >
+                        রিসেট
+                      </button>
+                    )}
+                  </div>
+                </div>
 
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-                        ২. গুগল স্প্রেডশিট আইডি (Spreadsheet ID)
-                      </label>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          placeholder="পেস করুন অথবা নিজে তৈরি করুন"
-                          className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700"
-                          value={spreadsheetId}
-                          onChange={(e) => setSpreadsheetId(e.target.value)}
-                        />
+                {/* Category Tabs Selection */}
+                <div className="flex flex-wrap items-center gap-1.5 bg-slate-100/60 p-1 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDateSelectTab('all');
+                      setDateFilter('all');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${
+                      dateSelectTab === 'all'
+                        ? 'bg-white text-indigo-700 shadow-xs border border-slate-205 border-slate-200/30'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/40'
+                    }`}
+                  >
+                    📅 সকল সময় (All)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDateSelectTab('day');
+                      setDateFilter('today');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${
+                      dateSelectTab === 'day'
+                        ? 'bg-white text-indigo-700 shadow-xs border border-slate-205 border-slate-200/30'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/40'
+                    }`}
+                  >
+                    📆 দিন ভিত্তিক (Days)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDateSelectTab('week');
+                      setDateFilter('last7');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${
+                      dateSelectTab === 'week'
+                        ? 'bg-white text-indigo-700 shadow-xs border border-slate-205 border-slate-200/30'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/40'
+                    }`}
+                  >
+                    🗓️ সপ্তাহ ভিত্তিক (Weeks)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDateSelectTab('month');
+                      setDateFilter('thisMonth');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${
+                      dateSelectTab === 'month'
+                        ? 'bg-white text-indigo-700 shadow-xs border border-slate-205 border-slate-200/30'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/40'
+                    }`}
+                  >
+                    📊 মাস ভিত্তিক (Months)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDateSelectTab('custom');
+                      setDateFilter('custom');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${
+                      dateSelectTab === 'custom'
+                        ? 'bg-white text-indigo-700 shadow-xs border border-slate-205 border-slate-200/30'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/40'
+                    }`}
+                  >
+                    🗓️ কাস্টম রেঞ্জ (Custom)
+                  </button>
+                </div>
+
+                {/* Active Category Panel Content (Presets and options) */}
+                <div className="bg-white p-3.5 border border-slate-200/40 rounded-xl min-h-[50px] flex items-center">
+                  
+                  {/* Mode: All Time */}
+                  {dateSelectTab === 'all' && (
+                    <div className="flex items-center gap-2 text-indigo-650">
+                      <Database className="h-4 w-4 text-indigo-500 shrink-0" />
+                      <span className="text-[11px] font-bold text-slate-600">
+                        সব সময়ের মোট <strong className="text-indigo-600 font-extrabold">{orders.length}টি</strong> সফল অর্ডার ও <strong className="text-amber-750 font-extrabold">{incompleteOrders.length}টি</strong> ড্রাফট রেকর্ড বিশ্লেষণ করা হচ্ছে।
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Mode: Day wise */}
+                  {dateSelectTab === 'day' && (
+                    <div className="flex flex-col md:flex-row md:items-center gap-4 w-full">
+                      <div className="flex flex-wrap items-center gap-2">
                         <button
                           type="button"
-                          onClick={handleCreateNewSheet}
-                          disabled={isCreatingSheet || !getAccessToken()}
-                          className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer shrink-0"
+                          onClick={() => {
+                            setDateFilter('today');
+                            setSelectedSpecificDay('');
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-[11px] font-extrabold transition-all cursor-pointer ${
+                            dateFilter === 'today'
+                              ? 'bg-indigo-600 text-white shadow-xs'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-705 border border-slate-200/50'
+                          }`}
                         >
-                          <Sparkles className="h-3.5 w-3.5" /> শিট তৈরি করুন
+                          আজকের অর্ডার (Today)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDateFilter('yesterday');
+                            setSelectedSpecificDay('');
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-[11px] font-extrabold transition-all cursor-pointer ${
+                            dateFilter === 'yesterday'
+                              ? 'bg-indigo-600 text-white shadow-xs'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-705 border border-slate-200/50'
+                          }`}
+                        >
+                          গতকালকের অর্ডার (Yesterday)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDateFilter('specificDay');
+                            if (!selectedSpecificDay) {
+                              const todayStr = new Date().toISOString().split('T')[0];
+                              setSelectedSpecificDay(todayStr);
+                            }
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-[11px] font-extrabold transition-all cursor-pointer ${
+                            dateFilter === 'specificDay'
+                              ? 'bg-indigo-600 text-white shadow-xs'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-705 border border-slate-200/50'
+                          }`}
+                        >
+                          নির্দিষ্ট দিন (Select Specific Day)
+                        </button>
+                      </div>
+
+                      {/* Selected specific day picker */}
+                      {dateFilter === 'specificDay' && (
+                        <div className="flex items-center gap-2 bg-indigo-50/70 border border-indigo-150 p-1 rounded-xl shadow-2xs">
+                          <span className="text-[10px] pl-2 font-black text-indigo-700 shrink-0">দিন বাছাই করুন:</span>
+                          <input
+                            type="date"
+                            className="px-2.5 py-1 bg-white border border-indigo-200 text-indigo-950 font-black rounded-lg focus:outline-none cursor-pointer focus:ring-1 focus:ring-indigo-500 text-xs"
+                            value={selectedSpecificDay}
+                            onChange={(e) => {
+                              setSelectedSpecificDay(e.target.value);
+                              setDateFilter('specificDay');
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Mode: Weekly wise */}
+                  {dateSelectTab === 'week' && (
+                    <div className="flex flex-wrap items-center gap-2 w-full">
+                      <button
+                        type="button"
+                        onClick={() => setDateFilter('last7')}
+                        className={`px-3 py-1.5 rounded-lg text-[11px] font-extrabold transition-all cursor-pointer ${
+                          dateFilter === 'last7'
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-705 border border-slate-200/50'
+                        }`}
+                      >
+                        গত ৭ দিন (Last 7 Days)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDateFilter('thisWeek')}
+                        className={`px-3 py-1.5 rounded-lg text-[11px] font-extrabold transition-all cursor-pointer ${
+                          dateFilter === 'thisWeek'
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-705 border border-slate-200/50'
+                        }`}
+                      >
+                        চলতি সপ্তাহ (This Week)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDateFilter('lastWeek')}
+                        className={`px-3 py-1.5 rounded-lg text-[11px] font-extrabold transition-all cursor-pointer ${
+                          dateFilter === 'lastWeek'
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-705 border border-slate-200/50'
+                        }`}
+                      >
+                        গত সপ্তাহ (Last Week)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDateFilter('last15')}
+                        className={`px-3 py-1.5 rounded-lg text-[11px] font-extrabold transition-all cursor-pointer ${
+                          dateFilter === 'last15'
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-705 border border-slate-200/50'
+                        }`}
+                      >
+                        গত ১৫ দিন (Last 15 Days)
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Mode: Monthly wise */}
+                  {dateSelectTab === 'month' && (
+                    <div className="flex flex-col md:flex-row md:items-center gap-4 w-full">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDateFilter('thisMonth');
+                            setSelectedSpecificMonth('');
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-[11px] font-extrabold transition-all cursor-pointer ${
+                            dateFilter === 'thisMonth'
+                              ? 'bg-indigo-600 text-white shadow-xs'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-705 border border-slate-200/50'
+                          }`}
+                        >
+                          চলতি মাস (This Month)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDateFilter('last30');
+                            setSelectedSpecificMonth('');
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-[11px] font-extrabold transition-all cursor-pointer ${
+                            dateFilter === 'last30'
+                              ? 'bg-indigo-600 text-white shadow-xs'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-705 border border-slate-200/50'
+                          }`}
+                        >
+                          গত ৩০ দিন (Last 30 Days)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDateFilter('lastMonth');
+                            setSelectedSpecificMonth('');
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-[11px] font-extrabold transition-all cursor-pointer ${
+                            dateFilter === 'lastMonth'
+                              ? 'bg-indigo-600 text-white shadow-xs'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-705 border border-slate-200/50'
+                          }`}
+                        >
+                          গত মাস (Last Month)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDateFilter('specificMonth');
+                            if (!selectedSpecificMonth && availableFilterMonths.length > 0) {
+                              setSelectedSpecificMonth(availableFilterMonths[0]);
+                            }
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-[11px] font-extrabold transition-all cursor-pointer ${
+                            dateFilter === 'specificMonth'
+                              ? 'bg-indigo-600 text-white shadow-xs'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-705 border border-slate-200/50'
+                          }`}
+                        >
+                          নির্দিষ্ট মাস বাছাই করুন...
+                        </button>
+                      </div>
+
+                      {/* Selected specific month active dropdown */}
+                      {dateFilter === 'specificMonth' && (
+                        <div className="flex items-center gap-2 bg-indigo-50/70 border border-indigo-150 p-1 rounded-xl shadow-2xs">
+                          <span className="text-[10px] pl-2 font-black text-indigo-700 shrink-0">মাস বাছাই:</span>
+                          <select
+                            className="px-2 py-1 bg-white text-[11px] border border-indigo-200 text-slate-800 font-extrabold rounded-lg focus:outline-none cursor-pointer"
+                            value={selectedSpecificMonth}
+                            onChange={(e) => {
+                              setSelectedSpecificMonth(e.target.value);
+                              setDateFilter('specificMonth');
+                            }}
+                          >
+                            {availableFilterMonths.length === 0 && (
+                              <option value="">কোনো রেকর্ড নেই</option>
+                            )}
+                            {availableFilterMonths.map((mKey) => (
+                              <option key={mKey} value={mKey}>
+                                {getBanglaMonthYearName(mKey)} ({orders.filter(o => {
+                                  const od = new Date(o.createdAt);
+                                  const key = `${od.getFullYear()}-${String(od.getMonth() + 1).padStart(2, '0')}`;
+                                  return key === mKey;
+                                }).length} টি অর্ডার)
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Mode: Custom Date Picker range */}
+                  {dateSelectTab === 'custom' && (
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full font-sans">
+                      <div className="flex flex-wrap items-center gap-1.5 bg-gradient-to-r from-indigo-50 to-white border border-indigo-155 p-1 rounded-xl shadow-2xs">
+                        <div className="flex items-center gap-1 pl-1.5 text-indigo-705">
+                          <Calendar className="h-3.5 w-3.5 shrink-0" />
+                          <span className="text-[10px] font-bold tracking-wider uppercase shrink-0 text-indigo-700">From:</span>
+                        </div>
+                        <input
+                          type="date"
+                          className="px-2 py-1 bg-white border border-indigo-100 rounded text-xs text-indigo-950 font-black focus:outline-none cursor-pointer"
+                          value={customStartDate}
+                          onChange={(e) => {
+                            setCustomStartDate(e.target.value);
+                            setDateFilter('custom');
+                          }}
+                          title="শুরুর তারিখ"
+                        />
+                        <span className="text-indigo-400 text-[10px] font-black px-1 select-none">To:</span>
+                        <input
+                          type="date"
+                          className="px-2 py-1 bg-white border border-indigo-100 rounded text-xs text-indigo-950 font-black focus:outline-none cursor-pointer"
+                          value={customEndDate}
+                          onChange={(e) => {
+                            setCustomEndDate(e.target.value);
+                            setDateFilter('custom');
+                          }}
+                          title="শেষের তারিখ"
+                        />
+                      </div>
+                      
+                      {/* Quick clear tool or error notice */}
+                      <div className="flex items-center gap-1.5">
+                        {customStartDate && customEndDate && new Date(customStartDate) > new Date(customEndDate) && (
+                          <span className="text-[10px] text-red-650 bg-rose-50 border border-red-200 py-1.5 px-2.5 rounded-lg font-black">
+                            ⚠️ শুরুর তারিখ শেষের চেয়ে বড়!
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCustomStartDate('');
+                            setCustomEndDate('');
+                            setDateFilter('all');
+                          }}
+                          className="p-1 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-700 border border-slate-200 rounded-xl text-[10px] font-bold transition flex items-center gap-1 cursor-pointer"
+                        >
+                          রিসেট
                         </button>
                       </div>
                     </div>
+                  )}
+
+                </div>
+              </div>
+
+          {/* Filters shelf */}
+          <div className="flex flex-col lg:flex-row gap-4 items-center justify-between bg-white border border-slate-200/60 p-4 rounded-2xl shadow-[0_4px_12px_-5px_rgba(15,23,42,0.04)] mb-4 font-sans">
+            <div className="flex flex-col sm:flex-row flex-wrap items-center gap-3 w-full lg:w-auto">
+              {/* Search input */}
+              <div className="relative w-full sm:w-64">
+                <Search className="h-4 w-4 text-slate-400 absolute left-3.5 top-3" />
+                <input
+                  type="text"
+                  placeholder="নাম, ফোন বা ঠিকানা দিয়ে খুঁজুন..."
+                  className="w-full pl-9.5 pr-3.5 py-2 bg-slate-50/70 hover:bg-slate-50 focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-xl text-xs transition duration-200"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+
+              {/* Size filtering */}
+              <select
+                className="w-full sm:w-auto px-3 py-2 bg-slate-50/70 hover:bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:bg-white rounded-xl text-xs text-slate-700 font-bold focus:outline-none transition-all cursor-pointer font-sans"
+                value={filterSize}
+                onChange={(e) => setFilterSize(e.target.value)}
+              >
+                <option value="All">সকল সাইজ (All Sizes)</option>
+                <option value="XL">XL</option>
+                <option value="XXL">XXL</option>
+                <option value="3XL">3XL</option>
+                <option value="4XL">4XL</option>
+              </select>
+
+              {/* Status filtering */}
+              <select
+                className="w-full sm:w-auto px-3 py-2 bg-slate-50/70 hover:bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:bg-white rounded-xl text-xs text-slate-700 font-bold focus:outline-none transition-all cursor-pointer font-sans"
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+              >
+                <option value="All">সকল স্থিতি (All Statuses)</option>
+                <option value="Pending">🕒 অপেক্ষমান (Pending)</option>
+                <option value="Shipped">🚚 পাঠানো হয়েছে (Shipped)</option>
+                <option value="Delivered">✅ ডেলিভারড (Delivered)</option>
+                <option value="Canceled">❌ বাতিল/ফেইক (Canceled/Fake)</option>
+              </select>
+
+              {/* District filtering */}
+              <select
+                className="w-full sm:w-auto px-3 py-2 bg-slate-50/70 hover:bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:bg-white rounded-xl text-xs text-slate-700 font-bold focus:outline-none transition-all cursor-pointer font-sans"
+                value={filterDistrict}
+                onChange={(e) => setFilterDistrict(e.target.value)}
+              >
+                <option value="All">সকল জেলা (All Districts)</option>
+                {ALL_64_DISTRICTS.map((dist) => (
+                  <option key={dist.en} value={dist.en}>
+                    {dist.en} ({dist.bn})
+                  </option>
+                ))}
+                <option value="Other">Other (অন্যান্য)</option>
+              </select>
+            </div>
+            {showSheetsSection && (
+              <div id="sheets-section-container" className="bg-slate-50 border border-slate-200 p-5 rounded-2xl relative space-y-4 mb-4 font-sans animate-in fade-in duration-200">
+                <button
+                  type="button"
+                  onClick={() => setShowSheetsSection(false)}
+                  className="absolute right-3.5 top-3.5 p-1.5 hover:bg-slate-200 text-slate-450 hover:text-slate-600 rounded-lg transition shrink-0 cursor-pointer"
+                  title="বন্ধ করুন"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <span className="p-2 bg-emerald-100 text-emerald-700 rounded-lg">
+                    <FileSpreadsheet className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <h4 className="text-sm font-black text-slate-800 font-sans">গুগল স্প্রেডশিট (Google Sheets) রিয়েল-টাইม কানেক্টর</h4>
+                    <p className="text-[10px] text-slate-500">গ্রাহকের লাইভ ডাটা গুগল স্প্রেডশিটে অটোমেটিক ট্রান্সফার ও সিঙ্ক করুন।</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">গুগল স্প্রেডশিট আইডি (Spreadsheet ID)</label>
+                      <input
+                        type="text"
+                        value={spreadsheetId || ''}
+                        onChange={(e) => setSpreadsheetId(e.target.value)}
+                        placeholder="e.g. 1a2b3c4d5e6f7g8h9i0j..."
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-sans text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                      <span className="text-[9px] text-slate-450 block font-normal leading-normal">
+                        আপনার ব্রাউজারের অ্যাড্রেস বা লিংক থেকে স্প্রেডশিটের ইউনিক আইডিটি কপি করে এখানে পেস্ট করুন।
+                      </span>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!spreadsheetId?.trim()) {
+                            alert('দয়া করে সঠিক গুগল স্প্রেডশিট আইডি প্রবেশ করান!');
+                            return;
+                          }
+                          saveSheetsConfig({ spreadsheetId: spreadsheetId.trim() });
+                          setCopiedMessage("স্প্রেডশিট আইডি সফলভাবে সংরক্ষণ করা হয়েছে!");
+                          setTimeout(() => setCopiedMessage(""), 4000);
+                        }}
+                        className="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-lg text-xs transition cursor-pointer"
+                      >
+                        আইডি সংরক্ষণ করুন
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Right Column: Connection State Card & Sync Actions */}
-                  <div className="bg-slate-50 border border-slate-200/50 p-4 rounded-xl flex flex-col justify-between space-y-4">
+                  <div className="bg-white border border-slate-200/85 rounded-xl p-3.5 space-y-3 shadow-xs">
                     <div className="space-y-2">
                       <h5 className="text-xs font-bold text-slate-700 font-sans">ইন্টিগ্রেশন স্ট্যাটাস ও তথ্য</h5>
                       <div className="space-y-1.5 text-xs">
@@ -3056,7 +3865,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                     <th scope="col" className="px-4 py-2 text-center">অর্ডার কনফার্ম</th>
                     <th scope="col" className="px-4 py-2 text-center">ডেলিভারি স্থিতি</th>
                     <th scope="col" className="px-4 py-2 text-center">Steadfast সিঙ্ক</th>
-                    <th scope="col" className="px-4 py-2 text-center">মুছে ফেলুন</th>
+                    <th scope="col" className="px-4 py-2 text-center">পদক্ষেপ (Actions)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-sans">
@@ -3114,6 +3923,24 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                             <span>আইডি: #{order.id?.replace('ord-', '').slice(0, 8)}</span>
                             <span className="text-indigo-500 italic">{formatBanglaDate(order.createdAt)}</span>
                           </div>
+
+                          {order.calledBy && (
+                            <div className="inline-flex items-center gap-1 mt-1 bg-cyan-50 border border-cyan-150/60 text-cyan-850 text-[8.5px] font-bold px-1.5 py-0.5 rounded leading-none w-fit">
+                              <span className="font-semibold text-cyan-850">📞 এজেন্ট:</span>
+                              <strong className="text-cyan-950 font-mono bg-cyan-100/50 px-1 rounded-sm">@{order.calledBy}</strong>
+                              {order.callStatus && (
+                                <span className={`ml-1.5 px-1 py-0.5 rounded text-[8px] font-black leading-none uppercase ${
+                                  order.callStatus === 'Confirmed' 
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-250' 
+                                    : order.callStatus === 'Cancelled'
+                                      ? 'bg-rose-105 bg-rose-100 text-rose-800 border border-rose-250'
+                                      : 'bg-amber-100 text-amber-800 border border-amber-250'
+                                }`}>
+                                  {order.callStatus === 'Confirmed' ? 'কনফার্মড' : order.callStatus === 'Cancelled' ? 'বাতিল' : order.callStatus}
+                                </span>
+                              )}
+                            </div>
+                          )}
                           
                           {/* কন্টেইনার এ কনসাইনমেন্ট/ট্র্যাকিং আইডি ম্যানুয়াল বা অটো প্রদর্শন ও এডিট অপশন */}
                           <div className="mt-1 text-[9.5px]">
@@ -3145,13 +3972,13 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                                   </div>
                                 ) : (
                                   <div className="flex items-center gap-1 flex-wrap">
-                                    <span className="font-mono text-[9px] font-black text-slate-800 bg-white border border-slate-200 px-1 py-0.2 rounded">
-                                      📦 {order.trackingId}
+                                    <span className="font-mono text-[9.5px] font-black text-indigo-900 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded shadow-2xs">
+                                      📦 <strong>{order.consignmentId || order.trackingId}</strong>
                                     </span>
                                     <button
                                       onClick={() => {
                                         setEditingTrackingOrderId(order.id);
-                                        setTempTrackingId(order.trackingId || '');
+                                        setTempTrackingId(order.consignmentId || order.trackingId || '');
                                       }}
                                       className="text-[8px] text-blue-600 hover:text-indigo-700 font-semibold hover:underline cursor-pointer"
                                     >
@@ -3368,10 +4195,10 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                             <div className="flex items-center justify-center gap-1 animate-fadeIn">
                               <button
                                 onClick={() => handleDelete(order.id)}
-                                className="px-1.5 py-0.5 bg-red-650 hover:bg-red-750 text-white rounded text-[9px] font-bold shadow-xs transition-all"
+                                className="px-1.5 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded text-[9px] font-bold shadow-xs transition-all"
                                 title="মুছে ফেলা নিশ্চিত করুন"
                               >
-                                কনফার্ম
+                                কনফার্ম করুন
                               </button>
                               <button
                                 onClick={() => setDeletingOrderId(null)}
@@ -3383,6 +4210,13 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                             </div>
                           ) : (
                             <div className="flex items-center justify-center gap-1">
+                              <button
+                                onClick={() => handlePrintReceipt(order)}
+                                className="p-1 hover:bg-emerald-50 text-emerald-600 hover:text-emerald-800 rounded transition-all cursor-pointer inline-flex items-center justify-center border border-emerald-100/50"
+                                title="রশিদ প্রিন্ট (Print Receipt)"
+                              >
+                                <Printer className="h-3.2 w-3.2" />
+                              </button>
                               <button
                                 onClick={() => handleStartEditOrder(order)}
                                 className="p-1 hover:bg-indigo-50 text-indigo-600 hover:text-indigo-800 rounded transition-all cursor-pointer inline-flex items-center justify-center border border-indigo-100/50"
@@ -3644,8 +4478,8 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
         />
       )}
 
-      {activeTab === 'integrations' && (
-        <IntegrationsAdmin 
+      {activeTab === 'pixels' && (
+        <AdvancedPixelsAdmin 
           userRole={perms.canEdit ? userRole : 'ReadOnly'}
         />
       )}
@@ -3706,6 +4540,14 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
         <ReviewsAdmin 
           userRole={perms.canEdit ? userRole : 'ReadOnly'}
         />
+      )}
+
+      {activeTab === 'menu_bar_settings' && (
+        <MenuBarAdmin />
+      )}
+
+      {activeTab === 'calling_agents_management' && (
+        <CallingAgentsAdmin />
       )}
 
           </div>
@@ -4133,6 +4975,11 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                   <div style={{ fontSize: '10.5px', fontWeight: '950', fontFamily: 'monospace', color: '#000' }}>
                     {order.phone}
                   </div>
+                  {(order.consignmentId || order.trackingId) && (
+                    <div style={{ fontSize: '11px', fontWeight: '950', fontFamily: 'monospace', color: '#000', marginTop: '1.2px' }}>
+                      <b>{order.consignmentId || order.trackingId}</b>
+                    </div>
+                  )}
                 </div>
 
                 {/* Details Section: Color, Price, Weight/Height */}
@@ -4160,68 +5007,6 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                 </div>
               </div>
             ))}
-        </div>
-      )}
-
-      {/* Floating Real-time New Order alerts toasts container - beautifully compact, easily closable */}
-      {alerts.length > 0 && (
-        <div className="fixed right-3 bottom-3 md:right-5 md:bottom-5 z-[9999] flex flex-col gap-2 max-w-[315px] w-[calc(100%-1.5rem)] font-sans pointer-events-auto">
-          {alerts.map((alert) => (
-            <div
-              key={alert.id}
-              className="bg-slate-900 border border-amber-500/40 text-white p-3 rounded-xl shadow-2xl flex flex-col gap-2 relative animate-in slide-in-from-bottom duration-300 ring-1 ring-amber-500/10"
-            >
-              {/* Header */}
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-1.5 text-[11px] text-amber-400 font-extrabold tracking-wider uppercase animate-pulse">
-                  <Flame className="h-3.5 w-3.5 text-orange-500 shrink-0 fill-orange-500" />
-                  নতুন অর্ডার এসেছে!
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setAlerts(prev => prev.filter(a => a.id !== alert.id))}
-                  className="text-slate-400 hover:text-white p-2 hover:bg-slate-800 rounded-full transition flex items-center justify-center cursor-pointer"
-                  style={{ minWidth: '38px', minHeight: '38px' }}
-                  title="বন্ধ করুন (Close)"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-
-              {/* Order Info */}
-              <div className="bg-slate-950/85 p-2 rounded-lg border border-slate-800/80 space-y-1">
-                <div className="flex justify-between items-start gap-1.5">
-                  <div className="font-bold text-xs truncate max-w-[170px] text-slate-100">👤 {alert.order.name}</div>
-                  <div className="text-[9.5px] bg-indigo-950/60 border border-indigo-900 text-indigo-300 px-1.5 py-0.5 rounded font-black shrink-0">
-                    ৳{alert.order.price}
-                  </div>
-                </div>
-                <div className="text-[10px] font-bold font-mono text-emerald-400">📞 {alert.order.phone}</div>
-                <div className="text-[9.5px] text-slate-400 truncate">📍 {alert.order.district} {alert.order.policeStation ? `| ${alert.order.policeStation}` : ''}</div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center justify-between gap-2 pt-0.5">
-                <button
-                  type="button"
-                  onClick={() => setAlerts(prev => prev.filter(a => a.id !== alert.id))}
-                  className="px-2.5 py-1 text-slate-400 hover:text-slate-200 text-[10px] font-bold hover:underline transition"
-                >
-                  কেটে দিন
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchTerm(alert.order.id);
-                    setAlerts(prev => prev.filter(a => a.id !== alert.id));
-                  }}
-                  className="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg text-[10.5px] font-black cursor-pointer transition shadow-sm"
-                >
-                  অর্ডারটি দেখুন
-                </button>
-              </div>
-            </div>
-          ))}
         </div>
       )}
 

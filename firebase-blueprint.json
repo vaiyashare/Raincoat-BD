@@ -146,6 +146,49 @@
         "helpfulCount": { "type": "number", "description": "Upvote user metric count" }
       },
       "required": ["id", "customerName", "phoneNumberMasked", "verifiedPurchase", "rating"]
+    },
+    "CallingAgent": {
+      "title": "Calling Agent",
+      "description": "Calling agents login accounts managed by main administrator",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "password": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "username", "password", "createdAt"]
+    },
+    "CallingAgentLog": {
+      "title": "Calling Agent Activity Log",
+      "description": "Log actions performed by a calling agent",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "agentUsername": { "type": "string" },
+        "action": { "type": "string" },
+        "orderId": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "notes": { "type": "string" }
+      },
+      "required": ["id", "agentUsername", "action", "orderId", "timestamp"]
+    },
+    "MenuBarConfig": {
+      "title": "Menu Bar Configuration",
+      "description": "Customizable landing pages top navigation menu bar",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "brandName": { "type": "string" },
+        "visible": { "type": "boolean" },
+        "enableCategories": { "type": "boolean" },
+        "categoriesIcon": { "type": "string" },
+        "links": {
+          "type": "array",
+          "items": { "type": "object" }
+        }
+      },
+      "required": ["id", "brandName", "visible", "enableCategories", "links"]
     }
   },
   "firestore": {
@@ -180,6 +223,14 @@
     "activeSessions/{sessionId}": {
       "schema": "ActiveSession",
       "description": "Real-time active web visitor tracking sessions"
+    },
+    "callingAgents/{agentId}": {
+      "schema": "CallingAgent",
+      "description": "Agent accounts created by admin for sales calls"
+    },
+    "callingAgentLogs/{logId}": {
+      "schema": "CallingAgentLog",
+      "description": "Sales agent action trackers"
     }
   }
 }

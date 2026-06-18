@@ -23,6 +23,152 @@ export default function DailyOrdersChart({ orders, incompleteOrders }: DailyOrde
   const [timeframe, setTimeframe] = useState<7 | 14 | 30>(7);
   const [chartType, setChartType] = useState<'volume' | 'revenue'>('volume');
 
+  // Date-wise selection and Monthly analytics state
+  const [selectedMonth, setSelectedMonth] = useState<string>('All');
+  const [selectedDay, setSelectedDay] = useState<string>('');
+  const [customRangeStart, setCustomRangeStart] = useState<string>('');
+  const [customRangeEnd, setCustomRangeEnd] = useState<string>('');
+
+  // Extract all unique months in list
+  const availableMonths = useMemo(() => {
+    const list: string[] = [];
+    orders.forEach(o => {
+      if (!o.createdAt) return;
+      try {
+        const d = new Date(o.createdAt);
+        if (isNaN(d.getTime())) return;
+        const year = d.getFullYear();
+        const monthNum = String(d.getMonth() + 1).padStart(2, '0');
+        const monthKey = `${year}-${monthNum}`;
+        if (!list.includes(monthKey)) {
+          list.push(monthKey);
+        }
+      } catch (err) {}
+    });
+    incompleteOrders.forEach(o => {
+      if (!o.createdAt) return;
+      try {
+        const d = new Date(o.createdAt);
+        if (isNaN(d.getTime())) return;
+        const year = d.getFullYear();
+        const monthNum = String(d.getMonth() + 1).padStart(2, '0');
+        const monthKey = `${year}-${monthNum}`;
+        if (!list.includes(monthKey)) {
+          list.push(monthKey);
+        }
+      } catch (err) {}
+    });
+    return list.sort((a, b) => b.localeCompare(a));
+  }, [orders, incompleteOrders]);
+
+  // Compute month stats
+  const monthStats = useMemo(() => {
+    if (selectedMonth === 'All') return null;
+    let total = 0;
+    let completed = 0;
+    let drafts = 0;
+    let confirmed = 0;
+    let revenue = 0;
+
+    orders.forEach(o => {
+      if (!o.createdAt) return;
+      const orderMonth = o.createdAt.slice(0, 7);
+      if (orderMonth === selectedMonth) {
+        total++;
+        completed++;
+        const priceNum = typeof o.price === 'string' ? parseInt(o.price) : o.price;
+        if (!isNaN(priceNum)) revenue += priceNum;
+        if (o.isConfirmed || (o as any).callStatus === 'Confirmed' || (o as any).status === 'Pending') {
+          confirmed++;
+        }
+      }
+    });
+
+    incompleteOrders.forEach(o => {
+      if (!o.createdAt) return;
+      const orderMonth = o.createdAt.slice(0, 7);
+      if (orderMonth === selectedMonth) {
+        total++;
+        drafts++;
+      }
+    });
+
+    return { total, completed, drafts, confirmed, revenue };
+  }, [orders, incompleteOrders, selectedMonth]);
+
+  // Compute day stats
+  const dayStats = useMemo(() => {
+    if (!selectedDay) return null;
+    let total = 0;
+    let completed = 0;
+    let drafts = 0;
+    let confirmed = 0;
+    let revenue = 0;
+
+    orders.forEach(o => {
+      if (!o.createdAt) return;
+      const orderDay = o.createdAt.slice(0, 10);
+      if (orderDay === selectedDay) {
+        total++;
+        completed++;
+        const priceNum = typeof o.price === 'string' ? parseInt(o.price) : o.price;
+        if (!isNaN(priceNum)) revenue += priceNum;
+        if (o.isConfirmed || (o as any).callStatus === 'Confirmed' || (o as any).status === 'Pending') {
+          confirmed++;
+        }
+      }
+    });
+
+    incompleteOrders.forEach(o => {
+      if (!o.createdAt) return;
+      const orderDay = o.createdAt.slice(0, 10);
+      if (orderDay === selectedDay) {
+        total++;
+        drafts++;
+      }
+    });
+
+    return { total, completed, drafts, confirmed, revenue };
+  }, [orders, incompleteOrders, selectedDay]);
+
+  // Compute range stats
+  const rangeStats = useMemo(() => {
+    if (!customRangeStart || !customRangeEnd) return null;
+    let total = 0;
+    let completed = 0;
+    let drafts = 0;
+    let confirmed = 0;
+    let revenue = 0;
+
+    const start = new Date(customRangeStart).getTime();
+    const end = new Date(customRangeEnd + 'T23:59:59').getTime();
+
+    orders.forEach(o => {
+      if (!o.createdAt) return;
+      const oTime = new Date(o.createdAt).getTime();
+      if (!isNaN(oTime) && oTime >= start && oTime <= end) {
+        total++;
+        completed++;
+        const priceNum = typeof o.price === 'string' ? parseInt(o.price) : o.price;
+        if (!isNaN(priceNum)) revenue += priceNum;
+        if (o.isConfirmed || (o as any).callStatus === 'Confirmed' || (o as any).status === 'Pending') {
+          confirmed++;
+        }
+      }
+    });
+
+    incompleteOrders.forEach(o => {
+      if (!o.createdAt) return;
+      const oTime = new Date(o.createdAt).getTime();
+      if (!isNaN(oTime) && oTime >= start && oTime <= end) {
+        total++;
+        drafts++;
+      }
+    });
+
+    return { total, completed, drafts, confirmed, revenue };
+  }, [orders, incompleteOrders, customRangeStart, customRangeEnd]);
+
   // Process data for the charts
   const chartData = useMemo(() => {
     const result: { date: string; displayDate: string; completed: number; incomplete: number; sales: number }[] = [];
@@ -225,6 +371,156 @@ export default function DailyOrdersChart({ orders, incompleteOrders }: DailyOrde
       <div className={`p-2.5 rounded-xl border flex gap-2 items-start text-xs font-semibold leading-relaxed shadow-3xs ${insights.demandColor}`}>
         <Umbrella className="h-4.5 w-4.5 shrink-0 text-indigo-500 mt-0.5" />
         <div>{insights.demandAssessment}</div>
+      </div>
+
+      {/* 🔎 কাস্টম ডেট এবং মান্থলি ফিল্টারিং এনালাইজার (Date-wise & Monthly Counter) */}
+      <div className="bg-slate-100/50 rounded-2xl p-4 border border-slate-200/60 shadow-3xs space-y-4 text-slate-805">
+        <div className="flex items-center gap-1.5 border-b border-slate-200 pb-2">
+          <Calendar className="h-4.5 w-4.5 text-indigo-650 text-indigo-600" />
+          <h4 className="text-xs font-black text-slate-800">তারিখ ও মাস ভিত্তিক বিস্তারিত অর্ডার সামারি (Advanced Date & Month Selector)</h4>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          
+          {/* Column 1: Month Selector */}
+          <div className="bg-white p-3 rounded-xl border border-slate-205 space-y-2.5">
+            <label className="text-[10px] font-black uppercase text-slate-500 block">মাস সিলেক্ট করুন (Select Month)</label>
+            <select
+              value={selectedMonth}
+              onChange={(e) => {
+                setSelectedMonth(e.target.value);
+                setSelectedDay('');
+                setCustomRangeStart('');
+                setCustomRangeEnd('');
+              }}
+              className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold focus:outline-hidden focus:ring-1 focus:ring-indigo-500 focus:border-indigo-505 cursor-pointer text-slate-800"
+            >
+              <option value="All">মাস নির্বাচন করুন (All)</option>
+              {availableMonths.map(m => {
+                const [year, month] = m.split('-');
+                const monthNamesBangla: {[key: string]: string} = {
+                  '01': 'জানুয়ারি', '02': 'ফেব্রুয়ারি', '03': 'মার্চ', '04': 'এপ্রিল',
+                  '05': 'মে', '06': 'জুন', '07': 'জুলাই', '08': 'আগস্ট',
+                  '09': 'সেপ্টেম্বর', '10': 'অক্টোবর', '11': 'নভেম্বর', '12': 'ডিসেম্বর'
+                };
+                return (
+                  <option key={m} value={m}>{monthNamesBangla[month] || month} {year}</option>
+                );
+              })}
+            </select>
+
+            {monthStats ? (
+              <div className="bg-slate-50/50 p-2.5 rounded-lg border border-slate-150 text-[11px] space-y-1 font-sans">
+                <div className="flex justify-between font-medium">
+                  <span>মোট অর্ডার:</span> <strong className="font-mono text-slate-700">{monthStats.total} টি</strong>
+                </div>
+                <div className="flex justify-between text-slate-500 text-[10px]">
+                  <span>সফল (Completed):</span> <strong className="font-mono text-emerald-600">{monthStats.completed} টি</strong>
+                </div>
+                <div className="flex justify-between text-slate-500 text-[10px]">
+                  <span>ইনকমপ্লিট (ড্রাফট):</span> <strong className="font-mono text-amber-600">{monthStats.drafts} টি</strong>
+                </div>
+                <div className="flex justify-between border-t border-slate-200 pt-1 mt-1 font-bold text-slate-800">
+                  <span className="text-emerald-700">কনফার্মড লিড:</span> <strong className="font-mono text-emerald-700">{monthStats.confirmed} টি</strong>
+                </div>
+                <div className="flex justify-between border-t border-slate-200 pt-1 text-[10px] text-indigo-650">
+                  <span>মাসিক রেভিনিউ:</span> <strong className="font-mono font-black">{monthStats.revenue.toLocaleString()} TK</strong>
+                </div>
+              </div>
+            ) : (
+              <p className="text-[10px] text-slate-400 italic text-center pt-2">কোনো মাস নির্বাচন করা হয়নি</p>
+            )}
+          </div>
+
+          {/* Column 2: Specific Day Selector */}
+          <div className="bg-white p-3 rounded-xl border border-slate-205 space-y-2.5">
+            <label className="text-[10px] font-black uppercase text-slate-500 block">নির্দিষ্ট দিন সিলেক্ট করুন (Select Day)</label>
+            <input
+              type="date"
+              value={selectedDay}
+              onChange={(e) => {
+                setSelectedDay(e.target.value);
+                setSelectedMonth('All');
+                setCustomRangeStart('');
+                setCustomRangeEnd('');
+              }}
+              className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-hidden focus:ring-1 focus:ring-indigo-550 cursor-pointer text-slate-700"
+            />
+
+            {dayStats ? (
+              <div className="bg-slate-50/50 p-2.5 rounded-lg border border-slate-150 text-[11px] space-y-1 font-sans">
+                <div className="flex justify-between font-medium">
+                  <span>মোট অর্ডার:</span> <strong className="font-mono text-slate-700">{dayStats.total} টি</strong>
+                </div>
+                <div className="flex justify-between text-slate-500 text-[10px]">
+                  <span>সফল (Completed):</span> <strong className="font-mono text-emerald-600">{dayStats.completed} টি</strong>
+                </div>
+                <div className="flex justify-between text-slate-500 text-[10px]">
+                  <span>ইনকমপ্লিট (ড্রাফট):</span> <strong className="font-mono text-amber-600">{dayStats.drafts} টি</strong>
+                </div>
+                <div className="flex justify-between border-t border-slate-200 pt-1 mt-1 font-bold text-slate-800">
+                  <span className="text-emerald-700">কনফার্মড লিড:</span> <strong className="font-mono text-emerald-700">{dayStats.confirmed} টি</strong>
+                </div>
+                <div className="flex justify-between border-t border-slate-200 pt-1 text-[10px] text-indigo-650">
+                  <span>দৈনিক রেভিনিউ:</span> <strong className="font-mono font-black">{dayStats.revenue.toLocaleString()} TK</strong>
+                </div>
+              </div>
+            ) : (
+              <p className="text-[10px] text-slate-400 italic text-center pt-2">কোনো দিন নির্বাচন করা হয়নি</p>
+            )}
+          </div>
+
+          {/* Column 3: Customer Date Range Picker */}
+          <div className="bg-white p-3 rounded-xl border border-slate-205 space-y-2.5">
+            <label className="text-[10px] font-black uppercase text-slate-500 block">কাস্টম ডেট রেঞ্জ (Date Range)</label>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="date"
+                value={customRangeStart}
+                onChange={(e) => {
+                  setCustomRangeStart(e.target.value);
+                  setSelectedMonth('All');
+                  setSelectedDay('');
+                }}
+                className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-md text-[10px] font-semibold text-slate-800 focus:outline-hidden"
+              />
+              <span className="text-slate-400 text-xs font-bold">টু</span>
+              <input
+                type="date"
+                value={customRangeEnd}
+                onChange={(e) => {
+                  setCustomRangeEnd(e.target.value);
+                  setSelectedMonth('All');
+                  setSelectedDay('');
+                }}
+                className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-md text-[10px] font-semibold text-slate-800 focus:outline-hidden"
+              />
+            </div>
+
+            {rangeStats ? (
+              <div className="bg-slate-50/50 p-2.5 rounded-lg border border-slate-150 text-[11px] space-y-1 font-sans">
+                <div className="flex justify-between font-medium">
+                  <span>মোট অর্ডার:</span> <strong className="font-mono text-slate-700">{rangeStats.total} টি</strong>
+                </div>
+                <div className="flex justify-between text-slate-500 text-[10px]">
+                  <span>সফল (Completed):</span> <strong className="font-mono text-emerald-600">{rangeStats.completed} টি</strong>
+                </div>
+                <div className="flex justify-between text-slate-500 text-[10px]">
+                  <span>ইনকমপ্লিট (ড্রাফট):</span> <strong className="font-mono text-amber-600">{rangeStats.drafts} টি</strong>
+                </div>
+                <div className="flex justify-between border-t border-slate-200 pt-1 mt-1 font-bold text-slate-805 text-emerald-700">
+                  <span>কনফার্মড লিড:</span> <strong className="font-mono text-emerald-700">{rangeStats.confirmed} টি</strong>
+                </div>
+                <div className="flex justify-between border-t border-slate-200 pt-1 text-[10px] text-indigo-650">
+                  <span>মোট রেভিনিউ:</span> <strong className="font-mono font-black">{rangeStats.revenue.toLocaleString()} TK</strong>
+                </div>
+              </div>
+            ) : (
+              <p className="text-[10px] text-slate-400 italic text-center pt-2">তারিখের রেঞ্জ নির্বাচন করুন</p>
+            )}
+          </div>
+
+        </div>
       </div>
 
       {/* Chart Settings and Chart Selection */}

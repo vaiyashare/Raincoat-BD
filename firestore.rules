@@ -141,5 +141,15 @@ service cloud.firestore {
       allow create, update: if isValidId(reviewId);
       allow delete: if true;
     }
+
+    // Calling Agents Collection Rules
+    match /callingAgents/{agentId} {
+      allow read, write: if true;
+    }
+
+    // Calling Agent Logs Collection Rules
+    match /callingAgentLogs/{logId} {
+      allow read, write: if true;
+    }
   }
 }

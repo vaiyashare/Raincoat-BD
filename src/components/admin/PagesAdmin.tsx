@@ -2,29 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { 
   Plus, Trash2, ArrowUp, ArrowDown, Settings, ChevronRight, 
   Sparkles, Save, Edit, Layout, AlignLeft, AlignCenter, AlignRight, FileText,
-  Copy
+  Copy, Globe, Star, Image as ImageIcon, Heart, MapPin
 } from 'lucide-react';
-import { savePagesToFirestore, getPagesFromFirestore } from '../../lib/firebase';
-
-interface PageBlock {
-  id: string;
-  type: 'headline' | 'text' | 'image' | 'video' | 'button' | 'form' | 'shop';
-  content: string;
-  styles?: {
-    color?: string;
-    bgColor?: string;
-    fontSize?: string;
-    padding?: string;
-    textAlign?: 'left' | 'center' | 'right';
-  };
-}
-
-interface CustomPage {
-  id: string;
-  title: string;
-  slug: string;
-  blocks: PageBlock[];
-}
+import { 
+  savePagesToFirestore, 
+  getPagesFromFirestore,
+  getCustomReviewsFromFirestore,
+  saveReviewToFirestore
+} from '../../lib/firebase';
+import { PageBlock, CustomPage, CustomerReview } from '../../types';
 
 interface PagesAdminProps {
   onRefreshPages: () => void;
@@ -34,6 +20,7 @@ interface PagesAdminProps {
 export default function PagesAdmin({ onRefreshPages, userRole }: PagesAdminProps) {
   const [pages, setPages] = useState<CustomPage[]>([]);
   const [selectedPage, setSelectedPage] = useState<CustomPage | null>(null);
+  const [customReviews, setCustomReviews] = useState<CustomerReview[]>([]);
   
   // Page creation form
   const [newPageTitle, setNewPageTitle] = useState('');
@@ -88,8 +75,18 @@ export default function PagesAdmin({ onRefreshPages, userRole }: PagesAdminProps
     }
   };
 
+  const fetchAllReviews = async () => {
+    try {
+      const list = await getCustomReviewsFromFirestore();
+      setCustomReviews(list);
+    } catch (err) {
+      console.error('Error fetching reviews:', err);
+    }
+  };
+
   useEffect(() => {
     loadPages();
+    fetchAllReviews();
   }, []);
 
   const savePagesList = async (newList: CustomPage[]) => {
@@ -194,20 +191,42 @@ export default function PagesAdmin({ onRefreshPages, userRole }: PagesAdminProps
       video: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
       button: '#checkout-form',
       form: 'ঝুঁকিমুক্ত উপায়ে ঘরে বসেই রেইনকোটটি বুঝে নিন!',
-      shop: 'আমাদের আকর্ষনীয় রেইনকোট শপ কালেকশন'
+      shop: 'আমাদের আকর্ষনীয় রেইনকোট শপ কালেকশন',
+      carousel: 'ঘুরন্ত গ্যালারি স্লাইডার',
+      icons: 'ফিচার উইজেট তালিকা',
+      dropdown: 'প্রশ্নোত্তর ড্রপডাউন',
+      'reviews-slider': 'কাস্টমার রিভিউ স্লাইডার'
     };
 
     const newBlock: PageBlock = {
       id: 'blk-' + Math.floor(Math.random() * 100000),
       type,
-      content: defaultContents[type],
+      content: defaultContents[type] || '',
       styles: {
         color: type === 'headline' ? '#0f172a' : '#475569',
         bgColor: '#ffffff',
         fontSize: 'md',
         padding: 'normal',
         textAlign: 'left'
-      }
+      },
+      carouselImages: type === 'carousel' ? [
+        'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=600',
+        'https://images.unsplash.com/photo-1622434641406-a158123450f9?auto=format&fit=crop&q=80&w=600',
+        'https://images.unsplash.com/photo-1510200378107-1601ee036683?auto=format&fit=crop&q=80&w=600'
+      ] : undefined,
+      items: type === 'icons' ? [
+        { id: 'i-1', icon: '🛡️', title: '১০০% ওয়াটারপ্রুফ গ্যারান্টি', text: 'আমাদের রেনকোটে ডাবল থার্মাল-সিল কোটিং রয়েছে।' },
+        { id: 'i-2', icon: '🚚', title: 'সারাদেশে ক্যাশ অন ডেলিভারি', text: 'কোনো অগ্রিম পেমেন্ট ছাড়া হাতে পেয়ে টাকা পরিশোধ করুন।' },
+        { id: 'i-3', icon: '📞', title: '২৪/৭ গ্রাহক সেবা', text: 'যেকোনো প্রয়োজনে আমাদের মোবাইল নাম্বারে যোগাযোগ করুন।' }
+      ] : undefined,
+      dropdownOptions: type === 'dropdown' ? [
+        { id: 'd-1', label: '১. রেইনকোটটির সাইজ কি কি আছে?', value: 'আমাদের কাছে M থেকে 4XL পর্যন্ত সকল সাইজ পাবেন।' },
+        { id: 'd-2', label: '২. কাপড় ধুতে পারবো কি?', value: 'জি অবশ্যই, আপনি সাধারণ ডিটারজেন্ট দিয়ে হাত দিয়ে ধুয়ে নিতে পারবেন।' },
+        { id: 'd-3', label: '৩. ট্র্যাকিং লিংক পাবো কিভাবে?', value: 'অর্ডার করার পর আপনার মোবাইল ফোনে সরাসরি ট্র্যাকিং লিংক চলে যাবে।' }
+      ] : undefined,
+      reviewIds: type === 'reviews-slider' ? [] : undefined,
+      customButtonText: type === 'form' ? 'অর্ডার কনফার্ম করুন (ক্যাশ অন ডেলিভারি)' : undefined,
+      hideMetrics: type === 'form' ? false : undefined
     };
 
     const updatedPage = {
@@ -215,6 +234,185 @@ export default function PagesAdmin({ onRefreshPages, userRole }: PagesAdminProps
       blocks: [...selectedPage.blocks, newBlock]
     };
 
+    const updatedPages = pages.map(p => p.id === selectedPage.id ? updatedPage : p);
+    await savePagesList(updatedPages);
+    setSelectedPage(updatedPage);
+  };
+
+  // Carousel Image mutations
+  const addCarouselImage = async (blockId: string, url: string) => {
+    if (!selectedPage || userRole === 'ReadOnly') return;
+    const updatedBlocks = selectedPage.blocks.map(b => {
+      if (b.id === blockId) {
+        return {
+          ...b,
+          carouselImages: [...(b.carouselImages || []), url]
+        };
+      }
+      return b;
+    });
+    const updatedPage = { ...selectedPage, blocks: updatedBlocks };
+    const updatedPages = pages.map(p => p.id === selectedPage.id ? updatedPage : p);
+    await savePagesList(updatedPages);
+    setSelectedPage(updatedPage);
+  };
+
+  const updateCarouselImage = async (blockId: string, imgIndex: number, url: string) => {
+    if (!selectedPage || userRole === 'ReadOnly') return;
+    const updatedBlocks = selectedPage.blocks.map(b => {
+      if (b.id === blockId) {
+        const arr = [...(b.carouselImages || [])];
+        arr[imgIndex] = url;
+        return { ...b, carouselImages: arr };
+      }
+      return b;
+    });
+    const updatedPage = { ...selectedPage, blocks: updatedBlocks };
+    const updatedPages = pages.map(p => p.id === selectedPage.id ? updatedPage : p);
+    await savePagesList(updatedPages);
+    setSelectedPage(updatedPage);
+  };
+
+  const deleteCarouselImage = async (blockId: string, imgIndex: number) => {
+    if (!selectedPage || userRole === 'ReadOnly') return;
+    const updatedBlocks = selectedPage.blocks.map(b => {
+      if (b.id === blockId) {
+        const arr = (b.carouselImages || []).filter((_, i) => i !== imgIndex);
+        return { ...b, carouselImages: arr };
+      }
+      return b;
+    });
+    const updatedPage = { ...selectedPage, blocks: updatedBlocks };
+    const updatedPages = pages.map(p => p.id === selectedPage.id ? updatedPage : p);
+    await savePagesList(updatedPages);
+    setSelectedPage(updatedPage);
+  };
+
+  // Icon item mutations
+  const updateIconItem = async (blockId: string, itemId: string, field: 'icon' | 'title' | 'text', value: string) => {
+    if (!selectedPage || userRole === 'ReadOnly') return;
+    const updatedBlocks = selectedPage.blocks.map(b => {
+      if (b.id === blockId) {
+        const items = (b.items || []).map(item => {
+          if (item.id === itemId) return { ...item, [field]: value };
+          return item;
+        });
+        return { ...b, items };
+      }
+      return b;
+    });
+    const updatedPage = { ...selectedPage, blocks: updatedBlocks };
+    const updatedPages = pages.map(p => p.id === selectedPage.id ? updatedPage : p);
+    await savePagesList(updatedPages);
+    setSelectedPage(updatedPage);
+  };
+
+  const addIconItem = async (blockId: string) => {
+    if (!selectedPage || userRole === 'ReadOnly') return;
+    const newItem = { id: 'i-' + Math.floor(Math.random() * 100000), icon: '🌟', title: 'নতুন ফিচার টাইটেল', text: 'এখানে সুন্দর বর্ণনা লিখুন।' };
+    const updatedBlocks = selectedPage.blocks.map(b => {
+      if (b.id === blockId) {
+        return { ...b, items: [...(b.items || []), newItem] };
+      }
+      return b;
+    });
+    const updatedPage = { ...selectedPage, blocks: updatedBlocks };
+    const updatedPages = pages.map(p => p.id === selectedPage.id ? updatedPage : p);
+    await savePagesList(updatedPages);
+    setSelectedPage(updatedPage);
+  };
+
+  const deleteIconItem = async (blockId: string, itemId: string) => {
+    if (!selectedPage || userRole === 'ReadOnly') return;
+    const updatedBlocks = selectedPage.blocks.map(b => {
+      if (b.id === blockId) {
+        return { ...b, items: (b.items || []).filter(item => item.id !== itemId) };
+      }
+      return b;
+    });
+    const updatedPage = { ...selectedPage, blocks: updatedBlocks };
+    const updatedPages = pages.map(p => p.id === selectedPage.id ? updatedPage : p);
+    await savePagesList(updatedPages);
+    setSelectedPage(updatedPage);
+  };
+
+  // Dropdown item mutations
+  const updateDropdownOption = async (blockId: string, optionId: string, field: 'label' | 'value', value: string) => {
+    if (!selectedPage || userRole === 'ReadOnly') return;
+    const updatedBlocks = selectedPage.blocks.map(b => {
+      if (b.id === blockId) {
+        const dropdownOptions = (b.dropdownOptions || []).map(opt => {
+          if (opt.id === optionId) return { ...opt, [field]: value };
+          return opt;
+        });
+        return { ...b, dropdownOptions };
+      }
+      return b;
+    });
+    const updatedPage = { ...selectedPage, blocks: updatedBlocks };
+    const updatedPages = pages.map(p => p.id === selectedPage.id ? updatedPage : p);
+    await savePagesList(updatedPages);
+    setSelectedPage(updatedPage);
+  };
+
+  const addDropdownOption = async (blockId: string) => {
+    if (!selectedPage || userRole === 'ReadOnly') return;
+    const newOpt = { id: 'd-' + Math.floor(Math.random() * 100000), label: 'নতুন প্রশ্নোত্তর ড্রপডাউন প্রশ্ন', value: 'এখানে বিস্তারিত উত্তর বা মন্তব্য লিখুন।' };
+    const updatedBlocks = selectedPage.blocks.map(b => {
+      if (b.id === blockId) {
+        return { ...b, dropdownOptions: [...(b.dropdownOptions || []), newOpt] };
+      }
+      return b;
+    });
+    const updatedPage = { ...selectedPage, blocks: updatedBlocks };
+    const updatedPages = pages.map(p => p.id === selectedPage.id ? updatedPage : p);
+    await savePagesList(updatedPages);
+    setSelectedPage(updatedPage);
+  };
+
+  const deleteDropdownOption = async (blockId: string, optionId: string) => {
+    if (!selectedPage || userRole === 'ReadOnly') return;
+    const updatedBlocks = selectedPage.blocks.map(b => {
+      if (b.id === blockId) {
+        return { ...b, dropdownOptions: (b.dropdownOptions || []).filter(opt => opt.id !== optionId) };
+      }
+      return b;
+    });
+    const updatedPage = { ...selectedPage, blocks: updatedBlocks };
+    const updatedPages = pages.map(p => p.id === selectedPage.id ? updatedPage : p);
+    await savePagesList(updatedPages);
+    setSelectedPage(updatedPage);
+  };
+
+  // Form custom config mutations
+  const updateFormConfig = async (blockId: string, field: 'customButtonText' | 'hideMetrics', value: any) => {
+    if (!selectedPage || userRole === 'ReadOnly') return;
+    const updatedBlocks = selectedPage.blocks.map(b => {
+      if (b.id === blockId) {
+        return { ...b, [field]: value };
+      }
+      return b;
+    });
+    const updatedPage = { ...selectedPage, blocks: updatedBlocks };
+    const updatedPages = pages.map(p => p.id === selectedPage.id ? updatedPage : p);
+    await savePagesList(updatedPages);
+    setSelectedPage(updatedPage);
+  };
+
+  // Reviews-slider reviewIds selection toggle helper
+  const toggleReviewOnBlock = async (blockId: string, reviewId: string) => {
+    if (!selectedPage || userRole === 'ReadOnly') return;
+    const updatedBlocks = selectedPage.blocks.map(b => {
+      if (b.id === blockId) {
+        const selected = b.reviewIds || [];
+        const updated = selected.includes(reviewId)
+          ? selected.filter(id => id !== reviewId)
+          : [...selected, reviewId];
+        return { ...b, reviewIds: updated };
+      }
+      return b;
+    });
+    const updatedPage = { ...selectedPage, blocks: updatedBlocks };
     const updatedPages = pages.map(p => p.id === selectedPage.id ? updatedPage : p);
     await savePagesList(updatedPages);
     setSelectedPage(updatedPage);
@@ -426,49 +624,73 @@ export default function PagesAdmin({ onRefreshPages, userRole }: PagesAdminProps
 
               {/* Add block elements buttons (Elementor Toolbox) */}
               <div className="bg-slate-50 border border-slate-200 border-dashed p-4 rounded-xl space-y-2">
-                <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest block mb-2">➕ এলিমেন্টর কন্টেন্ট উইজেটস (Elementor Widgets)</span>
-                <div className="flex flex-wrap gap-2 text-[11px]">
+                <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest block mb-1">➕ এলিমেন্টর কন্টেন্ট উইজেটস (Elementor Pro Widgets)</span>
+                <div className="flex flex-wrap gap-1.5 text-[11px]">
                   <button 
                     onClick={() => addBlock('headline')}
-                    className="py-1.5 px-3 bg-white hover:bg-indigo-50 hover:text-indigo-600 border border-slate-200 text-slate-700 font-extrabold rounded-lg shadow-2xs flex items-center gap-1 cursor-pointer transition"
+                    className="py-1 px-2.5 bg-white hover:bg-indigo-50 hover:text-indigo-600 border border-slate-200 text-slate-700 font-extrabold rounded-lg shadow-2xs flex items-center gap-1 cursor-pointer transition text-[11px]"
                   >
                     H1 হেডিং
                   </button>
                   <button 
                     onClick={() => addBlock('text')}
-                    className="py-1.5 px-3 bg-white hover:bg-indigo-50 hover:text-indigo-600 border border-slate-200 text-slate-700 font-extrabold rounded-lg shadow-2xs flex items-center gap-1 cursor-pointer transition"
+                    className="py-1 px-2.5 bg-white hover:bg-indigo-50 hover:text-indigo-600 border border-slate-200 text-slate-700 font-extrabold rounded-lg shadow-2xs flex items-center gap-1 cursor-pointer transition text-[11px]"
                   >
-                    T বিবরণ কপি
+                    T বর্ণনা কপি
                   </button>
                   <button 
                     onClick={() => addBlock('image')}
-                    className="py-1.5 px-3 bg-white hover:bg-indigo-50 hover:text-indigo-600 border border-slate-200 text-slate-700 font-extrabold rounded-lg shadow-2xs flex items-center gap-1 cursor-pointer transition"
+                    className="py-1 px-2.5 bg-white hover:bg-indigo-50 hover:text-indigo-600 border border-slate-200 text-slate-700 font-extrabold rounded-lg shadow-2xs flex items-center gap-1 cursor-pointer transition text-[11px]"
                   >
                     🖼️ ছবি URL
                   </button>
                   <button 
+                    onClick={() => addBlock('carousel')}
+                    className="py-1 px-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-extrabold rounded-lg shadow-2xs flex items-center gap-1 cursor-pointer transition text-[11px]"
+                  >
+                    🎠 স্লাইডার গ্যালারি
+                  </button>
+                  <button 
+                    onClick={() => addBlock('icons')}
+                    className="py-1 px-2.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-extrabold rounded-lg shadow-2xs flex items-center gap-1 cursor-pointer transition text-[11px]"
+                  >
+                    ✨ ফিচার আইকন
+                  </button>
+                  <button 
+                    onClick={() => addBlock('dropdown')}
+                    className="py-1 px-2.5 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 font-extrabold rounded-lg shadow-2xs flex items-center gap-1 cursor-pointer transition text-[11px]"
+                  >
+                    🔽 ড্রপডাউন FAQ
+                  </button>
+                  <button 
                     onClick={() => addBlock('video')}
-                    className="py-1.5 px-3 bg-white hover:bg-indigo-50 hover:text-indigo-600 border border-slate-200 text-slate-700 font-extrabold rounded-lg shadow-2xs flex items-center gap-1 cursor-pointer transition"
+                    className="py-1 px-2.5 bg-white hover:bg-indigo-50 hover:text-indigo-600 border border-slate-200 text-slate-700 font-extrabold rounded-lg shadow-2xs flex items-center gap-1 cursor-pointer transition text-[11px]"
                   >
                     🎥 ভিডিও এমবেড
                   </button>
                   <button 
                     onClick={() => addBlock('button')}
-                    className="py-1.5 px-3 bg-white hover:bg-indigo-50 hover:text-indigo-600 border border-slate-200 text-slate-700 font-extrabold rounded-lg shadow-2xs flex items-center gap-1 cursor-pointer transition"
+                    className="py-1 px-2.5 bg-white hover:bg-indigo-50 hover:text-indigo-600 border border-slate-200 text-slate-700 font-extrabold rounded-lg shadow-2xs flex items-center gap-1 cursor-pointer transition text-[11px]"
                   >
                     🔗 অ্যাকশন বাটন
                   </button>
                   <button 
                     onClick={() => addBlock('form')}
-                    className="py-1.5 px-3 bg-white hover:bg-indigo-50 hover:text-indigo-600 border border-slate-200 text-slate-700 font-extrabold rounded-lg shadow-2xs flex items-center gap-1 cursor-pointer transition"
+                    className="py-1 px-2.5 bg-emerald-50 hover:bg-emerald-150 text-emerald-700 border border-emerald-200 font-extrabold rounded-lg shadow-2xs flex items-center gap-1 cursor-pointer transition text-[11px]"
                   >
-                    📝 কুইক অর্ডার ফর্ম
+                    📝 কাস্টম অর্ডার ফর্ম
+                  </button>
+                  <button 
+                    onClick={() => addBlock('reviews-slider')}
+                    className="py-1 px-2.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 font-extrabold rounded-lg shadow-2xs flex items-center gap-1 cursor-pointer transition text-[11px]"
+                  >
+                    ⭐ রিভিউ স্লাইডার
                   </button>
                   <button 
                     onClick={() => addBlock('shop')}
-                    className="py-1.5 px-3 bg-amber-500 hover:bg-amber-600 text-white border border-amber-600 font-black rounded-lg shadow-2xs flex items-center gap-1 cursor-pointer transition"
+                    className="py-1 px-2.5 bg-amber-500 hover:bg-amber-600 text-white border border-amber-600 font-black rounded-lg shadow-2xs flex items-center gap-1 cursor-pointer transition text-[11px]"
                   >
-                    🛒 লাইভ শপ ক্যাটালগ
+                    🛒 লাইভ ক্যাটালগ
                   </button>
                 </div>
               </div>
@@ -491,8 +713,12 @@ export default function PagesAdmin({ onRefreshPages, userRole }: PagesAdminProps
                            block.type === 'text' ? 'T প্যারাগ্রাফ ও বিবরণ' :
                            block.type === 'image' ? '🖼️ ছবি ব্লক' :
                            block.type === 'video' ? '🎥 ভিডিও (ইউটিউব/ফেসবুক)' :
-                           block.type === 'button' ? '🔗 কাস্টম অ্যাকশন লিঙ্ক বা অন্য বাটন' :
+                           block.type === 'button' ? '🔗 কাস্টম অ্যাকশন লিঙ্ক বা বাটন' :
                            block.type === 'form' ? '📝 কাস্টমার ক্যাশ-অন ফর্ম' :
+                           block.type === 'carousel' ? '🎠 ঘুরন্ত ইমেজ স্লাইডার (Carousel)' :
+                           block.type === 'icons' ? '✨ ফিচার আইকন উইজেট তালিকা' :
+                           block.type === 'dropdown' ? '🔽 প্রশ্নোত্তর ড্রপডাউন (Accordion)' :
+                           block.type === 'reviews-slider' ? '⭐ কাস্টমার রিভিউ স্লাইডার' :
                            '🛒 শপ ক্যাটালগ ব্লক'}
                         </span>
                         
@@ -531,6 +757,10 @@ export default function PagesAdmin({ onRefreshPages, userRole }: PagesAdminProps
                              block.type === 'video' ? 'ইউটিউব বা ফেসবুক ভিডিও লিংক' :
                              block.type === 'button' ? 'বাটন অ্যাকশন লিঙ্ক (যেমন: #checkout-form বা কোনো বাহ্যিক লিঙ্ক)' :
                              block.type === 'form' ? 'ক্যাশবুকিং অর্ডার ফর্মের কাস্টম শিরোনাম (ফাঁকা রাখলে ডিফল্ট শিরোনাম দেখাবে)' :
+                             block.type === 'carousel' ? 'স্লাইডারের কাস্টম টাইটেল বা সেকশন হেডিং (ঐচ্ছিক)' :
+                             block.type === 'icons' ? 'ফিচার সেকশন এর কাস্টম হেডিং (ঐচ্ছিক)' :
+                             block.type === 'dropdown' ? 'প্রশ্নোত্তর ড্রপডাউন সেকশন কাস্টম টাইটেল (ঐচ্ছিক)' :
+                             block.type === 'reviews-slider' ? 'টেস্টিমোনিয়াল স্লাইডার কাস্টম শিরোনাম (ঐচ্ছিক)' :
                              'শপ ক্যাটালগের কাস্টম বিবরণ বা স্লোগান শিরোনাম'}
                           </label>
                           {block.type === 'text' || block.type === 'form' ? (
@@ -555,12 +785,225 @@ export default function PagesAdmin({ onRefreshPages, userRole }: PagesAdminProps
                                 block.type === 'image' ? 'ছবি এর সঠিক Unsplash / হোস্ট করা ইমেজ URL দিন' :
                                 block.type === 'video' ? 'ইউটিউব বা ফেসবুক রিলস ভিডিও লিংক' :
                                 block.type === 'shop' ? 'যেমন: আমাদের প্রিমিয়াম রেইনকোট শপ কালেকশন...' :
+                                block.type === 'carousel' ? 'যেমন: আমাদের কুইক গ্যালারি ভিউ স্লাইডার...' :
                                 'বাটন এর সঠিক লিংক (যেমন: #checkout-form)'
                               }
                               disabled={userRole === 'ReadOnly'}
                             />
                           )}
                         </div>
+
+                        {/* Carousel deep config */}
+                        {block.type === 'carousel' && (
+                          <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+                            <span className="text-[10px] font-black text-indigo-700 block uppercase">🎠 স্লাইডার ইমেজ তালিকা (Carousel Gallery Images)</span>
+                            <div className="space-y-2">
+                              {(block.carouselImages || []).map((imgUrl, imgIdx) => (
+                                <div key={imgIdx} className="flex gap-1.5 items-center">
+                                  <span className="text-[10px] text-slate-400 font-mono font-bold">#{imgIdx+1}</span>
+                                  <input
+                                    type="text"
+                                    value={imgUrl}
+                                    onChange={(e) => updateCarouselImage(block.id, imgIdx, e.target.value)}
+                                    className="flex-1 px-2 py-1 text-xs bg-white border border-slate-200 rounded-md focus:outline-none"
+                                    placeholder="ছবির ডিরেক্ট URL"
+                                    disabled={userRole === 'ReadOnly'}
+                                  />
+                                  <button
+                                    onClick={() => deleteCarouselImage(block.id, imgIdx)}
+                                    className="p-1 hover:bg-rose-50 text-rose-500 rounded cursor-pointer"
+                                    disabled={userRole === 'ReadOnly'}
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                            <button
+                              onClick={() => addCarouselImage(block.id, 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=600')}
+                              className="px-2 py-1 text-[10px] bg-white border border-slate-300 text-slate-700 font-bold rounded-md hover:bg-slate-100 cursor-pointer flex items-center gap-1"
+                              disabled={userRole === 'ReadOnly'}
+                            >
+                              <Plus className="h-3 w-3" /> নতুন ছবি যোগ করুন
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Icons deep config */}
+                        {block.type === 'icons' && (
+                          <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+                            <span className="text-[10px] font-black text-indigo-700 block uppercase">✨ ফিচার আইকন ও টেক্সট কলাম (Features List)</span>
+                            <div className="space-y-3">
+                              {(block.items || []).map((item) => (
+                                <div key={item.id} className="p-2 bg-white border border-slate-200 rounded-md space-y-2 relative">
+                                  <div className="flex gap-2 items-center">
+                                    <input
+                                      type="text"
+                                      value={item.icon || '🛡️'}
+                                      onChange={(e) => updateIconItem(block.id, item.id, 'icon', e.target.value)}
+                                      className="w-10 px-1 py-1 text-center text-xs border border-slate-200 rounded-md bg-slate-50 font-sans"
+                                      placeholder="আইকন"
+                                      disabled={userRole === 'ReadOnly'}
+                                    />
+                                    <input
+                                      type="text"
+                                      value={item.title || ''}
+                                      onChange={(e) => updateIconItem(block.id, item.id, 'title', e.target.value)}
+                                      className="flex-1 px-2 py-1 text-xs border border-slate-200 rounded-md font-extrabold focus:outline-none"
+                                      placeholder="হেডিং বা শিরোনাম"
+                                      disabled={userRole === 'ReadOnly'}
+                                    />
+                                    <button
+                                      onClick={() => deleteIconItem(block.id, item.id)}
+                                      className="p-1 hover:bg-rose-50 text-rose-500 rounded cursor-pointer"
+                                      disabled={userRole === 'ReadOnly'}
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                  <textarea
+                                    rows={1.5}
+                                    value={item.text || ''}
+                                    onChange={(e) => updateIconItem(block.id, item.id, 'text', e.target.value)}
+                                    className="w-full px-2 py-1 text-xs border border-slate-200 rounded-md focus:outline-none text-slate-500"
+                                    placeholder="সংক্ষিপ্ত বর্ণনা বা বিস্তারিত কপি..."
+                                    disabled={userRole === 'ReadOnly'}
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                            <button
+                              onClick={() => addIconItem(block.id)}
+                              className="px-2 py-1 text-[10px] bg-white border border-slate-300 text-slate-700 font-bold rounded-md hover:bg-slate-100 cursor-pointer flex items-center gap-1"
+                              disabled={userRole === 'ReadOnly'}
+                            >
+                              <Plus className="h-3 w-3" /> নতুন আইকন সেকশন যোগ করুন
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Dropdown FAQ deep config */}
+                        {block.type === 'dropdown' && (
+                          <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+                            <span className="text-[10px] font-black text-indigo-700 block uppercase">🔽 প্রশ্নোত্তর একর্ডিয়ন ড্রপডাউন (Accordion FAQ)</span>
+                            <div className="space-y-3">
+                              {(block.dropdownOptions || []).map((opt) => (
+                                <div key={opt.id} className="p-2 bg-white border border-slate-200 rounded-md space-y-2">
+                                  <div className="flex gap-2 items-center">
+                                    <span className="text-[10px] text-slate-400 font-bold uppercase">প্রশ্ন:</span>
+                                    <input
+                                      type="text"
+                                      value={opt.label}
+                                      onChange={(e) => updateDropdownOption(block.id, opt.id, 'label', e.target.value)}
+                                      className="flex-1 px-2 py-1 text-xs border border-slate-200 rounded-md font-bold focus:outline-none"
+                                      placeholder="যেমন: ১. ওয়াটারপ্রুফ কি শতভাগ?"
+                                      disabled={userRole === 'ReadOnly'}
+                                    />
+                                    <button
+                                      onClick={() => deleteDropdownOption(block.id, opt.id)}
+                                      className="p-1 hover:bg-rose-50 text-rose-500 rounded cursor-pointer"
+                                      disabled={userRole === 'ReadOnly'}
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                  <div className="flex gap-2 items-start">
+                                    <span className="text-[10px] text-slate-400 mt-1 font-bold uppercase">উত্তর:</span>
+                                    <textarea
+                                      rows={2}
+                                      value={opt.value}
+                                      onChange={(e) => updateDropdownOption(block.id, opt.id, 'value', e.target.value)}
+                                      className="flex-1 px-2 py-1 text-xs border border-slate-200 rounded-md focus:outline-none text-slate-600"
+                                      placeholder="বিস্তারিত উত্তর এখানে দিন..."
+                                      disabled={userRole === 'ReadOnly'}
+                                    />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <button
+                              onClick={() => addDropdownOption(block.id)}
+                              className="px-2 py-1 text-[10px] bg-white border border-slate-300 text-slate-700 font-bold rounded-md hover:bg-slate-100 cursor-pointer flex items-center gap-1"
+                              disabled={userRole === 'ReadOnly'}
+                            >
+                              <Plus className="h-3 w-3" /> নতুন প্রশ্ন/উত্তর কলাম যোগ করুন
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Order quick form configuration */}
+                        {block.type === 'form' && (
+                          <div className="mt-3 p-3 bg-emerald-50/50 border border-emerald-200 rounded-lg space-y-3 text-[11px]">
+                            <span className="text-[10px] font-black text-emerald-800 block uppercase">⚙️ অর্ডার ফর্ম কাস্টমাইজেশন (Checkout Options)</span>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-[10px] font-bold text-slate-600 mb-1">অর্ডার বাটন লেখা (CTA Text):</label>
+                                <input
+                                  type="text"
+                                  value={block.customButtonText || ''}
+                                  onChange={(e) => updateFormConfig(block.id, 'customButtonText', e.target.value)}
+                                  className="w-full px-2 py-1 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:outline-none font-bold"
+                                  placeholder="অর্ডার কনফার্ম করুন (ক্যাশ অন ডেলিভারি)"
+                                  disabled={userRole === 'ReadOnly'}
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-bold text-slate-600 mb-1">ওজন ও উচ্চতা অপশন:</label>
+                                <div className="flex items-center h-8">
+                                  <input
+                                    type="checkbox"
+                                    id={`hide-metrics-chk-${block.id}`}
+                                    checked={block.hideMetrics || false}
+                                    onChange={(e) => updateFormConfig(block.id, 'hideMetrics', e.target.checked)}
+                                    className="h-4 w-4 text-emerald-600 border-slate-300 rounded focus:ring-emerald-500 cursor-pointer"
+                                    disabled={userRole === 'ReadOnly'}
+                                  />
+                                  <label htmlFor={`hide-metrics-chk-${block.id}`} className="ml-2 text-slate-700 font-bold cursor-pointer">ওজন ও উচ্চতা ইনপুট হাইড করুন</label>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Reviews slider select config */}
+                        {block.type === 'reviews-slider' && (
+                          <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+                            <span className="text-[10px] font-black text-amber-800 block uppercase">⭐ রিভিউ স্লাইডার কাস্টম সিলেক্টর (Review Testimonial Slider)</span>
+                            <p className="text-[10px] text-slate-500 leading-normal">স্লাইডারে প্রদর্শনের জন্য কাস্টমার ফিডব্যাক/রিভিউ নির্বাচন করুন। একসাথে একাধিক নির্বাচন করতে পারবেন:</p>
+                            
+                            <div className="max-h-48 overflow-y-auto space-y-1.5 p-1.5 bg-white border border-slate-200 rounded-lg">
+                              {customReviews.length === 0 ? (
+                                <p className="text-[10px] text-center py-4 italic text-slate-400">কোনো কাস্টমার রিভিউ পাওয়া যায়নি। বাম কলামের "কাস্টমার রিভিউ" তালিকা থেকে রিভিউ লিখে রাখুন।</p>
+                              ) : (
+                                customReviews.map((rev) => {
+                                  const isSelected = (block.reviewIds || []).includes(rev.id);
+                                  return (
+                                    <label key={rev.id} className="flex items-start gap-2 p-1.5 hover:bg-slate-50 rounded cursor-pointer transition text-xs border border-b border-slate-100 last:border-b-0">
+                                      <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={() => toggleReviewOnBlock(block.id, rev.id)}
+                                        className="mt-0.5"
+                                        disabled={userRole === 'ReadOnly'}
+                                      />
+                                      <div className="flex-1">
+                                        <div className="flex justify-between items-center bg-slate-50/50 px-1 py-0.5 rounded">
+                                          <span className="font-extrabold text-slate-800 text-[10px]">{rev.name} ({rev.location})</span>
+                                          <span className="text-amber-500 font-black text-[10px] flex items-center">⭐ {rev.stars}</span>
+                                        </div>
+                                        <p className="text-[10px] text-slate-500 line-clamp-1 mt-0.5 font-sans italic">"{rev.comment}"</p>
+                                      </div>
+                                    </label>
+                                  );
+                                })
+                              )}
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-bold">
+                              নির্বাচিত রিভিউ সংখ্যা: <strong className="text-indigo-600">{(block.reviewIds || []).length} টি</strong>
+                            </div>
+                          </div>
+                        )}
+                      </div>
 
                         {/* Styling controls */}
                         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 pt-2 border-t border-slate-100 flex-wrap text-[10px]">
@@ -642,7 +1085,6 @@ export default function PagesAdmin({ onRefreshPages, userRole }: PagesAdminProps
                         </div>
                       </div>
 
-                    </div>
                   ))}
                 </div>
               )}

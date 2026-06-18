@@ -418,6 +418,19 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
       setIsSubmitting(false);
       setSuccessOrder(newOrder);
       setCart([]);
+
+      // Set product slug for redirection mapping
+      const firstProduct = cart[0]?.product;
+      const pSlug = firstProduct ? (
+        firstProduct.id === 'p-2' ? 'shoeguard' :
+        firstProduct.id === 'p-3' ? 'umbrella' :
+        firstProduct.id === 'p-4' ? 'handgloves' :
+        firstProduct.id === 'p-5' ? 'mobileholder' :
+        firstProduct.id === 'p-6' ? 'raincover' :
+        'raincoat'
+      ) : 'raincoat';
+      localStorage.setItem('last_ordered_product_slug', pSlug);
+
       onOrderSuccess(newOrder);
     }, 100);
   };

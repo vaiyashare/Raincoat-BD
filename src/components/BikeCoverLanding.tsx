@@ -9,6 +9,7 @@ import { Size, ProductColor, RaincoatOrder } from '../types';
 import { getMediaFromFirestore, addOrderToFirestore, getAdvancedAddonsSettingsFromFirestore } from '../lib/firebase';
 import { trackPixelEvent } from '../lib/tracking';
 import { motion, AnimatePresence } from 'motion/react';
+import MenuBar from './MenuBar';
 
 interface BikeCoverLandingProps {
   onOrderSuccess: (order: RaincoatOrder) => void;
@@ -48,36 +49,54 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
   const [errorMessage, setErrorMessage] = useState('');
   const [bikeTripleCards, setBikeTripleCards] = useState<any[]>(defaultTripleCards);
 
-  // Default Fallback Slider Images featuring real Black & Navy Blue covers
-  const defaultBikeSliderImages = [
-    {
-      title: "Navy Blue Cover (নেভি ব্লু)",
-      badge: "জনপ্রিয় কালার",
-      price: "৭৫0 টাকা (অফার মূল্য: ৬০০/-)",
-      description: "ছাতা কাপড়ের তৈরি শতভাগ ওয়াটারপ্রুফ ও ডাস্টপ্রুফ নেভি ব্লু বাইক কভার",
-      url: "https://images.unsplash.com/photo-1558981856-653c55a5bfdd?auto=format&fit=crop&q=80&w=600",
-      color: "from-blue-600 to-indigo-900"
-    },
-    {
-      title: "Premium Jet Black Cover (কালো)",
-      badge: "শতভাগ প্রিমিয়াম",
-      price: "৭৫0 টাকা (অফার মূল্য: ৬০০/-)",
-      description: "অভিজাত ব্ল্যাক কালার, ডাস্টপ্রুফ এবং রোদের তাপ প্রতিরোধক সুউচ্চ ফিনিশিং কভার",
-      url: "https://images.unsplash.com/photo-1558980590-25501fb3a893?auto=format&fit=crop&q=80&w=600",
-      color: "from-neutral-800 to-neutral-950"
-    },
-    {
-      title: "Silver Heat Protection (সিলভার কোটিং)",
-      badge: "সিলভার প্রটেকশন",
-      price: "স্পেশাল ডাস্টপ্রুফ কোটিং",
-      description: "বড় সাইজের বাইকের কভারের ভেতরের অংশে বিশেষ সিলভার কোটিং যা ইঞ্জিন গরম হওয়া প্রতিরোধ করে",
-      url: "https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?auto=format&fit=crop&q=80&w=600",
-      color: "from-slate-400 to-slate-700"
-    }
-  ];
-
   // Active state-driven slides and videos
-  const [slides, setSlides] = useState<any[]>(defaultBikeSliderImages);
+  const [slides, setSlides] = useState<any[]>(() => {
+    const cached = localStorage.getItem('raincoat_media_gallery_fallback') || localStorage.getItem('raincoat_media_gallery');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached) as any[];
+        const filteredSlides = parsed.filter(item => item.page === 'bikecover' && item.tag !== 'LiveVideo');
+        if (filteredSlides.length > 0) {
+          const sorted = [...filteredSlides].sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+          return sorted.map(item => ({
+            title: item.title,
+            badge: item.tag || "বিশেষ আকর্ষণ",
+            price: "৭৫0 টাকা (অফার মূল্য: ৬০০/-)",
+            description: item.description || "ছাতা কাপড়ের তৈরি শতভাগ ওয়াটারপ্রুফ ও ডাস্টপ্রুফ বাইক কভার",
+            url: item.url,
+            color: "from-blue-600 to-indigo-900",
+            bgUrl: item.bgUrl
+          }));
+        }
+      } catch (e) {}
+    }
+    return [
+      {
+        title: "Navy Blue Cover (নেভি ব্লু)",
+        badge: "জনপ্রিয় কালার",
+        price: "৭৫0 টাকা (অফার মূল্য: ৬০০/-)",
+        description: "ছাতা কাপড়ের তৈরি শতভাগ ওয়াটারপ্রুফ ও ডাস্টপ্রুফ নেভি ব্লু বাইক কভার",
+        url: "https://images.unsplash.com/photo-1558981856-653c55a5bfdd?auto=format&fit=crop&q=80&w=600",
+        color: "from-blue-600 to-indigo-900"
+      },
+      {
+        title: "Premium Jet Black Cover (কালো)",
+        badge: "শতভাগ প্রিমিয়াম",
+        price: "৭৫0 টাকা (অফার মূল্য: ৬০০/-)",
+        description: "অভিজাত ব্ল্যাক কালার, ডাস্টপ্রুফ এবং রোদের তাপ প্রতিরোধক সুউচ্চ ফিনিশিং কভার",
+        url: "https://images.unsplash.com/photo-1558980590-25501fb3a893?auto=format&fit=crop&q=80&w=600",
+        color: "from-neutral-800 to-neutral-950"
+      },
+      {
+        title: "Silver Heat Protection (সিলভার কোটিং)",
+        badge: "সিলভার প্রটেকশন",
+        price: "স্পেশাল ডাস্টপ্রুফ কোটিং",
+        description: "বড় সাইজের বাইকের কভারের ভেতরের অংশে বিশেষ সিলভার কোটিং যা ইঞ্জিন গরম হওয়া প্রতিরোধ করে",
+        url: "https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?auto=format&fit=crop&q=80&w=600",
+        color: "from-slate-400 to-slate-700"
+      }
+    ];
+  });
   const [bikeVideos, setBikeVideos] = useState<any[]>([]);
   const [activeSlide, setActiveSlide] = useState(0);
 
@@ -311,6 +330,7 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
     localStorage.setItem('raincoat_orders', JSON.stringify(list));
 
     setSubmittedOrder(newOrder);
+    localStorage.setItem('last_ordered_product_slug', 'bikecover');
     onOrderSuccess(newOrder);
 
     trackPixelEvent('Purchase', {
@@ -359,6 +379,9 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
           অর্ডার করুন এখন
         </button>
       </div>
+
+      {/* Customizable top navigation menu bar */}
+      <MenuBar />
 
       {/* Hero Header Section */}
       {(() => {
@@ -469,6 +492,7 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
                     alt="Customized Bike Cover Banner"
                     className="w-full rounded-2xl shadow-2xl border border-slate-800 bg-slate-900 object-contain max-h-[380px] p-2"
                     referrerPolicy="no-referrer"
+                    loading="lazy"
                   />
                 </div>
               ) : (
@@ -483,6 +507,7 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
                         alt="Banner Background"
                         className="absolute inset-0 w-full h-full object-cover transition-transform duration-700"
                         referrerPolicy="no-referrer"
+                        loading="lazy"
                       />
                     ) : slides[activeSlide]?.url && !slides[activeSlide]?.bgUrl ? (
                       // Default behavior if no custom background has been set (full bleed product photo)
@@ -491,6 +516,7 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
                         alt={slides[activeSlide].title}
                         className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 hover:scale-105"
                         referrerPolicy="no-referrer"
+                        loading="lazy"
                       />
                     ) : (
                       <div className={`absolute inset-0 bg-gradient-to-br ${slides[activeSlide]?.color || 'from-blue-600 to-indigo-900'}`} />
@@ -504,6 +530,7 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
                           alt={slides[activeSlide].title}
                           className="max-h-full max-w-full object-contain filter drop-shadow-[0_10px_10px_rgba(0,0,0,0.6)]"
                           referrerPolicy="no-referrer"
+                          loading="lazy"
                         />
                       </div>
                     )}
@@ -793,6 +820,7 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
                       alt={card.title} 
                       className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                       referrerPolicy="no-referrer"
+                      loading="lazy"
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center bg-slate-950 text-slate-500 text-xs font-bold">

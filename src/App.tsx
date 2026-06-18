@@ -22,12 +22,14 @@ import FAQSection from './components/FAQSection';
 import ShopView from './components/ShopView';
 import AmazonMarketplace from './components/AmazonMarketplace';
 import BikeCoverLanding from './components/BikeCoverLanding';
+import MenuBar from './components/MenuBar';
+import CallingAgentPanel from './components/CallingAgentPanel';
 import navyRaincoatImg from './assets/images/navy_raincoat_1780660053988.png';
 import { Size, ProductColor, RaincoatOrder, ActiveSession } from './types';
 import { motion, AnimatePresence } from 'motion/react';
 import { getSheetsConfig, getAccessToken, appendOrderToSheet } from './lib/googleSheets';
 import { initMetaPixel, trackPixelEvent, initTikTokPixel } from './lib/tracking';
-import { addOrderToFirestore, saveActiveSessionToFirestore, syncCachedOrdersToFirestore, getAdvancedAddonsSettingsFromFirestore } from './lib/firebase';
+import { addOrderToFirestore, saveActiveSessionToFirestore, syncCachedOrdersToFirestore, getAdvancedAddonsSettingsFromFirestore, getOrderByIdFromFirestore } from './lib/firebase';
 
 export default function App() {
   const [siteSettings, setSiteSettings] = useState<any>(null);
@@ -100,22 +102,104 @@ export default function App() {
   const [ordersCount, setOrdersCount] = useState(0);
   const [scrollProgress, setScrollProgress] = useState(0);
   const [isCheckoutVisible, setIsCheckoutVisible] = useState(false);
-  const [bundleOfferImage, setBundleOfferImage] = useState<string>(navyRaincoatImg);
-  const [liveVideosList, setLiveVideosList] = useState<any[]>([
-    {
-      id: 'live-video-default-1',
-      url: 'https://www.facebook.com/reel/1471402964313008/',
-      title: 'লাইভ ওয়াটার রেসিস্ট্যান্স টেস্ট',
-    },
-    {
-      id: 'live-video-default-2',
-      url: 'https://www.facebook.com/reel/2183474582444791/',
-      title: 'হিট সিলিং ও রেইনপ্রুফ ডেমো',
+  const [bundleOfferImage, setBundleOfferImage] = useState<string>(() => {
+    const cached = localStorage.getItem('raincoat_media_gallery_fallback') || localStorage.getItem('raincoat_media_gallery');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        const found = parsed.find((item: any) => item.id === 'bundle-offer-image');
+        if (found && found.url) {
+          return found.url;
+        }
+      } catch (e) {}
     }
-  ]);
+    return navyRaincoatImg;
+  });
+  const [liveVideosList, setLiveVideosList] = useState<any[]>(() => {
+    const cached = localStorage.getItem('raincoat_media_gallery_fallback') || localStorage.getItem('raincoat_media_gallery');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        const filteredVideos = parsed.filter((item: any) => String(item.id).startsWith('live-video-'));
+        if (filteredVideos && filteredVideos.length > 0) {
+          return filteredVideos;
+        }
+      } catch (e) {}
+    }
+    return [
+      {
+        id: 'live-video-default-1',
+        url: 'https://www.facebook.com/reel/1471402964313008/',
+        title: 'লাইভ ওয়াটার রেসিস্ট্যান্স টেস্ট',
+      },
+      {
+        id: 'live-video-default-2',
+        url: 'https://www.facebook.com/reel/2183474582444791/',
+        title: 'হিট সিলিং ও রেইনপ্রুফ ডেমো',
+      }
+    ];
+  });
   const [currentHash, setCurrentHash] = useState(window.location.hash);
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
   const [customPages, setCustomPages] = useState<any[]>([]);
+
+  const [thankYouOrder, setThankYouOrder] = useState<RaincoatOrder | null>(null);
+  const [thankYouLoading, setThankYouLoading] = useState(true);
+  const [thankYouError, setThankYouError] = useState<string | null>(null);
+
+  const isThankYouRoute = currentPath.startsWith('/thankyou-') || currentHash.startsWith('#/thankyou-') || currentHash.startsWith('#thankyou-');
+
+  useEffect(() => {
+    if (isThankYouRoute) {
+      const urlParams = new URLSearchParams(window.location.search);
+      let orderId = urlParams.get('id');
+      
+      if (!orderId) {
+        const hashMatch = currentHash.match(/[?&]id=([^&]+)/);
+        if (hashMatch) {
+          orderId = hashMatch[1];
+        } else {
+          const parts = currentPath.split('/');
+          const lastPart = parts[parts.length - 1];
+          if (lastPart && lastPart.startsWith('ord-')) {
+            orderId = lastPart;
+          } else {
+            const hashParts = currentHash.split('/');
+            const lastHashPart = hashParts[hashParts.length - 1];
+            if (lastHashPart && lastHashPart.startsWith('ord-')) {
+              orderId = lastHashPart;
+            }
+          }
+        }
+      }
+
+      if (orderId) {
+        setThankYouLoading(true);
+        getOrderByIdFromFirestore(orderId)
+          .then((order) => {
+            if (order) {
+              setThankYouOrder(order);
+              setThankYouError(null);
+              // Clean up the temporary receipt key from browser localStorage after successful display
+              try {
+                window.localStorage.removeItem('temp_receipt_' + order.id);
+              } catch (_) {}
+            } else {
+              setThankYouError('দুঃখিত, এই রেফারেন্স নম্বরের কোনো অর্ডার ডাটাবেজে খুঁজে পাওয়া যায়নি। অনুগ্রহ করে সঠিক রেফারেন্স দিয়ে ট্র্যাকিং করুন।');
+            }
+            setThankYouLoading(false);
+          })
+          .catch((err) => {
+            console.error(err);
+            setThankYouError('অর্ডার লোড করতে সমস্যা হয়েছে। দয়া করে কিছুক্ষণ পর আবার চেষ্টা করুন।');
+            setThankYouLoading(false);
+          });
+      } else {
+        setThankYouError('অর্ডার রেফারেন্স আইডি পাওয়া যায়নি! অনুগ্রহ করে সঠিক লিঙ্ক দিয়ে পুনরায় চেষ্টা করুন।');
+        setThankYouLoading(false);
+      }
+    }
+  }, [isThankYouRoute, currentPath, currentHash]);
 
   useEffect(() => {
     const handleNavigationChange = () => {
@@ -130,7 +214,7 @@ export default function App() {
     };
   }, []);
 
-  // Real-time live active visitor session tracking
+  // Real-time live active visitor session tracking (With Advanced Analytics engine)
   useEffect(() => {
     let sessId = sessionStorage.getItem('raincoat_visitor_session_id');
     if (!sessId) {
@@ -139,25 +223,114 @@ export default function App() {
     }
     const sessionId = sessId;
 
-    // Detect browser and operating system
-    const getBrowserAndOS = () => {
+    // Detect browser, operating system and detailed device brand models
+    const getAdvancedDeviceStats = () => {
       const ua = navigator.userAgent;
       let browser = "Other";
       let os = "Other";
+      let deviceModel = "Desktop PC";
       
       if (ua.indexOf("Firefox") > -1) browser = "Firefox";
       else if (ua.indexOf("Opera") > -1 || ua.indexOf("OPR") > -1) browser = "Opera";
-      else if (ua.indexOf("Edge") > -1) browser = "Edge";
+      else if (ua.indexOf("Edge") > -1 || ua.indexOf("Edg") > -1) browser = "Edge";
       else if (ua.indexOf("Chrome") > -1) browser = "Chrome";
-      else if (ua.indexOf("Safari") > -1) browser = "Safari";
+      else if (ua.indexOf("Safari") > -1 && ua.indexOf("Chrome") === -1) browser = "Safari";
       
       if (ua.indexOf("Windows") > -1) os = "Windows";
       else if (ua.indexOf("Macintosh") > -1) os = "macOS";
       else if (ua.indexOf("Android") > -1) os = "Android";
-      else if (ua.indexOf("iPhone") > -1 || ua.indexOf("iPad") > -1) os = "iOS";
+      else if (ua.indexOf("iPhone") > -1) os = "iOS";
+      else if (ua.indexOf("iPad") > -1) os = "iPadOS";
       else if (ua.indexOf("Linux") > -1) os = "Linux";
-      
-      return { browser, os };
+
+      // Device Model detection
+      if (/iphone/i.test(ua)) {
+        const dpr = window.devicePixelRatio || 1;
+        const width = window.screen.width * dpr;
+        const height = window.screen.height * dpr;
+        if (width === 1179 && height === 2556) deviceModel = "iPhone 14 Pro / 15";
+        else if (width === 1290 && height === 2796) deviceModel = "iPhone 14 Pro Max / 15 PM";
+        else if (width === 1170 && height === 2532) deviceModel = "iPhone 12 / 13 / 14";
+        else if (width === 1284 && height === 2778) deviceModel = "iPhone 12 / 13 Pro Max";
+        else if (width === 1125 && height === 2436) deviceModel = "iPhone X / XS / 11 Pro";
+        else if (width === 828 && height === 1792) deviceModel = "iPhone XR / 11";
+        else if (width === 1242 && height === 2688) deviceModel = "iPhone XS Max";
+        else if (width === 750 && height === 1334) deviceModel = "iPhone 7 / 8 / SE";
+        else deviceModel = "Apple iPhone";
+      } else if (/ipad/i.test(ua)) {
+        deviceModel = "Apple iPad";
+      } else if (/samsung|sm-/i.test(ua)) {
+        const match = ua.match(/sm-([a-z0-9]+)/i);
+        deviceModel = match ? `Samsung Galaxy (${match[1].toUpperCase()})` : "Samsung Phone";
+      } else if (/redmi|xiaomi|mi /i.test(ua)) {
+        const match = ua.match(/(?:redmi|mi)\s*([a-z0-9 ]+)/i);
+        deviceModel = match ? `Xiaomi ${match[1].trim()}` : "Xiaomi Phone";
+      } else if (/oppo/i.test(ua)) {
+        deviceModel = "OPPO Mobile";
+      } else if (/vivo/i.test(ua)) {
+        deviceModel = "Vivo Mobile";
+      } else if (/realme/i.test(ua)) {
+        deviceModel = "Realme Mobile";
+      } else if (/oneplus/i.test(ua)) {
+        deviceModel = "OnePlus Mobile";
+      } else if (/pixel/i.test(ua)) {
+        deviceModel = "Google Pixel";
+      } else if (/huawei/i.test(ua)) {
+        deviceModel = "Huawei Mobile";
+      } else if (/macintosh/i.test(ua)) {
+        deviceModel = "MacBook / iMac";
+      } else if (/windows/i.test(ua)) {
+        deviceModel = "Windows Computer";
+      } else if (/linux/i.test(ua)) {
+        deviceModel = "Linux Workstation";
+      } else if (/mobile/i.test(ua)) {
+        deviceModel = "Android Mobile Phone";
+      }
+
+      // GPU Graphic Card / CPU chipset analysis
+      let gpu = "Generic Graphic Card";
+      try {
+        const canvas = document.createElement('canvas');
+        const gl = (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')) as any;
+        if (gl) {
+          const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+          if (debugInfo) {
+            gpu = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) || gpu;
+          }
+        }
+      } catch (_) {}
+
+      // Network effective connection details
+      let networkType = "Regular WiFi/Mobile";
+      const conn = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+      if (conn && conn.effectiveType) {
+        networkType = `${conn.effectiveType.toUpperCase()} Port`;
+      }
+
+      // Screen Resolution info
+      const screenResolution = `${window.screen.width}x${window.screen.height} (${window.devicePixelRatio ? window.devicePixelRatio : 1}x)`;
+
+      // Browser locale / language
+      const language = navigator.language || 'en-US';
+
+      // Advanced Referrer Tracking
+      let referrer = 'Direct / Bookmark Link';
+      const ref = document.referrer;
+      if (ref) {
+        if (ref.indexOf('facebook.com') > -1 || ref.indexOf('fb.me') > -1) referrer = 'Facebook Ads Traffic';
+        else if (ref.indexOf('instagram.com') > -1) referrer = 'Instagram Link';
+        else if (ref.indexOf('tiktok.com') > -1) referrer = 'TikTok Ads Traffic';
+        else if (ref.indexOf('google.com') > -1) referrer = 'Google Search Traffic';
+        else {
+          try {
+            referrer = new URL(ref).hostname;
+          } catch (_) {
+            referrer = 'External Link Referrer';
+          }
+        }
+      }
+
+      return { browser, os, deviceModel, gpu, networkType, screenResolution, language, referrer };
     };
 
     const resolveLocation = async (): Promise<{ city: string; country: string; countryCode: string }> => {
@@ -194,13 +367,9 @@ export default function App() {
 
     let isSubscribed = true;
     let heartbeatInterval: any = null;
+    const actionsHistory: string[] = ['ভিজিট শুরু করেছেন'];
 
-    const startTracking = async () => {
-      const { browser, os } = getBrowserAndOS();
-      const loc = await resolveLocation();
-      
-      if (!isSubscribed) return;
-
+    const getPageName = () => {
       const pageMap: { [key: string]: string } = {
         'admin': 'এডমিন প্যানেল',
         '/admin': 'এডমিন প্যানেল',
@@ -213,51 +382,91 @@ export default function App() {
         'raincoat': 'রেইনকোট ল্যান্ডিং পেইজ (হোম)',
         '/raincoat': 'রেইনকোট ল্যান্ডিং পেইজ (হোম)'
       };
+      const hash = window.location.hash.replace(/^#\//, '').replace(/^#/, '');
+      if (hash) {
+        if (pageMap[hash]) return pageMap[hash];
+        return `কাস্টম ল্যান্ডিং পেজ: #${hash}`;
+      }
+      const path = window.location.pathname.replace(/^\//, '');
+      if (path && pageMap[path]) {
+        return pageMap[path];
+      }
+      return 'রেইনকোট ল্যান্ডিং পেইজ (হোম)';
+    };
 
-      const getPageName = () => {
-        const hash = window.location.hash.replace(/^#\//, '').replace(/^#/, '');
-        if (hash) {
-          if (pageMap[hash]) return pageMap[hash];
-          return `কাস্টম ল্যান্ডিং পেজ: #${hash}`;
-        }
-        const path = window.location.pathname.replace(/^\//, '');
-        if (path && pageMap[path]) {
-          return pageMap[path];
-        }
-        return 'রেইনকোট ল্যান্ডিং পেইজ (হোম)';
-      };
-
-      const initialSession: ActiveSession = {
+    const runHeartbeat = async () => {
+      if (!isSubscribed) return;
+      const stats = getAdvancedDeviceStats();
+      const loc = await resolveLocation();
+      
+      const sessionData: ActiveSession = {
         id: sessionId,
         city: loc.city,
         country: loc.country,
         countryCode: loc.countryCode,
         page: getPageName(),
-        browser,
-        os,
+        browser: stats.browser,
+        os: stats.os,
+        deviceModel: stats.deviceModel,
+        screenResolution: stats.screenResolution,
+        language: stats.language,
+        referrer: stats.referrer,
+        gpu: stats.gpu,
+        networkType: stats.networkType,
+        lastAction: actionsHistory[actionsHistory.length - 1],
+        actionsHistory: [...actionsHistory],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
 
-      // save initial session
-      await saveActiveSessionToFirestore(initialSession);
-
-      // Periodic heartbeat update (every 45 seconds to keep database write count tiny and avoid free quota exhaust)
-      heartbeatInterval = setInterval(async () => {
-        if (!isSubscribed) return;
-        const updatedSession: ActiveSession = {
-          ...initialSession,
-          page: getPageName(),
-          updatedAt: new Date().toISOString()
-        };
-        await saveActiveSessionToFirestore(updatedSession);
-      }, 45000);
+      await saveActiveSessionToFirestore(sessionData);
     };
 
-    startTracking();
+    // Track click dynamics natively
+    const handleClickTracker = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target) return;
+      
+      let actionText = '';
+      if (target.tagName === 'BUTTON') {
+        actionText = `বাটন ক্লিক: ${target.innerText.trim() || target.title || 'Unknown'}`;
+      } else if (target.closest('button')) {
+        const btn = target.closest('button');
+        actionText = `বাটন ক্লিক: ${btn?.innerText.trim() || btn?.title || 'Unknown'}`;
+      } else if (target.tagName === 'A') {
+        actionText = `লিংক ক্লিক: ${target.innerText.trim() || (target as HTMLAnchorElement).href}`;
+      } else if (target.closest('a')) {
+        const link = target.closest('a');
+        actionText = `লিংক ক্লিক: ${link?.innerText.trim() || link?.href}`;
+      } else if (target.tagName === 'INPUT' && (target as HTMLInputElement).type === 'radio') {
+        const label = target.parentElement?.innerText?.trim();
+        actionText = `অপশন সিলেক্ট: ${label || (target as HTMLInputElement).value}`;
+      } else if (target.tagName === 'INPUT' && (target as HTMLInputElement).type === 'checkbox') {
+        const label = target.parentElement?.innerText?.trim();
+        actionText = `টিক মার্ক: ${label || 'Checkbox'}`;
+      }
+
+      if (actionText && actionText.length < 55) {
+        if (actionsHistory[actionsHistory.length - 1] !== actionText) {
+          actionsHistory.push(actionText);
+          if (actionsHistory.length > 8) {
+            actionsHistory.shift();
+          }
+          // Immediate sync for live action feedback!
+          runHeartbeat();
+        }
+      }
+    };
+
+    document.addEventListener('click', handleClickTracker);
+
+    // Run initial & schedule heartbeats
+    runHeartbeat();
+    heartbeatInterval = setInterval(runHeartbeat, 30000); // 30 seconds heartbeat for extremely tight latency
 
     return () => {
       isSubscribed = false;
+      document.removeEventListener('click', handleClickTracker);
       if (heartbeatInterval) clearInterval(heartbeatInterval);
     };
   }, [currentHash, currentPath]);
@@ -510,7 +719,7 @@ export default function App() {
     };
   }, []);
 
-  const refreshOrdersCount = () => {
+  const refreshOrdersCount = React.useCallback(() => {
     import('./lib/firebase').then(({ getOrdersFromFirestore }) => {
       getOrdersFromFirestore().then((fbOrders) => {
         if (fbOrders) {
@@ -518,31 +727,38 @@ export default function App() {
         }
       }).catch(() => {});
     }).catch(() => {});
-  };
+  }, []);
 
   const handleOrderCreated = (order: RaincoatOrder) => {
-    setSubmittedOrder(order);
     setOrdersCount(prev => prev + 1);
     setRecentOrderForToast(order); // Trigger immediate success toast feedback!
 
-    // Cache the latest order so that any newly opened Thank You page tab on the same domain can access it
-    localStorage.setItem('latest_submitted_order', JSON.stringify(order));
+    // Determine product slug for the redirection mapping
+    let pSlug = 'raincoat';
+    if (order.bikeModel) {
+      pSlug = 'bikecover';
+    } else {
+      const savedSlug = localStorage.getItem('last_ordered_product_slug');
+      if (savedSlug) {
+        pSlug = savedSlug;
+      }
+    }
 
-    // Determine target URL product name slug based on parameters
-    let productSlug = 'raincoat';
-    if (order.bikeModel || window.location.pathname.includes('bikecover') || window.location.hash.includes('bikecover')) {
-      productSlug = 'bikecover';
-    } else if (order.orderNotes && (order.orderNotes.toLowerCase().includes('cover') || order.orderNotes.toLowerCase().includes('কভার'))) {
-      productSlug = 'bikecover';
-    }
-    
-    // Open the confirmation/Thank You page in a new browser tab instantly
+    // Save temporary receipt info in localStorage for instant and robust loading on the new tab without Firestore write race condition
     try {
-      const thankYouUrl = `/thankyou-${productSlug}`;
+      window.localStorage.setItem('temp_receipt_' + order.id, JSON.stringify(order));
+    } catch (_) {}
+
+    // Open thank-you confirmation page in a new tab
+    const thankYouUrl = `/thankyou-${pSlug}?id=${order.id}`;
+    try {
       window.open(thankYouUrl, '_blank');
-    } catch (err) {
-      console.warn("Popup block mechanism prevented window.open from starting a new tab:", err);
+    } catch (e) {
+      console.warn("Failed to open thank you page in a new tab (possibly blocked by popup blocker):", e);
     }
+
+    // Keep the inline success state fallback intact so that everything still functions seamlessly if popup is blocked
+    setSubmittedOrder(order);
 
     // Save order details directly to Firestore
     addOrderToFirestore(order)
@@ -635,19 +851,19 @@ export default function App() {
 
   // Routing calculations
   const isAdminRoute = currentPath === '/admin' || currentHash === '#/admin' || currentHash === '#admin';
+  const isAgentPanelRoute = currentPath === '/agent-panel' || currentHash === '#/agent-panel' || currentHash === '#agent-panel';
   const isTrackOrderRoute = currentPath === '/track-order' || currentHash === '#/track-order' || currentHash === '#track-order';
   const isOrderHistoryRoute = currentPath === '/order-history' || currentHash === '#/order-history' || currentHash === '#order-history';
   const isShopRoute = currentPath === '/shop' || currentHash === '#/shop' || currentHash === '#shop';
   const isWriteReviewRoute = currentPath === '/write-review' || currentHash === '#/write-review' || currentHash === '#write-review';
   const isRaincoatLandingRoute = currentPath === '/raincoat' || currentHash === '#/raincoat' || currentHash === '#raincoat';
   const isBikeCoverLandingRoute = currentPath === '/bikecover' || currentHash === '#/bikecover' || currentHash === '#bikecover';
-  const isThankYouRoute = currentPath.startsWith('/thankyou-') || currentHash.startsWith('#/thankyou-') || currentHash.startsWith('#thankyou-');
 
   // Check if hash matches a custom page slug from custom landing pages collection
   let activeCustomPage = null;
   try {
     const cleanHash = currentHash.replace(/^#\//, '').replace(/^#/, '');
-    if (cleanHash && cleanHash !== 'home' && cleanHash !== 'features' && cleanHash !== 'live-video' && cleanHash !== 'comparison' && cleanHash !== 'bundle-offer' && cleanHash !== 'delivery-timeline' && cleanHash !== 'size-chart' && cleanHash !== 'checkout-form' && cleanHash !== 'track-order' && cleanHash !== 'order-history' && cleanHash !== 'write-review') {
+    if (cleanHash && cleanHash !== 'home' && cleanHash !== 'features' && cleanHash !== 'live-video' && cleanHash !== 'comparison' && cleanHash !== 'bundle-offer' && cleanHash !== 'delivery-timeline' && cleanHash !== 'size-chart' && cleanHash !== 'checkout-form' && cleanHash !== 'track-order' && cleanHash !== 'order-history' && cleanHash !== 'write-review' && cleanHash !== 'agent-panel') {
       activeCustomPage = customPages.find((p: any) => p.slug === cleanHash);
     }
   } catch (e) {
@@ -671,57 +887,62 @@ export default function App() {
     );
   }
 
-  // Handle global Customer Order Confirmation Receipt / Thank You Page View
-  let thankYouOrder = submittedOrder;
-  if (!thankYouOrder && isThankYouRoute) {
-    const cached = localStorage.getItem('latest_submitted_order');
-    if (cached) {
-      try {
-        thankYouOrder = JSON.parse(cached);
-      } catch (err) {
-        console.error("Failed to parse latest submitted order from localStorage:", err);
-      }
-    }
+  // Handle direct Calling Agent Panel routing
+  if (isAgentPanelRoute) {
+    return (
+      <CallingAgentPanel 
+        onClose={() => {
+          if (currentPath === '/agent-panel') {
+            window.history.pushState(null, '', '/');
+            window.dispatchEvent(new Event('popstate'));
+          } else {
+            window.location.hash = '';
+          }
+        }}
+      />
+    );
   }
 
-  if (isThankYouRoute || submittedOrder) {
-    if (thankYouOrder) {
-      return (
-        <div className="min-h-screen bg-slate-50 relative selection:bg-blue-600 selection:text-white py-12 px-4 flex items-center justify-center font-sans">
-          <div className="w-full max-w-4xl">
-            <Receipt 
-              order={thankYouOrder} 
-              onClose={() => {
-                if (isThankYouRoute) {
-                  // If on a dedicated thank you tab/page, go to main home page
-                  window.location.href = '/';
-                } else {
-                  handleBackToShopping();
-                }
-              }} 
-            />
-          </div>
-        </div>
-      );
-    } else if (isThankYouRoute) {
-      return (
-        <div className="min-h-screen bg-slate-50 relative py-12 px-4 flex items-center justify-center font-sans text-center">
-          <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-8 shadow-xl">
-            <div className="w-16 h-16 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">
-              ⚠️
+  // Handle Dynamic Thank You / Order Confirmation Pages in a New Tab
+  if (isThankYouRoute) {
+    return (
+      <div className="min-h-screen bg-slate-50 relative selection:bg-blue-600 selection:text-white py-12 px-4 flex flex-col items-center justify-center font-sans animate-fadeIn">
+        <div className="w-full max-w-4xl">
+          {thankYouLoading ? (
+            <div className="bg-white rounded-2xl p-12 text-center shadow-xl border border-slate-100 max-w-lg mx-auto flex flex-col items-center justify-center gap-4">
+              <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+              <p className="text-slate-600 font-bold text-lg">আপনার অর্ডার রিসিপ্ট লোড করা হচ্ছে...</p>
+              <p className="text-slate-400 text-sm font-medium">অনুগ্রহ করে একটু অপেক্ষা করুন</p>
             </div>
-            <h2 className="text-xl font-bold text-slate-800 mb-2">সাম্প্রতিক কোনো অর্ডার পাওয়া যায়নি</h2>
-            <p className="text-sm text-slate-500 mb-6 font-medium">অর্ডার করার পর এই পেজটিতে আপনার রসিদ জেনারেট হয়ে যাবে।</p>
-            <button
-              onClick={() => { window.location.href = '/'; }}
-              className="py-3 px-6 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl transition text-sm cursor-pointer inline-flex items-center gap-1.5 focus:ring-2 focus:ring-orange-500 focus:outline-none"
-            >
-              হোমপেজে ফিরে যান
-            </button>
-          </div>
+          ) : thankYouError ? (
+            <div className="bg-white rounded-2xl p-8 text-center shadow-md max-w-md mx-auto border border-red-100 animate-fadeIn">
+              <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">⚠️</div>
+              <h2 className="text-xl font-black text-slate-800 mb-2">সমস্যা দেখা দিয়েছে</h2>
+              <p className="text-slate-600 text-sm mb-6 leading-relaxed">{thankYouError}</p>
+              <button 
+                onClick={() => { window.location.pathname = '/'; }} 
+                className="w-full py-2.5 bg-slate-900 hover:bg-slate-950 text-white font-bold rounded-lg transition text-xs cursor-pointer"
+              >
+                প্রধান পেইজে যান
+              </button>
+            </div>
+          ) : thankYouOrder ? (
+            <Receipt order={thankYouOrder} onClose={() => { window.location.pathname = '/'; }} />
+          ) : null}
         </div>
-      );
-    }
+      </div>
+    );
+  }
+
+  // Handle global Customer Order Confirmation Receipt View
+  if (submittedOrder) {
+    return (
+      <div className="min-h-screen bg-slate-50 relative selection:bg-blue-600 selection:text-white py-12 px-4 flex items-center justify-center font-sans">
+        <div className="w-full max-w-4xl">
+          <Receipt order={submittedOrder} onClose={handleBackToShopping} />
+        </div>
+      </div>
+    );
   }
 
   // Handle Track Order routing (Separate Tab/Page View)
@@ -1200,7 +1421,16 @@ export default function App() {
         >
           🔍 অর্ডার ট্র্যাক করুন
         </button>
+        <button
+          onClick={() => window.open('#/order-history', '_blank')}
+          className="underline hover:text-amber-200 text-amber-100 transition font-extrabold cursor-pointer hidden sm:inline-block ml-4"
+        >
+          📊 কাস্টমার অর্ডার হিস্টোরি
+        </button>
       </div>
+
+      {/* Customizable Top Navigation Menu Bar */}
+      <MenuBar />
 
       {/* Elegant Header / Hero Section with animated rain backdrop */}
       {(() => {
@@ -1236,7 +1466,7 @@ export default function App() {
                 {/* High-fidelity interactive Product Carousel showing real product images & features */}
                 <div className="lg:col-span-5 relative w-full flex flex-col items-center justify-center mt-6 lg:mt-0 order-first lg:order-last animate-fade-in space-y-4">
                   {raincoatHero.image_url ? (
-                    <img src={raincoatHero.image_url} alt="Raincoat Premium banner" className="w-full rounded-2xl shadow-xl object-contain max-h-[380px] bg-slate-950/40 p-2 border border-slate-800" referrerPolicy="no-referrer" />
+                    <img src={raincoatHero.image_url} alt="Raincoat Premium banner" className="w-full rounded-2xl shadow-xl object-contain max-h-[380px] bg-slate-950/40 p-2 border border-slate-800" referrerPolicy="no-referrer" loading="lazy" />
                   ) : (
                     <ProductCarousel />
                   )}
@@ -1615,7 +1845,7 @@ export default function App() {
 
               {raincoatComparison.image_url && (
                 <div className="mb-8 flex justify-center">
-                  <img src={raincoatComparison.image_url} alt="Comparison showcase asset" className="max-w-md w-full rounded-2xl shadow-lg border border-slate-200/50" referrerPolicy="no-referrer" />
+                  <img src={raincoatComparison.image_url} alt="Comparison showcase asset" className="max-w-md w-full rounded-2xl shadow-lg border border-slate-200/50" referrerPolicy="no-referrer" loading="lazy" />
                 </div>
               )}
 
@@ -2046,6 +2276,13 @@ export default function App() {
               className="text-slate-300 hover:text-orange-400 font-bold transition underline cursor-pointer flex items-center gap-1 font-sans"
             >
               🔍 অর্ডার ট্র্যাক করুন
+            </button>
+            <span className="text-slate-400 select-none">•</span>
+            <button
+              onClick={() => window.open('#/order-history', '_blank')}
+              className="text-slate-300 hover:text-orange-400 font-bold transition underline cursor-pointer flex items-center gap-1 font-sans font-sans"
+            >
+              📊 কাস্টমার অর্ডার হিস্টোরি
             </button>
             <span className="text-slate-400 select-none">•</span>
             <button

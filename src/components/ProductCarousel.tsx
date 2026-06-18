@@ -59,17 +59,32 @@ export default function ProductCarousel() {
     },
   ];
 
+  const [isLoading, setIsLoading] = useState(() => {
+    const cached = localStorage.getItem('raincoat_media_gallery_fallback') || localStorage.getItem('raincoat_media_gallery');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        const filtered = parsed.filter((item: any) => item.id !== 'bundle-offer-image' && !String(item.id).startsWith('live-video-'));
+        if (filtered && filtered.length > 0) {
+          return false;
+        }
+      } catch (e) {}
+    }
+    return true;
+  });
+
   const [carouselItems, setCarouselItems] = useState<CarouselItem[]>(() => {
-    const cached = localStorage.getItem('raincoat_media_gallery');
+    const cached = localStorage.getItem('raincoat_media_gallery_fallback') || localStorage.getItem('raincoat_media_gallery');
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
         if (parsed && parsed.length > 0) {
-          return parsed.filter((item: any) => item.id !== 'bundle-offer-image' && !String(item.id).startsWith('live-video-'));
+          const filtered = parsed.filter((item: any) => item.id !== 'bundle-offer-image' && !String(item.id).startsWith('live-video-'));
+          if (filtered.length > 0) return filtered;
         }
       } catch (e) {}
     }
-    return defaultItems;
+    return [];
   });
 
   const fetchFirebaseMedia = async () => {
@@ -77,16 +92,26 @@ export default function ProductCarousel() {
       const dbMedia = await getMediaFromFirestore();
       if (dbMedia && dbMedia.length > 0) {
         const filtered = dbMedia.filter(item => item.id !== 'bundle-offer-image' && !String(item.id).startsWith('live-video-'));
-        setCarouselItems(filtered);
+        if (filtered.length > 0) {
+          setCarouselItems(filtered);
+        } else {
+          setCarouselItems(defaultItems);
+        }
         localStorage.setItem('raincoat_media_gallery', JSON.stringify(dbMedia));
       } else {
-        const cached = localStorage.getItem('raincoat_media_gallery');
+        const cached = localStorage.getItem('raincoat_media_gallery_fallback') || localStorage.getItem('raincoat_media_gallery');
         if (!cached) {
           setCarouselItems(defaultItems);
         }
       }
     } catch (err) {
       console.warn("Could not load dynamic carousel from Firestore:", err);
+      const cached = localStorage.getItem('raincoat_media_gallery_fallback') || localStorage.getItem('raincoat_media_gallery');
+      if (!cached) {
+        setCarouselItems(defaultItems);
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -94,17 +119,22 @@ export default function ProductCarousel() {
     fetchFirebaseMedia();
 
     const handleCarouselUpdate = () => {
-      const updated = localStorage.getItem('raincoat_media_gallery');
+      const updated = localStorage.getItem('raincoat_media_gallery_fallback') || localStorage.getItem('raincoat_media_gallery');
       if (updated) {
         try {
           const parsed = JSON.parse(updated);
           if (parsed && parsed.length > 0) {
-            setCarouselItems(parsed.filter((item: any) => item.id !== 'bundle-offer-image' && !String(item.id).startsWith('live-video-')));
-            return;
+            const filtered = parsed.filter((item: any) => item.id !== 'bundle-offer-image' && !String(item.id).startsWith('live-video-'));
+            if (filtered.length > 0) {
+              setCarouselItems(filtered);
+              setIsLoading(false);
+              return;
+            }
           }
         } catch (e) {}
       }
       setCarouselItems(defaultItems);
+      setIsLoading(false);
     };
 
     window.addEventListener('raincoat_carousel_updated', handleCarouselUpdate);
@@ -114,14 +144,14 @@ export default function ProductCarousel() {
   }, []);
 
   useEffect(() => {
-    if (isHovered) return;
+    if (isLoading || isHovered || carouselItems.length === 0) return;
 
     const timer = setInterval(() => {
       setCurrentIndex((prevIndex) => (prevIndex + 1) % carouselItems.length);
     }, 4500);
 
     return () => clearInterval(timer);
-  }, [isHovered, carouselItems.length]);
+  }, [isLoading, isHovered, carouselItems.length]);
 
   const handlePrev = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -132,6 +162,18 @@ export default function ProductCarousel() {
     e.stopPropagation();
     setCurrentIndex((prevIndex) => (prevIndex + 1) % carouselItems.length);
   };
+
+  if (isLoading) {
+    return (
+      <div 
+        className="relative w-full max-w-sm sm:max-w-md md:max-w-lg aspect-[4/5] sm:aspect-square bg-slate-950/40 border border-slate-750 rounded-3xl shadow-2xl flex flex-col items-center justify-center p-6 text-center animate-pulse"
+        id="product-gallery-carousel-loading"
+      >
+        <div className="w-10 h-10 rounded-full border-3 border-amber-500 border-t-transparent animate-spin mb-3" />
+        <p className="text-slate-400 text-xs font-semibold font-sans">গ্যালারি লোড হচ্ছে...</p>
+      </div>
+    );
+  }
 
   if (carouselItems.length === 0) return null;
   const currentItem = carouselItems[currentIndex] || carouselItems[0];

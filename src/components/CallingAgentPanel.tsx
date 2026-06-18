@@ -1,0 +1,1066 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Phone, MessageSquare, Save, CheckCircle2, AlertTriangle, UserCheck, 
+  RefreshCw, LogOut, Calendar, MapPin, Clock, Search, XCircle, Edit3, 
+  Check, Shield, ChevronRight, User, Key, Lock, ArrowLeft, Truck, TrendingUp
+} from 'lucide-react';
+import { 
+  getOrdersFromFirestore, 
+  addCallingAgentLogToFirestore, 
+  getCallingAgentsFromFirestore,
+  getAdvancedAddonsSettingsFromFirestore,
+  saveAdvancedAddonsSettingsToFirestore,
+  getCallingConfigFromFirestore,
+  db
+} from '../lib/firebase';
+import { doc, getFirestore, updateDoc, setDoc, onSnapshot, collection, query } from 'firebase/firestore';
+import { RaincoatOrder } from '../types';
+
+interface CallingAgentPanelProps {
+  onClose?: () => void;
+}
+
+export default function CallingAgentPanel({ onClose }: CallingAgentPanelProps) {
+  // Login State
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [currentAgent, setCurrentAgent] = useState<string | null>(() => {
+    return sessionStorage.getItem('currentCallingAgent');
+  });
+
+  // Orders State
+  const [orders, setOrders] = useState<RaincoatOrder[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'All' | 'Pending' | 'No Answer' | 'Confirmed' | 'Cancelled'>('All');
+  
+  // Reactive Firestore states
+  const [reactiveConfirmedCalls, setReactiveConfirmedCalls] = useState<number>(0);
+  const [firestoreConnected, setFirestoreConnected] = useState<boolean>(false);
+  
+  // Dynamic calling configs
+  const [callingConfig, setCallingConfig] = useState({
+    orderExpiryDays: 3,
+    confirmExpiryMins: 60,
+    cancelExpiryMins: 60,
+    maxAttempts: 3
+  });
+
+  // Edit State
+  const [editingOrder, setEditingOrder] = useState<RaincoatOrder | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editVillage, setEditVillage] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  // Load orders
+  const loadOrders = async () => {
+    setLoading(true);
+    try {
+      const allOrders = await getOrdersFromFirestore();
+      setOrders(allOrders);
+      try {
+        const config = await getCallingConfigFromFirestore();
+        if (config) {
+          setCallingConfig({
+            orderExpiryDays: config.orderExpiryDays || 3,
+            confirmExpiryMins: config.confirmExpiryMins || 60,
+            cancelExpiryMins: config.cancelExpiryMins || 60,
+            maxAttempts: config.maxAttempts || 3
+          });
+        }
+      } catch (err) {
+        console.warn("Failed to load calling config:", err);
+      }
+    } catch (err) {
+      console.error("Failed to load orders for agent:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (currentAgent) {
+      loadOrders();
+    }
+  }, [currentAgent]);
+
+  // Reactive real-time listener for agent's confirmed calls directly from Firestore
+  useEffect(() => {
+    if (!currentAgent) {
+      setReactiveConfirmedCalls(0);
+      setFirestoreConnected(false);
+      return;
+    }
+
+    setFirestoreConnected(false);
+    const q = query(collection(db, 'orders'));
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      let count = 0;
+      snapshot.forEach((doc) => {
+        const data = doc.data() as RaincoatOrder;
+        if (data && (data as any).calledBy === currentAgent && (data as any).callStatus === 'Confirmed') {
+          count++;
+        }
+      });
+      setReactiveConfirmedCalls(count);
+      setFirestoreConnected(true);
+    }, (error) => {
+      console.error("Failed to query reactive total confirmed calls directly from Firestore:", error);
+      setFirestoreConnected(false);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [currentAgent]);
+
+  // Handle Login
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+    if (!username.trim() || !password.trim()) {
+      setLoginError('ইউজারনেম এবং পাসওয়ার্ড টাইপ করুন!');
+      return;
+    }
+
+    try {
+      const agents = await getCallingAgentsFromFirestore();
+      const match = agents.find(a => a.username === username.trim() && a.password === password.trim());
+      
+      if (match) {
+        sessionStorage.setItem('currentCallingAgent', match.username);
+        setCurrentAgent(match.username);
+      } else {
+        setLoginError('ভুল ইউজারনেম অথবা পাসওয়ার্ড! আবার চেষ্টা করুন।');
+      }
+    } catch (error) {
+      setLoginError('লগইন করতে সমস্যা হচ্ছ। পুনরায় চেষ্টা করুন।');
+    }
+  };
+
+  const handleLogout = () => {
+    sessionStorage.removeItem('currentCallingAgent');
+    setCurrentAgent(null);
+  };
+
+  // Status Check & Filters
+  // 1. Confirmed orders removed after custom minutes (default 60 mins)
+  // 2. All orders older than custom expiry days (default 3 days) are removed
+  const filteredOrders = orders.filter(order => {
+    const createdAtTime = new Date(order.createdAt).getTime();
+    const now = new Date().getTime();
+    const ageDays = (now - createdAtTime) / (1000 * 60 * 60 * 24);
+
+    // Filter out orders older than custom expiry days
+    if (ageDays > callingConfig.orderExpiryDays) return false;
+
+    // Filter out confirmed / cancelled orders after custom minutes if not viewing that specific tab
+    const callStatus = (order as any).callStatus;
+    const callConfirmedAt = (order as any).callConfirmedAt;
+    const callCanceledAt = (order as any).callCanceledAt;
+
+    if (callStatus === 'Confirmed' && callConfirmedAt && statusFilter !== 'Confirmed') {
+      const confirmedTime = new Date(callConfirmedAt).getTime();
+      const minsSinceConfirm = (now - confirmedTime) / (1000 * 60);
+      if (minsSinceConfirm >= callingConfig.confirmExpiryMins) {
+        return false;
+      }
+    }
+
+    if ((callStatus === 'Cancelled' || order.status === 'Cancelled' || order.status === 'Canceled') && statusFilter !== 'Cancelled') {
+      const canceledTime = callCanceledAt ? new Date(callCanceledAt).getTime() : createdAtTime;
+      const minsSinceCancel = (now - canceledTime) / (1000 * 60);
+      if (minsSinceCancel >= callingConfig.cancelExpiryMins) {
+        return false;
+      }
+    }
+
+    // Match Search Queries (Name, Phone, ID or Village)
+    const matchesSearch = 
+      order.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      order.phone.includes(searchQuery) ||
+      order.id.includes(searchQuery) ||
+      order.village.toLowerCase().includes(searchQuery.toLowerCase());
+
+    if (!matchesSearch) return false;
+
+    // Status Filter Matching
+    if (statusFilter === 'Pending') {
+      return (!callStatus || callStatus === 'Pending') && order.status !== 'Cancelled' && order.status !== 'Canceled';
+    }
+    if (statusFilter === 'No Answer') {
+      return callStatus === 'No Answer' && order.status !== 'Cancelled' && order.status !== 'Canceled';
+    }
+    if (statusFilter === 'Confirmed') {
+      return callStatus === 'Confirmed';
+    }
+    if (statusFilter === 'Cancelled') {
+      return callStatus === 'Cancelled' || order.status === 'Cancelled' || order.status === 'Canceled';
+    }
+
+    return true;
+  });
+
+  // Action: Mark as No Pick Up / No Answer
+  const handleNoAnswer = async (order: RaincoatOrder) => {
+    try {
+      const currentCount = (order as any).agentCallCount || 0;
+      const orderRef = doc(db, 'orders', order.id);
+      
+      const updatedFields = {
+        callStatus: 'No Answer',
+        agentCallCount: currentCount + 1,
+        calledAt: new Date().toISOString(),
+        calledBy: currentAgent || 'Unknown'
+      };
+
+      await updateDoc(orderRef, updatedFields);
+
+      // Add log
+      await addCallingAgentLogToFirestore({
+        id: `log_${order.id}_${Date.now()}`,
+        agentUsername: currentAgent || 'Unknown',
+        action: `Called: No Answer (Call #${currentCount + 1})`,
+        orderId: order.id,
+        timestamp: new Date().toISOString()
+      });
+
+      // Update locally
+      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, ...updatedFields } : o));
+    } catch (e) {
+      console.error("Failed to update status to No Answer:", e);
+      alert("তথ্য আপডেট করতে সমস্যা হয়েছে।");
+    }
+  };
+
+  // Action: Confirm Order via Call Agent
+  const handleConfirmOrder = async (order: RaincoatOrder) => {
+    try {
+      const orderRef = doc(db, 'orders', order.id);
+      
+      const updatedFields = {
+        callStatus: 'Confirmed',
+        callConfirmedAt: new Date().toISOString(),
+        calledAt: new Date().toISOString(),
+        calledBy: currentAgent || 'Unknown',
+        status: 'Pending' // Force normal order processing pool
+      };
+
+      await updateDoc(orderRef, updatedFields);
+
+      // Add log
+      await addCallingAgentLogToFirestore({
+        id: `log_${order.id}_${Date.now()}`,
+        agentUsername: currentAgent || 'Unknown',
+        action: 'Completed Call & Confirmed Order',
+        orderId: order.id,
+        timestamp: new Date().toISOString(),
+        notes: (order as any).agentNotes || ''
+      });
+
+      // Update locally
+      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, ...updatedFields } : o));
+    } catch (e) {
+      console.error("Failed to confirm order:", e);
+      alert("অর্ডার নিশ্চিত করতে সমস্যা হয়েছে।");
+    }
+  };
+
+  // Action: Cancel Order via Call Agent
+  const handleCancelOrder = async (order: RaincoatOrder) => {
+    const reason = window.prompt("অর্ডারটি বাতিল করার কারণ লিখুন (ঐচ্ছিক):");
+    if (reason === null) {
+      return;
+    }
+
+    try {
+      const orderRef = doc(db, 'orders', order.id);
+      const noteToSave = reason.trim() ? `Cancelled: ${reason.trim()}` : 'Customer requested cancellation';
+      
+      const updatedFields = {
+        callStatus: 'Cancelled',
+        callCanceledAt: new Date().toISOString(),
+        calledAt: new Date().toISOString(),
+        calledBy: currentAgent || 'Unknown',
+        status: 'Cancelled', // Standard Firestore order status
+        agentNotes: noteToSave,
+        orderNotes: noteToSave // Sync standard note fields as fallback
+      };
+
+      await updateDoc(orderRef, updatedFields);
+
+      // Add log
+      await addCallingAgentLogToFirestore({
+        id: `log_${order.id}_${Date.now()}`,
+        agentUsername: currentAgent || 'Unknown',
+        action: 'Cancelled Order',
+        orderId: order.id,
+        timestamp: new Date().toISOString(),
+        notes: noteToSave
+      });
+
+      // Update locally
+      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, ...updatedFields } : o));
+      alert("অর্ডারটি সফলভাবে বাতিল করা হয়েছে।");
+    } catch (e) {
+      console.error("Failed to cancel order:", e);
+      alert("অর্ডার বাতিল করতে সমস্যা হয়েছে।");
+    }
+  };
+
+  // Booking state loaders
+  const [bookingOrderIds, setBookingOrderIds] = useState<{[orderId: string]: boolean}>({});
+
+  const handleBookCourierOrder = async (order: RaincoatOrder) => {
+    const confirmBooking = window.confirm(`আপনি কি অর্ডার ${order.id} (${order.name}) কুরিয়ারে বুকিং করতে নিশ্চিত?`);
+    if (!confirmBooking) return;
+
+    setBookingOrderIds(prev => ({ ...prev, [order.id]: true }));
+    try {
+      // Step 1: Read courier settings
+      const settings = await getAdvancedAddonsSettingsFromFirestore();
+      if (!settings || !settings.courier_enabled) {
+        alert("কুরিয়ার গেটওয়ে একটিভ নেই অথবা কনফিগার করা হয়নি! অনুগ্রহ করে এডমিন প্যানেল থেকে কুরিয়ার গেটওয়ে এবং সেটিংস একটিভ করুন।");
+        setBookingOrderIds(prev => ({ ...prev, [order.id]: false }));
+        return;
+      }
+
+      let trackingId = '';
+      let consignmentId = '';
+      let actualCourierName = '';
+
+      if (settings.courier_provider === 'steadfast') {
+        const cleanPhone = order.phone.replace(/[^0-9]/g, '');
+        const orderData = {
+          invoice: order.id,
+          recipient_name: order.name,
+          recipient_phone: cleanPhone.slice(-11),
+          recipient_address: order.village + (order.policeStation ? `, ${order.policeStation}` : '') + (order.district ? `, ${order.district}` : ''),
+          cod_amount: order.price,
+          note: `Size: ${order.size}, Color: ${order.color}, Height: ${order.heightFeet}ft ${order.heightInches}in. Note: ${order.orderNotes || ''}`,
+          item_description: `Premium Bike Cover or Waterproof Raincoat Size ${order.size}`
+        };
+
+        const response = await fetch('/api/steadfast/create_order', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'api-key': settings.steadfast_api_key,
+            'secret-key': settings.steadfast_secret,
+          },
+          body: JSON.stringify({ orderData })
+        });
+
+        const result = await response.json();
+        if (result.status === 200 && result.consignment) {
+          trackingId = result.consignment.tracking_code;
+          consignmentId = String(result.consignment.id || '');
+          actualCourierName = 'Steadfast';
+        } else {
+          throw new Error(result.message || 'Steadfast response code is not 200');
+        }
+      } else {
+        const providerKey = settings.courier_provider === 'pathao' ? 'PTH' : 'REDX';
+        trackingId = `${providerKey}-${Math.floor(100000 + Math.random() * 900000)}-BD`;
+        consignmentId = trackingId;
+        actualCourierName = settings.courier_provider === 'pathao' ? 'Pathao' : 'RedX';
+      }
+
+      const newLog = {
+        id: `courier-log-${Date.now()}`,
+        orderId: order.id,
+        courier: actualCourierName,
+        status: 'Assigned',
+        trackingId,
+        createdAt: new Date().toISOString()
+      };
+
+      const updatedLogs = [newLog, ...(settings.courier_log || [])];
+
+      // SMS automation if checked
+      let updatedSMSLogs = settings.sms_log || [];
+      if (settings.sms_enabled && settings.sms_template_shipping) {
+        const smsMsg = settings.sms_template_shipping
+          .replace('{name}', order.name)
+          .replace('{order_id}', order.id)
+          .replace('{tracking_id}', trackingId);
+
+        const newSMSLog = {
+          id: `sms-${Date.now()}`,
+          orderId: order.id,
+          phone: order.phone,
+          message: smsMsg,
+          status: 'Sent',
+          createdAt: new Date().toISOString()
+        };
+        updatedSMSLogs = [newSMSLog, ...updatedSMSLogs];
+      }
+
+      // Update Order document in DB
+      const orderDocRef = doc(db, 'orders', order.id);
+      const updatedFields = {
+        status: 'Shipped',
+        trackingId,
+        consignmentId,
+        courierName: actualCourierName,
+        shippedAt: new Date().toISOString()
+      };
+
+      await updateDoc(orderDocRef, updatedFields);
+
+      // Save advanced addons settings log histories
+      await saveAdvancedAddonsSettingsToFirestore({
+        courier_log: updatedLogs,
+        sms_log: updatedSMSLogs
+      });
+
+      // Add to Caller Logs
+      await addCallingAgentLogToFirestore({
+        id: `log_${order.id}_${Date.now()}`,
+        agentUsername: currentAgent || 'Unknown',
+        action: `Booked Courier (${actualCourierName})`,
+        orderId: order.id,
+        timestamp: new Date().toISOString(),
+        notes: `Courier: ${actualCourierName}, Tracking ID: ${trackingId}`
+      });
+
+      // Update locally
+      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, ...updatedFields } : o));
+      alert(`সাফল্যের সাথে অর্ডার ${order.id} কুরিয়ার বুকিং সম্পন্ন হয়েছে!\nট্র্যাকিং আইডি: ${trackingId}`);
+    } catch (err: any) {
+      console.error(err);
+      alert('কুরিয়ার বুকিং প্রসেস করতে ত্রুটি: ' + err.message);
+    } finally {
+      setBookingOrderIds(prev => ({ ...prev, [order.id]: false }));
+    }
+  };
+
+  // Open Edit Modal
+  const startEditing = (order: RaincoatOrder) => {
+    setEditingOrder(order);
+    setEditName(order.name);
+    setEditPhone(order.phone);
+    setEditVillage(order.village);
+    setEditNotes((order as any).agentNotes || '');
+  };
+
+  // Save Note & Edited Data
+  const saveOrderEdits = async () => {
+    if (!editingOrder) return;
+    setSavingEdit(true);
+    try {
+      const orderRef = doc(db, 'orders', editingOrder.id);
+      
+      const updatedFields = {
+        name: editName,
+        phone: editPhone,
+        village: editVillage,
+        agentNotes: editNotes,
+        orderNotes: editNotes // Sync standard note fields as fallback
+      };
+
+      await updateDoc(orderRef, updatedFields);
+
+      // Add log
+      await addCallingAgentLogToFirestore({
+        id: `log_${editingOrder.id}_${Date.now()}`,
+        agentUsername: currentAgent || 'Unknown',
+        action: 'Edited Customer Details and Notes',
+        orderId: editingOrder.id,
+        timestamp: new Date().toISOString(),
+        notes: editNotes
+      });
+
+      // Update locally
+      setOrders(prev => prev.map(o => o.id === editingOrder.id ? { ...o, ...updatedFields } : o));
+      setEditingOrder(null);
+    } catch (err) {
+      console.error("Failed to save edits:", err);
+      alert("তথ্য সংরক্ষণ করা যায়নি।");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  // Setup WhatsApp URL
+  const getWhatsAppLink = (order: RaincoatOrder) => {
+    // Strip characters
+    let num = order.phone.replace(/[^0-9]/g, '');
+    if (!num.startsWith('880') && num.startsWith('0')) {
+      num = '88' + num;
+    } else if (num.length === 10) {
+      num = '880' + num;
+    }
+    const message = `সালামু আলাইকুম ${order.name} ভাই। আপনার অর্ডার আইডি: #${order.id}। আপনি আমাদের সাইট থেকে একটি ${order.color} ${order.size} সাইজ রেইনকোট অর্ডার করেছিলেন। কুরিয়ার বুকিং করার আগে অর্ডারটি কনফার্ম করার জন্য আপনাকে কিছু কল দেওয়া হয়েছিল কিন্তু পাওয়া যায়নি। দয়া করে আপনার ঠিকানা এবং কনফার্মেশনটি মেসেজে পুনরায় দিন। ধন্যবাদ।`;
+    return `https://wa.me/${num}?text=${encodeURIComponent(message)}`;
+  };
+
+  if (!currentAgent) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center py-12 px-4 sm:px-6 lg:px-8 font-sans">
+        <div className="max-w-md w-full space-y-8 bg-slate-900 p-8 rounded-2xl border border-slate-800 shadow-2xl relative">
+          
+          <button 
+            onClick={onClose}
+            className="absolute top-4 right-4 text-slate-500 hover:text-white bg-slate-800/80 p-2 rounded-full cursor-pointer hover:bg-slate-800 transition"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+
+          <div>
+            <div className="mx-auto h-12 w-12 bg-blue-600/10 text-cyan-400 rounded-full flex items-center justify-center mb-4 border border-blue-500/20">
+              <Shield className="h-6 w-6" />
+            </div>
+            <h2 className="text-center text-2xl font-black text-white tracking-tight">
+              কলিং এজেন্ট লগইন প্যানেল
+            </h2>
+            <p className="mt-2 text-center text-xs text-slate-400">
+              বিক্রয় কনফার্মেশন এবং লিড প্রসেসিং কন্সোল
+            </p>
+          </div>
+
+          <form className="mt-8 space-y-6" onSubmit={handleLogin}>
+            {loginError && (
+              <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-lg text-xs font-bold leading-relaxed">
+                ⚠️ {loginError}
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">ইউজারনেম</label>
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-500">
+                    <User className="h-4 w-4" />
+                  </span>
+                  <input
+                    type="text"
+                    required
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder=" যেমন: 1234"
+                    className="pl-10 w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-650 text-sm focus:border-cyan-400 focus:outline-hidden"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">পাসওয়ার্ড</label>
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-500">
+                    <Lock className="h-4 w-4" />
+                  </span>
+                  <input
+                    type="password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="পাসওয়ার্ড দিন"
+                    className="pl-10 w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-650 text-sm focus:border-cyan-400 focus:outline-hidden"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <button
+                type="submit"
+                className="w-full py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-705 text-white font-bold rounded-xl shadow-lg hover:shadow-cyan-500/10 active:scale-95 transition text-sm cursor-pointer"
+              >
+                প্যানেলে প্রবেশ করুন
+              </button>
+            </div>
+          </form>
+
+          <div className="border-t border-slate-850/50 pt-4 text-center">
+            <span className="text-[10px] text-slate-500 font-mono">Default User: 1234 Pass: 1234</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-white font-sans flex flex-col">
+      {/* Upper Control Bar */}
+      <header className="bg-slate-900 border-b border-slate-800 px-4 sm:px-6 lg:px-8 py-4">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="bg-[#00e3cd]/10 text-[#00e3cd] p-2 rounded-xl border border-[#00e3cd]/10">
+              <Phone className="h-5 w-5 animate-pulse" />
+            </div>
+            <div>
+              <h1 className="text-sm font-black tracking-wider text-white">কলিং সেলস কন্সোল</h1>
+              <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-400 font-medium">
+                <span>লগইন ইউজার: </span>
+                <span className="text-[#00e3cd] font-bold font-mono">{currentAgent}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={loadOrders}
+              className="p-2 sm:px-3 sm:py-2 bg-slate-800 text-slate-300 hover:text-white rounded-lg text-xs font-semibold hover:bg-slate-750 transition flex items-center gap-1.5 cursor-pointer"
+              title="রিফ্রেশ করুন"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">রিফ্রেশ</span>
+            </button>
+            <button
+              onClick={handleLogout}
+              className="p-2 sm:px-3 sm:py-2 bg-red-650/10 hover:bg-red-650/20 text-red-400 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">লগআউট</span>
+            </button>
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="p-2 bg-slate-800 text-slate-400 hover:text-white rounded-lg transition"
+              >
+                <XCircle className="h-4.5 w-4.5" />
+              </button>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* Main CRM Work Board */}
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+        
+        {/* Real-time Summary Card from Firestore */}
+        <div className="bg-gradient-to-r from-cyan-950/40 to-slate-900 border border-cyan-500/30 rounded-2xl p-5 shadow-[0_4px_24px_-8px_rgba(6,182,212,0.15)] flex flex-col sm:flex-row items-center justify-between gap-4 font-sans backdrop-blur-xs relative overflow-hidden">
+          {/* Subtle decorative background glow */}
+          <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/5 rounded-full blur-2xl pointer-events-none" />
+          
+          <div className="flex items-center gap-4">
+            <div className="bg-gradient-to-br from-cyan-400 to-blue-550 p-3 rounded-2xl shadow-lg text-white">
+              <CheckCircle2 className="h-6 w-6 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="bg-cyan-500/10 text-cyan-400 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border border-cyan-500/20">
+                  ক্লাউড কানেক্টেড
+                </span>
+                
+                <div className="flex items-center gap-1.5">
+                  <span className={`inline-block w-2 h-2 rounded-full ${firestoreConnected ? 'bg-emerald-400 animate-ping' : 'bg-amber-400 animate-pulse'}`} />
+                  <span className="text-[10px] text-slate-400 font-bold">
+                    {firestoreConnected ? 'সরাসরি ফায়ারস্টোর সঙ্ক্রিয় (Live)' : 'কানেক্ট করা হচ্ছে...'}
+                  </span>
+                </div>
+              </div>
+              
+              <h2 className="text-base font-black text-white mt-1.5 leading-tight">
+                আমার নিশ্চিতকৃত কল ও অর্ডার হিসাব (রিয়েল-টাইম)
+              </h2>
+              <p className="text-xs text-slate-400 mt-1 font-medium">
+                ফায়ারস্টোর ডাটাবেজ থেকে সরাসরি আপনার নামের সাথে সংযুক্ত কনফার্মড অর্ডার ট্র্যাক করা হচ্ছে।
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-slate-950/80 border border-slate-800 px-6 py-4 rounded-xl text-center min-w-[150px] shrink-0 shadow-inner flex flex-col justify-center">
+            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">নিশ্চিতকৃত ডেটা</span>
+            <span className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-teal-350 to-emerald-400 font-mono tracking-tight mt-1">
+              {reactiveConfirmedCalls}
+            </span>
+            <span className="text-[9px] text-emerald-400 font-semibold mt-1">সক্রিয় রিয়েল-টাইম</span>
+          </div>
+        </div>
+
+        {/* Statistics Widgets */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-slate-900 border border-slate-850 p-4 rounded-2xl flex flex-col justify-between">
+            <span className="text-[10px] uppercase font-black text-slate-400 tracking-wider">টোটাল অর্ডার পুল</span>
+            <span className="text-2xl font-black text-white mt-1">{orders.length}</span>
+          </div>
+
+          <div className="bg-emerald-950/20 border border-emerald-900/40 p-4 rounded-2xl flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] uppercase font-black text-emerald-450 tracking-wider">আমার কনফার্মড লিড (রিয়েল-টাইম)</span>
+              <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" title="ফায়ারস্টোর থেকে সরাসরি সিঙ্কড" />
+            </div>
+            <span className="text-2xl font-black text-emerald-300 mt-1">
+              {reactiveConfirmedCalls}
+            </span>
+          </div>
+
+          <div className="bg-amber-950/20 border border-amber-900/40 p-4 rounded-2xl flex flex-col justify-between">
+            <span className="text-[10px] uppercase font-black text-amber-450 tracking-wider">আমার নো অ্যান্সার</span>
+            <span className="text-2xl font-black text-amber-300 mt-1">
+              {orders.filter(o => o.calledBy === currentAgent && (o as any).callStatus === 'No Answer').length}
+            </span>
+          </div>
+
+          <div className="bg-rose-950/20 border border-rose-900/40 p-4 rounded-2xl flex flex-col justify-between">
+            <span className="text-[10px] uppercase font-black text-rose-450 tracking-wider">আমার বাতিলকৃত লিড</span>
+            <span className="text-2xl font-black text-rose-300 mt-1">
+              {orders.filter(o => o.calledBy === currentAgent && (o as any).callStatus === 'Cancelled').length}
+            </span>
+          </div>
+        </div>
+
+        {/* Filter Navigation & Search Bar */}
+        <div className="bg-slate-900 border border-slate-850 p-4 rounded-2xl flex flex-col md:flex-row gap-4 items-center justify-between">
+          <div className="flex flex-wrap gap-2 w-full md:w-auto">
+            {(['All', 'Pending', 'No Answer', 'Confirmed', 'Cancelled'] as const).map((filter) => (
+              <button
+                key={filter}
+                onClick={() => setStatusFilter(filter)}
+                className={`px-4 py-2 text-xs font-bold rounded-xl active:scale-95 transition cursor-pointer ${
+                  statusFilter === filter
+                    ? 'bg-gradient-to-r from-cyan-400 to-blue-500 text-white shadow-md'
+                    : 'bg-slate-950 text-slate-400 hover:text-white hover:bg-slate-850 border border-slate-850'
+                }`}
+              >
+                {filter === 'All' ? 'সব ধরণের' : filter === 'Pending' ? 'কল হয়নি (Pending)' : filter === 'No Answer' ? 'ফোন ধরেনি (No Answer)' : filter === 'Confirmed' ? 'কনফার্মড' : 'বাতিলকৃত (Cancelled)'}
+              </button>
+            ))}
+          </div>
+
+          <div className="relative w-full md:w-80">
+            <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-500 pointer-events-none">
+              <Search className="h-4 w-4" />
+            </span>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="নাম, ফোন অথবা ঠিকানা দিয়ে সার্চ..."
+              className="pl-9 w-full px-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-600 text-xs focus:outline-hidden focus:border-cyan-400"
+            />
+          </div>
+        </div>
+
+        {/* Lead/Order Pipeline List */}
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <div className="w-10 h-10 border-4 border-[#00e3cd] border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-xs text-slate-450 font-bold">সার্ভার থেকে ট্রানজেকশন তালিকা লোড করা হচ্ছে...</p>
+          </div>
+        ) : filteredOrders.length === 0 ? (
+          <div className="bg-slate-900 border border-dashed border-slate-800 rounded-2xl p-12 text-center text-slate-500">
+            <AlertTriangle className="h-8 w-8 mx-auto text-amber-500/80 mb-3" />
+            <p className="text-sm font-bold text-slate-400">কোনো কল রেকর্ড মেলেনি!</p>
+            <p className="text-xs text-slate-550 mt-1 leading-relaxed">
+              ৩ দিনের বেশি আগের কাস্টমার রেকর্ড এবং কনফার্ম হওয়ার ১ ঘণ্টা অতিক্রম করা বাটন তালিকা থেকে স্বয়ংক্রিয়ভাবে লুপ্ত হয়।
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {filteredOrders.map((order) => {
+              const callStatus = (order as any).callStatus || 'Pending';
+              const agentCallCount = (order as any).agentCallCount || 0;
+              const agentNotes = (order as any).agentNotes || '';
+
+              // Calculate customer previous orders history using full "orders" database list
+              const customerOrders = orders.filter(o => o.phone === order.phone);
+              const totalOrdersCount = customerOrders.length;
+              const totalDeliveriesCount = customerOrders.filter(o => o.status === 'Delivered').length;
+              const totalCanceledCount = customerOrders.filter(o => o.status === 'Cancelled' || o.status === 'Canceled' || o.status === 'Canceled Fake Order').length;
+              const evaluatedRatioCount = totalDeliveriesCount + totalCanceledCount;
+              const successRatio = evaluatedRatioCount > 0 
+                ? Math.round((totalDeliveriesCount / evaluatedRatioCount) * 100) 
+                : 100; // default 100% success if no final outcomes yet to avoid discouraging stats
+              
+              return (
+                <div 
+                  key={order.id} 
+                  className={`bg-slate-900 border p-5 rounded-2xl shadow-xs transition duration-200 flex flex-col md:flex-row items-start justify-between gap-6 hover:shadow-cyan-400/5 ${
+                    callStatus === 'Confirmed' 
+                      ? 'border-emerald-500/20 bg-emerald-950/5' 
+                      : callStatus === 'No Answer' 
+                      ? 'border-amber-500/20 bg-amber-950/5' 
+                      : 'border-slate-850'
+                  }`}
+                >
+                  
+                  {/* Customer Block Info */}
+                  <div className="flex-1 space-y-3.5">
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <span className="bg-slate-950 px-2.5 py-1 rounded-md text-[10px] font-black text-cyan-455 tracking-wider font-mono">
+                        #{order.id}
+                      </span>
+                      <span className="text-slate-500 text-xs flex items-center gap-1">
+                        <Calendar className="h-3 w-3" />
+                        {new Date(order.createdAt).toLocaleDateString('bn-BD', {
+                          hour: '2-digit', minute: '2-digit'
+                        })}
+                      </span>
+
+                      {/* Display Badges */}
+                      {callStatus === 'Confirmed' ? (
+                        <span className="bg-emerald-500/10 text-emerald-450 px-2 py-0.5 rounded-full text-[10px] font-bold border border-emerald-500/20 flex items-center gap-1">
+                          ● নিশ্চিত করেছেন
+                        </span>
+                      ) : callStatus === 'No Answer' ? (
+                        <span className="bg-amber-500/10 text-amber-450 px-2 py-0.5 rounded-full text-[10px] font-bold border border-amber-500/20 flex items-center gap-1">
+                          ● ফোন ধরেন নি ({agentCallCount} বার)
+                        </span>
+                      ) : (
+                        <span className="bg-slate-950 text-slate-400 px-2 py-0.5 rounded-full text-[10px] font-bold border border-slate-800 flex items-center gap-1">
+                          ● কল হয়নি (Pending)
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="space-y-1">
+                      <h4 className="text-base font-black text-white hover:text-cyan-300 transition duration-150">
+                        {order.name}
+                      </h4>
+                      <p className="text-xs text-orange-400 font-extrabold flex items-center gap-1.5 focus:underline">
+                        📞 <a href={`tel:${order.phone}`} className="hover:underline">{order.phone}</a>
+                      </p>
+                    </div>
+
+                    {/* Delivery Performance Stats Badge */}
+                    <div className="flex flex-wrap items-center gap-3 bg-slate-950/60 p-2.5 rounded-xl border border-slate-850/80">
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <span className="text-slate-400 font-medium font-sans">মোট কাস্টমার ডেলিভারি:</span>
+                        <span className="bg-slate-900 border border-slate-800 text-slate-200 px-2 py-0.5 rounded-md font-black font-mono text-[11px] flex items-center gap-1">
+                          <Truck className="h-3.5 w-3.5 text-cyan-400" />
+                          {totalDeliveriesCount} টি
+                        </span>
+                      </div>
+
+                      <div className="h-4 w-[1px] bg-slate-850" />
+
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <span className="text-slate-400 font-medium font-sans">ডেলিভারি সাকসেস রেশিও:</span>
+                        {evaluatedRatioCount === 0 ? (
+                          <span className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-md text-[10px] font-bold">
+                             নতুন ক্রেতা (No COD History)
+                          </span>
+                        ) : (
+                          <span className={`px-2 py-0.5 rounded-md font-mono font-black text-[11px] border flex items-center gap-1 ${
+                            successRatio >= 80 
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+                              : successRatio >= 50 
+                              ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' 
+                              : 'bg-rose-500/10 text-rose-455 border-rose-500/20'
+                          }`}>
+                            <TrendingUp className="h-3.5 w-3.5" />
+                            {successRatio}%
+                          </span>
+                        )}
+                      </div>
+                      
+                      {totalOrdersCount > 1 && (
+                        <>
+                          <div className="h-4 w-[1px] bg-slate-850 hidden sm:block" />
+                          <div className="text-[10px] text-slate-500 font-bold">
+                            (মোট অর্ডার: {totalOrdersCount} টি, ক্যানসেলড: {totalCanceledCount} টি)
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Order specs of product */}
+                    <div className="bg-slate-950 border border-slate-850/60 p-3 rounded-xl flex items-center gap-3 text-xs">
+                      <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-orange-600/10 text-orange-400 border border-orange-500/25 shrink-0 font-bold font-mono text-[10px]">
+                        {order.size}
+                      </div>
+                      <div>
+                        <p className="text-slate-350 font-bold">{order.color === 'Black' ? 'কালো (Cosmic Black)' : 'নেভি ব্লু (Classic Navy)'} রেইনকোট</p>
+                        <p className="text-[10px] text-slate-500 font-mono mt-0.5">TK {order.price} | Weight: {order.weight} kg | Height: {order.heightFeet}&apos;{order.heightInches}&quot;</p>
+                      </div>
+                    </div>
+
+                    {/* Postal Details */}
+                    <p className="text-xs text-slate-300 flex items-start gap-1.5 leading-relaxed">
+                      <MapPin className="h-3.5 w-3.5 text-rose-500 shrink-0 mt-0.5" />
+                      <span>{order.village}{order.policeStation ? `, থানা: ${order.policeStation}` : ''}{order.district ? `, জেলা: ${order.district}` : ''}</span>
+                    </p>
+
+                    {/* Notes preview and text fields */}
+                    {agentNotes && (
+                      <div className="bg-slate-950 border-l-2 border-cyan-400 p-2.5 rounded-r-lg text-xs italic text-slate-400 font-medium">
+                        <span className="block text-[9px] uppercase font-bold tracking-wider text-cyan-455 not-italic">ম্যানেজার এজেন্ট নোট:</span>
+                        &quot;{agentNotes}&quot;
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Operational Action Controls */}
+                  <div className="w-full md:w-auto flex flex-col gap-2 border-t md:border-t-0 border-slate-850/60 pt-4 md:pt-0 shrink-0 min-w-[200px]">
+                    <div className="grid grid-cols-2 gap-2">
+                      <a
+                        href={`tel:${order.phone}`}
+                        className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition duration-150 shadow-md active:scale-95"
+                      >
+                        <Phone className="h-3.5 w-3.5" />
+                        <span>সরাসরি কল</span>
+                      </a>
+
+                      <a
+                        href={getWhatsAppLink(order)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition duration-150 shadow-md active:scale-95"
+                      >
+                        <MessageSquare className="h-3.5 w-3.5" />
+                        <span>WhatsApp</span>
+                      </a>
+                    </div>
+
+                    {/* Confirmation states controllers */}
+                    <button
+                      onClick={() => handleConfirmOrder(order)}
+                      disabled={callStatus === 'Confirmed'}
+                      className={`w-full py-2.5 rounded-xl text-xs font-bold cursor-pointer transition flex items-center justify-center gap-1.5 ${
+                        callStatus === 'Confirmed'
+                          ? 'bg-emerald-950 text-emerald-500 border border-emerald-900 border-dashed cursor-not-allowed opacity-50'
+                          : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-md active:scale-95'
+                      }`}
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span>অর্ডার বুকিং কনফার্ম করুন</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleNoAnswer(order)}
+                      className="w-full py-2 bg-slate-950 hover:bg-slate-850 border border-slate-805 text-amber-400 rounded-xl text-xs font-bold cursor-pointer transition flex items-center justify-center gap-1.5"
+                    >
+                      <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                      <span>ফোন রিসিভ হয়নি (No Answer)</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleCancelOrder(order)}
+                      disabled={callStatus === 'Cancelled' || order.status === 'Cancelled' || order.status === 'Canceled'}
+                      className={`w-full py-2 rounded-xl text-xs font-bold cursor-pointer transition flex items-center justify-center gap-1.5 ${
+                        callStatus === 'Cancelled' || order.status === 'Cancelled' || order.status === 'Canceled'
+                          ? 'bg-rose-950 text-rose-500 border border-rose-905 border-dashed cursor-not-allowed opacity-50'
+                          : 'bg-rose-600/10 hover:bg-rose-600/25 text-rose-400 border border-rose-500/20 active:scale-95'
+                      }`}
+                    >
+                      <XCircle className="h-3.5 w-3.5 text-rose-500" />
+                      <span>অর্ডার বাতিল (Cancel Order)</span>
+                    </button>
+
+                    {order.status === 'Shipped' ? (
+                      <div className="bg-slate-950/80 text-cyan-400 border border-cyan-500/20 p-2.5 rounded-xl text-[11px] text-center font-bold font-mono">
+                        📦 কুরিয়ার বুকিং করা হয়েছে ({order.courierName || 'N/A'}) - {order.trackingId || 'N/A'}
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => handleBookCourierOrder(order)}
+                        disabled={bookingOrderIds[order.id] || order.status === 'Cancelled' || order.status === 'Canceled'}
+                        className={`w-full py-2.5 rounded-xl text-xs font-bold cursor-pointer transition flex items-center justify-center gap-1.5 ${
+                          bookingOrderIds[order.id]
+                            ? 'bg-blue-900 text-blue-200 cursor-wait animate-pulse'
+                            : order.status === 'Cancelled' || order.status === 'Canceled'
+                            ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50'
+                            : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 active:scale-95'
+                        }`}
+                      >
+                        <Truck className="h-4 w-4" />
+                        <span>{bookingOrderIds[order.id] ? 'বুকিং হচ্ছে...' : 'কুরিয়ার বুকিং করুন (Book Courier)'}</span>
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => startEditing(order)}
+                      className="w-full py-2 bg-slate-800 hover:bg-slate-750 text-slate-350 rounded-xl text-xs font-bold cursor-pointer transition flex items-center justify-center gap-1.5"
+                    >
+                      <Edit3 className="h-3.5 w-3.5 text-slate-400" />
+                      <span>এডিট কাস্টমার ও নোটস</span>
+                    </button>
+                  </div>
+
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </main>
+
+      {/* Edit Customer Details and Notes Modal */}
+      {editingOrder && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 animate-fade-in font-sans">
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-2xl p-6 shadow-2xl relative space-y-4">
+            
+            <button
+              onClick={() => setEditingOrder(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white hover:bg-slate-850 p-2 rounded-full"
+            >
+              <XCircle className="h-5 w-5" />
+            </button>
+
+            <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+              <Edit3 className="h-5 w-5 text-cyan-400" />
+              <h3 className="font-extrabold text-white text-base">গ্রাহকের বিবরণ এবং এজেন্ট নোট এডিট করুন</h3>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-2">গ্রাহকের নাম</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-950 border border-slate-850 rounded-xl text-white font-semibold focus:outline-hidden focus:border-cyan-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-2">মোবাইল নাম্বার</label>
+                <input
+                  type="text"
+                  value={editPhone}
+                  onChange={(e) => setEditPhone(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-950 border border-slate-850 rounded-xl text-white font-mono focus:outline-hidden focus:border-cyan-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-2">পূর্ণ ঠিকানা (গ্রাম/রোড, থানা, জেলা)</label>
+                <textarea
+                  value={editVillage}
+                  onChange={(e) => setEditVillage(e.target.value)}
+                  rows={2}
+                  className="w-full px-4 py-2.5 bg-slate-950 border border-slate-850 rounded-xl text-white focus:outline-hidden focus:border-cyan-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-2">এজেন্ট কলিং নোট ও মন্তব্য</label>
+                <textarea
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  placeholder="যেমন: ১ টায় কল করতে বলেছে / রিসিভ হয়নি / অ্যাড্রেস কারেক্ট"
+                  rows={3}
+                  className="w-full px-4 py-2.5 bg-slate-950 border border-slate-850 rounded-xl text-white placeholder-slate-600 focus:outline-hidden focus:border-cyan-400"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2.5 pt-2">
+              <button
+                onClick={() => setEditingOrder(null)}
+                className="flex-1 py-3 bg-slate-850 hover:bg-slate-800 text-slate-300 font-bold rounded-xl text-xs active:scale-95 transition"
+              >
+                বাতিল করুন
+              </button>
+              <button
+                onClick={saveOrderEdits}
+                disabled={savingEdit}
+                className="flex-1 py-3 bg-cyan-500 hover:bg-cyan-600 font-bold text-white rounded-xl text-xs active:scale-95 transition flex items-center justify-center gap-1.5"
+              >
+                {savingEdit ? 'সেভিং...' : 'সংরক্ষণ করুন'}
+                <Save className="h-4 w-4" />
+              </button>
+            </div>
+            
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

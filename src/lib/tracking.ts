@@ -44,16 +44,71 @@ if (typeof window !== 'undefined') {
   import('./firebase').then(({ getIntegrationsSettingsFromFirestore }) => {
     getIntegrationsSettingsFromFirestore().then((settings) => {
       if (settings) {
-        if (settings.fb_pixel_id) memoryStorageMap.set('fb_pixel_id', settings.fb_pixel_id);
-        memoryStorageMap.set('fb_pixel_enabled', settings.fb_pixel_enabled !== false ? 'true' : 'false');
-        memoryStorageMap.set('fb_capi_enabled', settings.fb_capi_enabled === true ? 'true' : 'false');
-        memoryStorageMap.set('fb_advanced_matching', settings.fb_advanced_matching !== false ? 'true' : 'false');
-        if (settings.fb_capi_token) memoryStorageMap.set('fb_capi_token', settings.fb_capi_token);
-        memoryStorageMap.set('fb_test_event_enabled', settings.fb_test_event_enabled === true ? 'true' : 'false');
-        if (settings.fb_test_event_code) memoryStorageMap.set('fb_test_event_code', settings.fb_test_event_code);
+        if (settings.fb_pixel_id) {
+          memoryStorageMap.set('fb_pixel_id', settings.fb_pixel_id);
+          window.localStorage.setItem('fb_pixel_id', settings.fb_pixel_id);
+        }
+        const pixelEnabled = settings.fb_pixel_enabled !== false ? 'true' : 'false';
+        memoryStorageMap.set('fb_pixel_enabled', pixelEnabled);
+        window.localStorage.setItem('fb_pixel_enabled', pixelEnabled);
+
+        const fbCapiEnabled = settings.fb_capi_enabled === true ? 'true' : 'false';
+        memoryStorageMap.set('fb_capi_enabled', fbCapiEnabled);
+        window.localStorage.setItem('fb_capi_enabled', fbCapiEnabled);
+
+        const advancedMatching = settings.fb_advanced_matching !== false ? 'true' : 'false';
+        memoryStorageMap.set('fb_advanced_matching', advancedMatching);
+        window.localStorage.setItem('fb_advanced_matching', advancedMatching);
+
+        if (settings.fb_capi_token) {
+          memoryStorageMap.set('fb_capi_token', settings.fb_capi_token);
+          window.localStorage.setItem('fb_capi_token', settings.fb_capi_token);
+        }
+
+        const testEventEnabled = settings.fb_test_event_enabled === true ? 'true' : 'false';
+        memoryStorageMap.set('fb_test_event_enabled', testEventEnabled);
+        window.localStorage.setItem('fb_test_event_enabled', testEventEnabled);
+
+        if (settings.fb_test_event_code) {
+          memoryStorageMap.set('fb_test_event_code', settings.fb_test_event_code);
+          window.localStorage.setItem('fb_test_event_code', settings.fb_test_event_code);
+        }
         
-        if (settings.tiktok_pixel_id) memoryStorageMap.set('tiktok_pixel_id', settings.tiktok_pixel_id);
-        memoryStorageMap.set('tiktok_pixel_enabled', settings.tiktok_pixel_enabled !== false ? 'true' : 'false');
+        // TikTok
+        if (settings.tiktok_pixel_id) {
+          memoryStorageMap.set('tiktok_pixel_id', settings.tiktok_pixel_id);
+          window.localStorage.setItem('tiktok_pixel_id', settings.tiktok_pixel_id);
+        }
+        const ttPixelEnabled = settings.tiktok_pixel_enabled !== false ? 'true' : 'false';
+        memoryStorageMap.set('tiktok_pixel_enabled', ttPixelEnabled);
+        window.localStorage.setItem('tiktok_pixel_enabled', ttPixelEnabled);
+
+        const ttCapiEnabled = settings.tiktok_capi_enabled === true ? 'true' : 'false';
+        memoryStorageMap.set('tiktok_capi_enabled', ttCapiEnabled);
+        window.localStorage.setItem('tiktok_capi_enabled', ttCapiEnabled);
+
+        const ttAdvancedMatching = settings.tiktok_advanced_matching !== false ? 'true' : 'false';
+        memoryStorageMap.set('tiktok_advanced_matching', ttAdvancedMatching);
+        window.localStorage.setItem('tiktok_advanced_matching', ttAdvancedMatching);
+
+        if (settings.tiktok_access_token) {
+          memoryStorageMap.set('tiktok_access_token', settings.tiktok_access_token);
+          window.localStorage.setItem('tiktok_access_token', settings.tiktok_access_token);
+        }
+
+        const ttTestEnabled = settings.tiktok_test_event_enabled === true ? 'true' : 'false';
+        memoryStorageMap.set('tiktok_test_event_enabled', ttTestEnabled);
+        window.localStorage.setItem('tiktok_test_event_enabled', ttTestEnabled);
+
+        if (settings.tiktok_test_event_code) {
+          memoryStorageMap.set('tiktok_test_event_code', settings.tiktok_test_event_code);
+          window.localStorage.setItem('tiktok_test_event_code', settings.tiktok_test_event_code);
+        }
+
+        if (settings.ga_track_id) {
+          memoryStorageMap.set('ga_track_id', settings.ga_track_id);
+          window.localStorage.setItem('ga_track_id', settings.ga_track_id);
+        }
 
         // Re-initialize standard pixels now that we have cloud settings
         initMetaPixel();
@@ -112,12 +167,22 @@ export function getPixelConfig(): PixelConfig {
 interface TikTokConfig {
   enabled: boolean;
   pixelId: string;
+  capiEnabled: boolean;
+  capiToken: string;
+  advancedMatching: boolean;
+  testEventEnabled: boolean;
+  testEventCode: string;
 }
 
 export function getTikTokConfig(): TikTokConfig {
   return {
     enabled: localStorage.getItem('tiktok_pixel_enabled') !== 'false',
     pixelId: localStorage.getItem('tiktok_pixel_id') || '',
+    capiEnabled: localStorage.getItem('tiktok_capi_enabled') === 'true',
+    capiToken: localStorage.getItem('tiktok_access_token') || '',
+    advancedMatching: localStorage.getItem('tiktok_advanced_matching') !== 'false',
+    testEventEnabled: localStorage.getItem('tiktok_test_event_enabled') === 'true',
+    testEventCode: localStorage.getItem('tiktok_test_event_code') || '',
   };
 }
 
@@ -180,13 +245,36 @@ export function initTikTokPixel() {
 }
 
 /**
- * Dispatches a tracking event to TikTok Pixel
+ * Dispatches a tracking event to TikTok Pixel and TikTok CAPI Proxy
  */
-export function trackTikTokEvent(eventName: string, customData: Record<string, any> = {}) {
+export async function trackTikTokEvent(
+  eventName: string, 
+  customData: Record<string, any> = {},
+  rawUserData: { name?: string; phone?: string; email?: string; address?: string } = {},
+  eventId?: string
+) {
   const config = getTikTokConfig();
   if (!config.enabled || !config.pixelId) return;
 
+  const resolvedEventId = eventId || `tt-evt-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
   const win = window as any;
+
+  // 1. Prepare hashed data for TikTok advanced matching
+  const matchingData: Record<string, any> = {};
+  if (config.advancedMatching) {
+    let rawPhone = (rawUserData.phone || '').replace(/[^0-9]/g, '');
+    if (rawPhone.startsWith('01') && rawPhone.length === 11) {
+      rawPhone = '88' + rawPhone;
+    }
+    if (rawPhone) {
+      matchingData.phone_number = await sha256(rawPhone);
+    }
+    if (rawUserData.email) {
+      matchingData.email = await sha256(rawUserData.email);
+    }
+  }
+
+  // 2. Browser Tag tracking
   if (win.ttq) {
     let tiktokEvent = eventName;
     if (eventName === 'Purchase') {
@@ -197,8 +285,89 @@ export function trackTikTokEvent(eventName: string, customData: Record<string, a
       tiktokEvent = 'PageView';
     }
 
-    console.log(`[PixelTracking] Tracking TikTok Event: ${tiktokEvent}`, customData);
-    win.ttq.track(tiktokEvent, customData);
+    console.log(`[PixelTracking] Tracking TikTok Browser Event: ${tiktokEvent}`, customData, matchingData);
+    
+    if (matchingData && Object.keys(matchingData).length > 0) {
+      win.ttq.identify(matchingData);
+    }
+    win.ttq.track(tiktokEvent, customData, { event_id: resolvedEventId });
+  }
+
+  // 3. TikTok Conversions API tracking proxy
+  if (config.capiEnabled && config.capiToken) {
+    try {
+      let ttCapiEvent = eventName;
+      if (eventName === 'Purchase') {
+        ttCapiEvent = 'CompletePayment';
+      } else if (eventName === 'InitiateCheckout') {
+        ttCapiEvent = 'InitiateCheckout';
+      } else if (eventName === 'PageView') {
+        ttCapiEvent = 'PageView';
+      }
+
+      const userAgent = navigator.userAgent;
+      const currentUrl = window.location.href;
+
+      // Setup standard TikTok conversion api model
+      const payload = {
+        event_source: "web",
+        event_source_id: config.pixelId,
+        data: [
+          {
+            event: ttCapiEvent,
+            event_time: Math.floor(Date.now() / 1005),
+            event_id: resolvedEventId,
+            user_data: {
+              client_user_agent: userAgent,
+              emails: matchingData.email ? [matchingData.email] : [],
+              phone_numbers: matchingData.phone_number ? [matchingData.phone_number] : []
+            },
+            properties: {
+              value: customData.value || 0,
+              currency: customData.currency || "BDT",
+              content_type: customData.content_type || "product"
+            }
+          }
+        ]
+      };
+
+      // Add test event code if enabled (Required for tiktok testing)
+      if (config.testEventEnabled && config.testEventCode) {
+        (payload as any).test_event_code = config.testEventCode;
+      }
+
+      console.log(`[PixelTracking] Posting Server TikTok CAPI Event via secure proxy: ${ttCapiEvent}`, payload);
+
+      fetch('/api/tiktok-capi', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          pixelId: config.pixelId,
+          capiToken: config.capiToken,
+          payload
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        console.log('[PixelTracking] Secure TikTok Proxy CAPI Response received:', data);
+        
+        // Push record into logging window list for diagnostic panel
+        const existingEventLog = win._pixel_events_log?.find((l: any) => l.id === resolvedEventId);
+        if (existingEventLog) {
+          // If we track both, make status dynamic
+          existingEventLog.capiStatus = data.code === 0 || data.message === 'OK' || data.success ? 'success' : 'failed';
+          window.dispatchEvent(new Event('new_pixel_event_tracked'));
+        }
+      })
+      .catch(fetchErr => {
+        console.warn('[PixelTracking] Failed to dispatch TikTok CAPI via Proxy:', fetchErr);
+      });
+
+    } catch (ttCapiErr) {
+      console.warn('[PixelTracking] TikTok CAPI generation failed:', ttCapiErr);
+    }
   }
 }
 
@@ -306,6 +475,27 @@ export async function trackPixelEvent(
 
   // 2. Dispatch event to browser pixel
   const win = window as any;
+  
+  // Register globally in memory log for the real-time Events Manager dashboard view
+  const newLogEntry = {
+    id: eventId,
+    timestamp: new Date().toLocaleTimeString(),
+    eventName,
+    customData,
+    matchingData,
+    browserSent: !!win.fbq,
+    capiEnabled: config.capiEnabled,
+    capiStatus: config.capiEnabled ? 'pending' : 'not_enabled',
+    testCode: config.testEventEnabled ? config.testEventCode : '',
+    pixelId: config.pixelId,
+  };
+  win._pixel_events_log = win._pixel_events_log || [];
+  win._pixel_events_log.unshift(newLogEntry);
+  if (win._pixel_events_log.length > 50) {
+    win._pixel_events_log.pop();
+  }
+  window.dispatchEvent(new Event('new_pixel_event_tracked'));
+
   if (win.fbq) {
     const pixelOptions: Record<string, any> = { eventID: eventId };
     
@@ -373,9 +563,19 @@ export async function trackPixelEvent(
       .then(res => res.json())
       .then(data => {
         console.log('[PixelTracking] Secure Proxy CAPI Response received:', data);
+        const logItem = win._pixel_events_log?.find((l: any) => l.id === eventId);
+        if (logItem) {
+          logItem.capiStatus = data.status === 'ok' || data.success ? 'success' : 'failed';
+          window.dispatchEvent(new Event('new_pixel_event_tracked'));
+        }
       })
       .catch(fetchErr => {
         console.warn('[PixelTracking] Failed to dispatch CAPI via Proxy:', fetchErr);
+        const logItem = win._pixel_events_log?.find((l: any) => l.id === eventId);
+        if (logItem) {
+          logItem.capiStatus = 'failed';
+          window.dispatchEvent(new Event('new_pixel_event_tracked'));
+        }
       });
 
     } catch (capiAssemblyErr) {

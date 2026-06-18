@@ -58,6 +58,7 @@ export interface RaincoatOrder {
   partialPaymentAmount?: number;
   courierName?: string;
   trackingId?: string;
+  consignmentId?: string;
   whatsappConsent?: boolean;
   synced?: boolean;
 }
@@ -118,6 +119,14 @@ export interface ActiveSession {
   createdAt: string;
   updatedAt: string;
   isCustomSimulated?: boolean;
+  deviceModel?: string;
+  screenResolution?: string;
+  language?: string;
+  referrer?: string;
+  gpu?: string;
+  lastAction?: string;
+  actionsHistory?: string[];
+  networkType?: string;
 }
 
 export interface Product {
@@ -157,7 +166,7 @@ export interface HomepageBannerSettings {
 
 export interface PageBlock {
   id: string;
-  type: 'headline' | 'text' | 'image' | 'video' | 'button' | 'form' | 'shop';
+  type: 'headline' | 'text' | 'image' | 'video' | 'button' | 'form' | 'shop' | 'carousel' | 'icons' | 'dropdown' | 'reviews-slider';
   content: string;
   styles?: {
     color?: string;
@@ -166,6 +175,18 @@ export interface PageBlock {
     padding?: string;
     textAlign?: 'left' | 'center' | 'right';
   };
+  carouselImages?: string[];
+  items?: {
+    id: string;
+    icon?: string;
+    title?: string;
+    text?: string;
+    link?: string;
+  }[];
+  dropdownOptions?: { id: string; label: string; value: string }[];
+  reviewIds?: string[];
+  customButtonText?: string;
+  hideMetrics?: boolean;
 }
 
 export interface CustomPage {
