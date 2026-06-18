@@ -88,6 +88,10 @@ export const defaultDb = initializeFirestore(app, {
 
 // Basic connection validation
 async function testConnection() {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    console.info("Firestore: Browser is offline, skipping initial connection test.");
+    return;
+  }
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (_) {}
@@ -150,6 +154,15 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
                   errMsg.includes('RESOURCE_EXHAUSTED') ||
                   errMsg.includes('quota metric');
 
+  const lowercaseMsg = errMsg.toLowerCase();
+  const isOfflineOrNetwork = lowercaseMsg.includes('offline') ||
+                             lowercaseMsg.includes('could not reach') ||
+                             lowercaseMsg.includes('unavailable') ||
+                             lowercaseMsg.includes('network') ||
+                             lowercaseMsg.includes('unreachable') ||
+                             lowercaseMsg.includes('timeout') ||
+                             lowercaseMsg.includes('timed out');
+
   const errInfo = {
     error: errMsg,
     operationType,
@@ -170,6 +183,8 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 
   if (isQuota) {
     console.warn('Firestore Quota Limit Graceful Fallback (using standalone local storage):', JSON.stringify(errInfo));
+  } else if (isOfflineOrNetwork) {
+    console.warn('Firestore Integration Warning (Offline/Network Fallback):', JSON.stringify(errInfo));
   } else {
     console.error('Firestore Integration Error: ', JSON.stringify(errInfo));
   }
@@ -1600,7 +1615,7 @@ export async function getCallingConfigFromFirestore(): Promise<CallingConfig> {
     id: 'calling_config',
     orderExpiryDays: 3,
     confirmExpiryMins: 60,
-    cancelExpiryMins: 60,
+    cancelExpiryMins: 10,
     maxAttempts: 3
   };
 

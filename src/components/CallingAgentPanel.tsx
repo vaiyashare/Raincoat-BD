@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   Phone, MessageSquare, Save, CheckCircle2, AlertTriangle, UserCheck, 
   RefreshCw, LogOut, Calendar, MapPin, Clock, Search, XCircle, Edit3, 
-  Check, Shield, ChevronRight, User, Key, Lock, ArrowLeft, Truck, TrendingUp
+  Check, Shield, ChevronRight, User, Key, Lock, ArrowLeft, Truck, TrendingUp,
+  PhoneCall, Award, PhoneOff
 } from 'lucide-react';
 import { 
   getOrdersFromFirestore, 
@@ -34,6 +35,7 @@ export default function CallingAgentPanel({ onClose }: CallingAgentPanelProps) {
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Pending' | 'No Answer' | 'Confirmed' | 'Cancelled'>('All');
+  const [sortOrder, setSortOrder] = useState<'oldest_first' | 'newest_first'>('oldest_first');
   
   // Reactive Firestore states
   const [reactiveConfirmedCalls, setReactiveConfirmedCalls] = useState<number>(0);
@@ -43,7 +45,7 @@ export default function CallingAgentPanel({ onClose }: CallingAgentPanelProps) {
   const [callingConfig, setCallingConfig] = useState({
     orderExpiryDays: 3,
     confirmExpiryMins: 60,
-    cancelExpiryMins: 60,
+    cancelExpiryMins: 10,
     maxAttempts: 3
   });
 
@@ -53,7 +55,13 @@ export default function CallingAgentPanel({ onClose }: CallingAgentPanelProps) {
   const [editPhone, setEditPhone] = useState('');
   const [editVillage, setEditVillage] = useState('');
   const [editNotes, setEditNotes] = useState('');
+  const [editCallStatus, setEditCallStatus] = useState('Pending');
   const [savingEdit, setSavingEdit] = useState(false);
+
+  // Inline Note State for Order details
+  const [tempNotes, setTempNotes] = useState<{[orderId: string]: string}>({});
+  const [savingNoteId, setSavingNoteId] = useState<string | null>(null);
+  const [savedNotesStatus, setSavedNotesStatus] = useState<{[orderId: string]: boolean}>({});
 
   // Load orders
   const loadOrders = async () => {
@@ -67,7 +75,7 @@ export default function CallingAgentPanel({ onClose }: CallingAgentPanelProps) {
           setCallingConfig({
             orderExpiryDays: config.orderExpiryDays || 3,
             confirmExpiryMins: config.confirmExpiryMins || 60,
-            cancelExpiryMins: config.cancelExpiryMins || 60,
+            cancelExpiryMins: config.cancelExpiryMins !== undefined ? config.cancelExpiryMins : 10,
             maxAttempts: config.maxAttempts || 3
           });
         }
@@ -171,7 +179,7 @@ export default function CallingAgentPanel({ onClose }: CallingAgentPanelProps) {
       }
     }
 
-    if ((callStatus === 'Cancelled' || order.status === 'Cancelled' || order.status === 'Canceled') && statusFilter !== 'Cancelled') {
+    if (callStatus === 'Cancelled' || order.status === 'Cancelled' || order.status === 'Canceled') {
       const canceledTime = callCanceledAt ? new Date(callCanceledAt).getTime() : createdAtTime;
       const minsSinceCancel = (now - canceledTime) / (1000 * 60);
       if (minsSinceCancel >= callingConfig.cancelExpiryMins) {
@@ -204,6 +212,45 @@ export default function CallingAgentPanel({ onClose }: CallingAgentPanelProps) {
 
     return true;
   });
+
+  // Sort filtered orders. Defaults to oldest first for 'Pending' and others as requested
+  const sortedFilteredOrders = [...filteredOrders].sort((a, b) => {
+    const timeA = new Date(a.createdAt).getTime();
+    const timeB = new Date(b.createdAt).getTime();
+    if (sortOrder === 'oldest_first') {
+      return timeA - timeB; // Oldest first
+    } else {
+      return timeB - timeA; // Newest first
+    }
+  });
+
+  // --- Live Summary Dashboard Calculations ---
+  // 1. Total Pending Calls: Active calls needing phone contact (Status: Pending)
+  const totalPendingCallsCount = orders.filter(o => {
+    const ageDays = (new Date().getTime() - new Date(o.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+    if (ageDays > callingConfig.orderExpiryDays) return false;
+    const callStatus = (o as any).callStatus;
+    return (!callStatus || callStatus === 'Pending') && o.status !== 'Cancelled' && o.status !== 'Canceled';
+  }).length;
+
+  // 2. Calls Made Today (overall team & my personal calls made today)
+  const todayDateStr = new Date().toDateString();
+  const myCallsMadeToday = orders.filter(o => {
+    const calledBy = (o as any).calledBy;
+    const calledAt = (o as any).calledAt;
+    if (!calledAt || calledBy !== currentAgent) return false;
+    return new Date(calledAt).toDateString() === todayDateStr;
+  }).length;
+
+  const teamCallsMadeToday = orders.filter(o => {
+    const calledAt = (o as any).calledAt;
+    if (!calledAt) return false;
+    return new Date(calledAt).toDateString() === todayDateStr;
+  }).length;
+
+  // 3. Total Successful Conversions (overall team & my personal)
+  const mySuccessfulConversions = reactiveConfirmedCalls; // real-time direct listener!
+  const teamSuccessfulConversions = orders.filter(o => (o as any).callStatus === 'Confirmed').length;
 
   // Action: Mark as No Pick Up / No Answer
   const handleNoAnswer = async (order: RaincoatOrder) => {
@@ -446,6 +493,7 @@ export default function CallingAgentPanel({ onClose }: CallingAgentPanelProps) {
     setEditPhone(order.phone);
     setEditVillage(order.village);
     setEditNotes((order as any).agentNotes || '');
+    setEditCallStatus((order as any).callStatus || 'Pending');
   };
 
   // Save Note & Edited Data
@@ -455,13 +503,36 @@ export default function CallingAgentPanel({ onClose }: CallingAgentPanelProps) {
     try {
       const orderRef = doc(db, 'orders', editingOrder.id);
       
-      const updatedFields = {
+      const previousCallStatus = (editingOrder as any).callStatus || 'Pending';
+      const updatedFields: any = {
         name: editName,
         phone: editPhone,
         village: editVillage,
         agentNotes: editNotes,
-        orderNotes: editNotes // Sync standard note fields as fallback
+        orderNotes: editNotes, // Sync standard note fields as fallback
+        callStatus: editCallStatus
       };
+
+      if (editCallStatus === 'Confirmed' && previousCallStatus !== 'Confirmed') {
+        updatedFields.callConfirmedAt = new Date().toISOString();
+        updatedFields.calledAt = new Date().toISOString();
+        updatedFields.calledBy = currentAgent || 'Unknown';
+        updatedFields.status = 'Pending';
+      } else if (editCallStatus === 'Cancelled' && previousCallStatus !== 'Cancelled') {
+        updatedFields.callCanceledAt = new Date().toISOString();
+        updatedFields.calledAt = new Date().toISOString();
+        updatedFields.calledBy = currentAgent || 'Unknown';
+        updatedFields.status = 'Cancelled';
+      } else if (editCallStatus === 'Pending' && previousCallStatus !== 'Pending') {
+        updatedFields.callConfirmedAt = null;
+        updatedFields.callCanceledAt = null;
+        updatedFields.status = 'Draft';
+      } else if (editCallStatus === 'No Answer' && previousCallStatus !== 'No Answer') {
+        updatedFields.callConfirmedAt = null;
+        updatedFields.callCanceledAt = null;
+        updatedFields.calledAt = new Date().toISOString();
+        updatedFields.calledBy = currentAgent || 'Unknown';
+      }
 
       await updateDoc(orderRef, updatedFields);
 
@@ -469,7 +540,7 @@ export default function CallingAgentPanel({ onClose }: CallingAgentPanelProps) {
       await addCallingAgentLogToFirestore({
         id: `log_${editingOrder.id}_${Date.now()}`,
         agentUsername: currentAgent || 'Unknown',
-        action: 'Edited Customer Details and Notes',
+        action: `Edited and Set Status to ${editCallStatus}`,
         orderId: editingOrder.id,
         timestamp: new Date().toISOString(),
         notes: editNotes
@@ -483,6 +554,47 @@ export default function CallingAgentPanel({ onClose }: CallingAgentPanelProps) {
       alert("তথ্য সংরক্ষণ করা যায়নি।");
     } finally {
       setSavingEdit(false);
+    }
+  };
+
+  // Save Inline Agent Notes dynamically
+  const handleSaveInlineNote = async (orderId: string) => {
+    const noteToSave = tempNotes[orderId];
+    if (noteToSave === undefined) return; // Nothing changed
+
+    setSavingNoteId(orderId);
+    try {
+      const orderRef = doc(db, 'orders', orderId);
+      const updatedFields = {
+        agentNotes: noteToSave,
+        orderNotes: noteToSave // Sync standard note fields as fallback
+      };
+
+      await updateDoc(orderRef, updatedFields);
+
+      // Add log
+      await addCallingAgentLogToFirestore({
+        id: `log_${orderId}_${Date.now()}`,
+        agentUsername: currentAgent || 'Unknown',
+        action: 'Updated Note/Outcome via inline input',
+        orderId: orderId,
+        timestamp: new Date().toISOString(),
+        notes: noteToSave
+      });
+
+      // Update locally
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updatedFields } : o));
+
+      // Show success indicator
+      setSavedNotesStatus(prev => ({ ...prev, [orderId]: true }));
+      setTimeout(() => {
+        setSavedNotesStatus(prev => ({ ...prev, [orderId]: false }));
+      }, 2000);
+    } catch (e) {
+      console.error("Failed to save note:", e);
+      alert("নোট সংরক্ষণ করতে সমস্যা হয়েছে।");
+    } finally {
+      setSavingNoteId(null);
     }
   };
 
@@ -674,35 +786,86 @@ export default function CallingAgentPanel({ onClose }: CallingAgentPanelProps) {
           </div>
         </div>
 
-        {/* Statistics Widgets */}
+        {/* Statistics Widgets & Live Summary Dashboard */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-slate-900 border border-slate-850 p-4 rounded-2xl flex flex-col justify-between">
-            <span className="text-[10px] uppercase font-black text-slate-400 tracking-wider">টোটাল অর্ডার পুল</span>
-            <span className="text-2xl font-black text-white mt-1">{orders.length}</span>
-          </div>
-
-          <div className="bg-emerald-950/20 border border-emerald-900/40 p-4 rounded-2xl flex flex-col justify-between">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] uppercase font-black text-emerald-450 tracking-wider">আমার কনফার্মড লিড (রিয়েল-টাইম)</span>
-              <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" title="ফায়ারস্টোর থেকে সরাসরি সিঙ্কড" />
+          {/* Card 1: Total Pending Calls */}
+          <div className="bg-gradient-to-br from-amber-950/20 to-slate-900 border border-amber-900/40 p-5 rounded-2xl flex flex-col justify-between shadow-lg relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-3 text-amber-500/20 group-hover:text-amber-500/35 transition">
+              <Clock className="h-10 w-10 animate-spin-slow" />
             </div>
-            <span className="text-2xl font-black text-emerald-300 mt-1">
-              {reactiveConfirmedCalls}
-            </span>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-ping" />
+                <span className="text-[10px] uppercase font-bold text-amber-400 tracking-wider">টোটাল পেন্ডিং কল (Pending)</span>
+              </div>
+              <span className="text-4xl font-black text-white mt-2 block font-mono">
+                {totalPendingCallsCount}
+              </span>
+            </div>
+            <p className="text-[10px] text-slate-400 font-medium mt-3 border-t border-slate-800/60 pt-2">
+              জলদি যোগাযোগ করা প্রয়োজন
+            </p>
           </div>
 
-          <div className="bg-amber-950/20 border border-amber-900/40 p-4 rounded-2xl flex flex-col justify-between">
-            <span className="text-[10px] uppercase font-black text-amber-450 tracking-wider">আমার নো অ্যান্সার</span>
-            <span className="text-2xl font-black text-amber-300 mt-1">
-              {orders.filter(o => o.calledBy === currentAgent && (o as any).callStatus === 'No Answer').length}
-            </span>
+          {/* Card 2: Calls Made Today */}
+          <div className="bg-gradient-to-br from-blue-950/20 to-slate-900 border border-blue-900/40 p-5 rounded-2xl flex flex-col justify-between shadow-lg relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-3 text-blue-400/20 group-hover:text-blue-400/35 transition">
+              <PhoneCall className="h-10 w-10" />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse" />
+                <span className="text-[10px] uppercase font-bold text-blue-400 tracking-wider">আজকের ডায়াল সংখ্যা (Today)</span>
+              </div>
+              <div className="flex items-baseline gap-1 mt-2">
+                <span className="text-4xl font-black text-white font-mono">{myCallsMadeToday}</span>
+                <span className="text-xs text-slate-400 font-medium font-mono">/ {teamCallsMadeToday} (টিম)</span>
+              </div>
+            </div>
+            <div className="text-[10px] text-slate-450 font-medium mt-3 border-t border-slate-800/60 pt-2 flex justify-between">
+              <span>আমার কল: <strong className="text-blue-300">{myCallsMadeToday}</strong></span>
+              <span>মোট টিম: <strong className="text-slate-350">{teamCallsMadeToday}</strong></span>
+            </div>
           </div>
 
-          <div className="bg-rose-950/20 border border-rose-900/40 p-4 rounded-2xl flex flex-col justify-between">
-            <span className="text-[10px] uppercase font-black text-rose-450 tracking-wider">আমার বাতিলকৃত লিড</span>
-            <span className="text-2xl font-black text-rose-300 mt-1">
-              {orders.filter(o => o.calledBy === currentAgent && (o as any).callStatus === 'Cancelled').length}
-            </span>
+          {/* Card 3: Total Successful Conversions */}
+          <div className="bg-gradient-to-br from-emerald-950/20 to-slate-900 border border-emerald-900/40 p-5 rounded-2xl flex flex-col justify-between shadow-lg relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-3 text-emerald-400/20 group-hover:text-emerald-400/35 transition">
+              <Award className="h-10 w-10" />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping" />
+                <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider">সফল কনভার্সন (Confirmed)</span>
+              </div>
+              <div className="flex items-baseline gap-1 mt-2">
+                <span className="text-4xl font-black text-emerald-400 font-mono">{mySuccessfulConversions}</span>
+                <span className="text-xs text-[#00e3cd] font-medium font-mono">/ {teamSuccessfulConversions} (টিม)</span>
+              </div>
+            </div>
+            <div className="text-[10px] text-slate-450 font-medium mt-3 border-t border-slate-800/60 pt-2 flex justify-between">
+              <span>আমার জমা: <strong className="text-emerald-400">{mySuccessfulConversions}</strong></span>
+              <span>টিম মোট: <strong className="text-[#00e3cd]">{teamSuccessfulConversions}</strong></span>
+            </div>
+          </div>
+
+          {/* Card 4: Total Active Lead Pool */}
+          <div className="bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-850 p-5 rounded-2xl flex flex-col justify-between shadow-lg relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-3 text-slate-500/20 group-hover:text-slate-500/35 transition">
+              <TrendingUp className="h-10 w-10" />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 bg-slate-500 rounded-full" />
+                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">মোট অর্ডার পুল (Active Queue)</span>
+              </div>
+              <span className="text-4xl font-black text-white mt-2 block font-mono">
+                {orders.length}
+              </span>
+            </div>
+            <p className="text-[10px] text-slate-400 font-medium mt-3 border-t border-slate-800/60 pt-2">
+              সর্বমোট সচল অর্ডার উইন্ডো
+            </p>
           </div>
         </div>
 
@@ -738,13 +901,49 @@ export default function CallingAgentPanel({ onClose }: CallingAgentPanelProps) {
           </div>
         </div>
 
+        {/* Priority Sorting Notification & Control */}
+        <div className="bg-slate-900 border border-slate-850/60 p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <Clock className="h-4 w-4 text-cyan-400 animate-pulse shrink-0" />
+            <span className="text-slate-300 font-medium">
+              {statusFilter === 'Pending' ? (
+                <>অগ্রাধিকার সাজানো: <strong className="text-[#00e3cd] font-semibold">পুরাতন পেন্ডিং কল আগে (Oldest Orders Prioritized)</strong></>
+              ) : (
+                <>লিস্ট সাজানো হয়েছে: <strong className="text-slate-200 font-semibold">{sortOrder === 'oldest_first' ? 'অর্ডারের তারিখ অনুযায়ী পুরাতন প্রথম' : 'অর্ডারের তারিখ অনুযায়ী নতুন প্রথম'}</strong></>
+              )}
+            </span>
+          </div>
+          <div className="flex items-center gap-1 bg-slate-950 p-1 border border-slate-850 rounded-xl w-full sm:w-auto justify-center">
+            <button
+              onClick={() => setSortOrder('oldest_first')}
+              className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
+                sortOrder === 'oldest_first'
+                  ? 'bg-gradient-to-r from-cyan-400 to-blue-500 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              পুরাতন প্রথম (Oldest)
+            </button>
+            <button
+              onClick={() => setSortOrder('newest_first')}
+              className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
+                sortOrder === 'newest_first'
+                  ? 'bg-gradient-to-r from-cyan-400 to-blue-500 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              নতুন প্রথম (Newest)
+            </button>
+          </div>
+        </div>
+
         {/* Lead/Order Pipeline List */}
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <div className="w-10 h-10 border-4 border-[#00e3cd] border-t-transparent rounded-full animate-spin"></div>
             <p className="text-xs text-slate-450 font-bold">সার্ভার থেকে ট্রানজেকশন তালিকা লোড করা হচ্ছে...</p>
           </div>
-        ) : filteredOrders.length === 0 ? (
+        ) : sortedFilteredOrders.length === 0 ? (
           <div className="bg-slate-900 border border-dashed border-slate-800 rounded-2xl p-12 text-center text-slate-500">
             <AlertTriangle className="h-8 w-8 mx-auto text-amber-500/80 mb-3" />
             <p className="text-sm font-bold text-slate-400">কোনো কল রেকর্ড মেলেনি!</p>
@@ -754,7 +953,7 @@ export default function CallingAgentPanel({ onClose }: CallingAgentPanelProps) {
           </div>
         ) : (
           <div className="space-y-4">
-            {filteredOrders.map((order) => {
+            {sortedFilteredOrders.map((order) => {
               const callStatus = (order as any).callStatus || 'Pending';
               const agentCallCount = (order as any).agentCallCount || 0;
               const agentNotes = (order as any).agentNotes || '';
@@ -885,6 +1084,37 @@ export default function CallingAgentPanel({ onClose }: CallingAgentPanelProps) {
                         &quot;{agentNotes}&quot;
                       </div>
                     )}
+
+                    {/* Inline Note/Outcome Input field */}
+                    <div className="space-y-1.5 pt-1">
+                      <label className="block text-[10px] uppercase font-bold tracking-wider text-slate-400">কলের ফলাফল বা এজেন্ট নোট সংরক্ষণ:</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={tempNotes[order.id] ?? agentNotes}
+                          onChange={(e) => setTempNotes(prev => ({ ...prev, [order.id]: e.target.value }))}
+                          placeholder="সংক্ষিপ্ত নোট অথবা কল ফলাফল লিখুন..."
+                          className="flex-1 px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-600 focus:outline-hidden focus:border-cyan-400 transition"
+                        />
+                        <button
+                          onClick={() => handleSaveInlineNote(order.id)}
+                          disabled={savingNoteId === order.id}
+                          className="px-3 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-slate-950 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer shrink-0"
+                        >
+                          {savingNoteId === order.id ? (
+                            <div className="w-3.5 h-3.5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <Save className="h-3.5 w-3.5" />
+                          )}
+                          <span>সংরক্ষণ</span>
+                        </button>
+                      </div>
+                      {savedNotesStatus[order.id] && (
+                        <p className="text-[10px] text-emerald-400 font-bold flex items-center gap-1 animate-pulse">
+                          <Check className="h-3 w-3" /> নোটটি সফলভাবে সংরক্ষিত হয়েছে!
+                        </p>
+                      )}
+                    </div>
                   </div>
 
                   {/* Operational Action Controls */}
@@ -1038,6 +1268,20 @@ export default function CallingAgentPanel({ onClose }: CallingAgentPanelProps) {
                   rows={3}
                   className="w-full px-4 py-2.5 bg-slate-950 border border-slate-850 rounded-xl text-white placeholder-slate-600 focus:outline-hidden focus:border-cyan-400"
                 />
+              </div>
+
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-2">অর্ডারের কল স্ট্যাটাস (Call Status)</label>
+                <select
+                  value={editCallStatus}
+                  onChange={(e) => setEditCallStatus(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-950 border border-slate-850 rounded-xl text-white font-bold focus:outline-hidden focus:border-cyan-400"
+                >
+                  <option value="Pending">কল হয়নি (Pending)</option>
+                  <option value="No Answer">ফোন ধরেনি (No Answer)</option>
+                  <option value="Confirmed">কনফার্মড (Confirmed)</option>
+                  <option value="Cancelled">বাতিলকৃত (Cancelled)</option>
+                </select>
               </div>
             </div>
 

@@ -6,7 +6,7 @@ import {
   X, Check, AlertCircle, RefreshCw
 } from 'lucide-react';
 import { RaincoatOrder } from '../types';
-import { getProductsFromFirestore, saveAllProductsToFirestore, getBannerSettingsFromFirestore } from '../lib/firebase';
+import { getProductsFromFirestore, saveAllProductsToFirestore, getBannerSettingsFromFirestore, getAdvancedAddonsSettingsFromFirestore } from '../lib/firebase';
 import { HomepageBannerSlide } from '../types';
 
 interface Product {
@@ -135,6 +135,19 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
     }
   ];
 
+  const [siteSettings, setSiteSettings] = useState<any>(null);
+
+  const fetchAdvancedSettings = async () => {
+    try {
+      const res = await getAdvancedAddonsSettingsFromFirestore();
+      if (res) {
+        setSiteSettings(res);
+      }
+    } catch (err) {
+      console.warn("Failed to load advanced settings in marketplace", err);
+    }
+  };
+
   const fetchBannersData = async () => {
     try {
       const fbBanners = await getBannerSettingsFromFirestore();
@@ -173,6 +186,7 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
 
   useEffect(() => {
     fetchBannersData();
+    fetchAdvancedSettings();
 
     const handleResize = () => setIsMobile(window.innerWidth < 640);
     handleResize();
@@ -183,9 +197,15 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
     };
     window.addEventListener('raincoat_banner_settings_updated', handleUpdate);
 
+    const handleSettingsUpdate = () => {
+      fetchAdvancedSettings();
+    };
+    window.addEventListener('raincoat_site_settings_updated', handleSettingsUpdate);
+
     return () => {
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('raincoat_banner_settings_updated', handleUpdate);
+      window.removeEventListener('raincoat_site_settings_updated', handleSettingsUpdate);
     };
   }, []);
 
@@ -515,15 +535,15 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
       
       {/* 🚀 Amazon/Alibaba Promotional Banner Bar */}
       <div className="bg-amber-400 text-slate-950 text-center font-black py-2.5 px-4 text-xs sm:text-sm flex items-center justify-center gap-3">
-        <span>🔥 বর্ষার স্পেশাল মেঘা সেল! ১০টির বেশি ক্যাটাগরির রেইনকোট জ্যাকেট, সু গার্ড ও ট্রাভেল অনুষঙ্গে বিশাল ছাড়!</span>
+        <span>{siteSettings?.marketplace_promo_text || "🔥 বর্ষার স্পেশাল মেঘা সেল! ১০টির বেশি ক্যাটাগরির রেইনকোট জ্যাকেট, সু গার্ড ও ট্রাভেল অনুষঙ্গে বিশাল ছাড়!"}</span>
         <button 
           onClick={() => {
             window.history.pushState(null, '', '/raincoat');
             window.dispatchEvent(new Event('popstate'));
           }}
-          className="bg-slate-950 text-white rounded px-2.5 py-1 text-[11px] hover:bg-slate-900 transition flex items-center gap-1 cursor-pointer font-extrabold"
+          className="bg-slate-950 text-white rounded px-2.5 py-1 text-[11px] hover:bg-slate-900 transition flex items-center gap-1 cursor-pointer font-extrabold shrink-0"
         >
-          রেইনকোট অর্ডার করুন লাইভ টেস্ট ⚡
+          {siteSettings?.marketplace_promo_btn_text || "রেইনকোট অর্ডার করুন লাইভ টেস্ট ⚡"}
         </button>
       </div>
 

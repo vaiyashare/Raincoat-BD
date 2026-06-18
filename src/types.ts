@@ -244,6 +244,8 @@ export interface AdvancedAddonsSettings {
   site_title?: string;
   site_favicon?: string;
   site_logo_url?: string;
+  marketplace_promo_text?: string;
+  marketplace_promo_btn_text?: string;
   header_snippets?: string;
   footer_snippets?: string;
   section_customizations?: Record<string, any>;

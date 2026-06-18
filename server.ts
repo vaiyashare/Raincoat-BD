@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 
 async function startServer() {
@@ -238,6 +239,39 @@ async function startServer() {
     } catch (err: any) {
       console.error("FraudShield limit Proxy Error:", err);
       res.status(500).json({ success: false, error: "Server error", message: err.message });
+    }
+  });
+
+  // API Route: Get Firebase configuration
+  app.get("/api/firebase-config", (req, res) => {
+    try {
+      const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+      if (fs.existsSync(configPath)) {
+        const data = fs.readFileSync(configPath, "utf-8");
+        res.json(JSON.parse(data));
+      } else {
+        res.status(404).json({ error: "Config file not found" });
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // API Route: Save Firebase configuration
+  app.post("/api/firebase-config", (req, res) => {
+    try {
+      const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+      const updatedConfig = req.body;
+      
+      // Validate configuration has required keys
+      if (!updatedConfig.projectId || !updatedConfig.apiKey) {
+        return res.status(400).json({ error: "projectId and apiKey are required" });
+      }
+
+      fs.writeFileSync(configPath, JSON.stringify(updatedConfig, null, 2), "utf-8");
+      res.json({ success: true, message: "Firebase configuration updated successfully." });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
     }
   });
 

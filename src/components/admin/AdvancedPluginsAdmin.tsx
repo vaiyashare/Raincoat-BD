@@ -714,6 +714,42 @@ export default function AdvancedPluginsAdmin({ userRole, orders = [], onRefreshO
                     </span>
                   </div>
 
+                  {/* Marketplace Promo Text Input */}
+                  <div className="col-span-1 sm:col-span-2 border-t border-slate-200/60 pt-4 mt-2">
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center gap-1.5 text-amber-600">
+                      <span>🔥 মার্কেটপ্লেস টপ প্রমোশনাল ব্যানার হেডিং (Marketplace Top Banner Heading)</span>
+                    </label>
+                    <input 
+                      type="text" 
+                      value={settings.marketplace_promo_text || ''}
+                      placeholder="যেমন: 🔥 বর্ষার স্পেশাল মেঘা সেল! ১০টির বেশি ক্যাটাগরির রেইনকোট জ্যাকেট, সু গার্ড ও ট্রাভেল অনুষঙ্গে বিশাল ছাড়!"
+                      onChange={(e) => setSettings({ ...settings, marketplace_promo_text: e.target.value })}
+                      onBlur={(e) => handleSaveSettings({ marketplace_promo_text: e.target.value })}
+                      className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg text-slate-800 focus:ring-1 focus:ring-blue-500 outline-none"
+                    />
+                    <span className="text-[10px] text-slate-400 mt-1 block">
+                      হোমপেজ / মার্কেটপ্লেসের একদম উপরে অবস্থিত কমলা রঙের নোটিফিকেশন ব্যানার লাইভ টেক্সট পরিবর্তন করুন।
+                    </span>
+                  </div>
+
+                  {/* Marketplace Promo Button Text Input */}
+                  <div className="col-span-1 sm:col-span-2">
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      ব্যানার অ্যাকশন বাটন কন্টেন্ট (Promo Action Button Text)
+                    </label>
+                    <input 
+                      type="text" 
+                      value={settings.marketplace_promo_btn_text || ''}
+                      placeholder="যেমন: রেইনকোট অর্ডার করুন লাইভ টেস্ট ⚡"
+                      onChange={(e) => setSettings({ ...settings, marketplace_promo_btn_text: e.target.value })}
+                      onBlur={(e) => handleSaveSettings({ marketplace_promo_btn_text: e.target.value })}
+                      className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg text-slate-800 focus:ring-1 focus:ring-blue-500 outline-none font-semibold"
+                    />
+                    <span className="text-[10px] text-slate-400 mt-1 block">
+                      প্রমোশনাল ব্যানারের ডানপাশে থাকা বোতামের ভেতরের লেখা পরিবর্তন করুন।
+                    </span>
+                  </div>
+
                 </div>
 
               </div>

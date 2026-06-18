@@ -55,6 +55,7 @@ import CourierMonitorAdmin from './admin/CourierMonitorAdmin';
 import SectionCustomizerAdmin from './admin/SectionCustomizerAdmin';
 import MenuBarAdmin from './admin/MenuBarAdmin';
 import CallingAgentsAdmin from './admin/CallingAgentsAdmin';
+import FirebaseConfigAdmin from './admin/FirebaseConfigAdmin';
 
 const getEnglishDistrictName = (order: any): string => {
   const districtValue = order.district ? order.district.trim() : '';
@@ -338,7 +339,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
   const [deletingIncompleteId, setDeletingIncompleteId] = useState<string | null>(null);
   const [editingOrder, setEditingOrder] = useState<RaincoatOrder | null>(null);
-  const [activeTab, setActiveTab] = useState<'completed' | 'incomplete' | 'pages' | 'products' | 'banners' | 'inventory' | 'users' | 'blocking' | 'media' | 'live-visitors' | 'fraud' | 'advanced_addons' | 'courier_hub' | 'reviews_hub' | 'courier_connections' | 'courier_monitor' | 'section_customizer' | 'pixels' | 'menu_bar_settings' | 'calling_agents_management'>('completed');
+  const [activeTab, setActiveTab] = useState<'completed' | 'incomplete' | 'pages' | 'products' | 'banners' | 'inventory' | 'users' | 'blocking' | 'media' | 'live-visitors' | 'fraud' | 'advanced_addons' | 'courier_hub' | 'reviews_hub' | 'courier_connections' | 'courier_monitor' | 'section_customizer' | 'pixels' | 'menu_bar_settings' | 'calling_agents_management' | 'firebase_settings'>('completed');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSize, setFilterSize] = useState<string>('All');
   const [filterStatus, setFilterStatus] = useState<string>('All');
@@ -2740,6 +2741,19 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
               >
                 📞 সেলস কলিং এজেন্টস
               </button>
+
+              {/* 16. ফায়ারবেস কানেকশন সেটিংস */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('firebase_settings')}
+                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
+                  activeTab === 'firebase_settings'
+                    ? 'bg-rose-650 bg-gradient-to-r from-amber-600 to-rose-600 text-white shadow-lg shadow-orange-600/10 font-extrabold'
+                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                }`}
+              >
+                🔥 ফায়ারবেস এপিআই সেটিংস
+              </button>
             </div>
           </div>
 
@@ -4548,6 +4562,10 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
 
       {activeTab === 'calling_agents_management' && (
         <CallingAgentsAdmin />
+      )}
+
+      {activeTab === 'firebase_settings' && (
+        <FirebaseConfigAdmin />
       )}
 
           </div>

@@ -32,7 +32,7 @@ export default function CallingAgentsAdmin() {
     id: 'calling_config',
     orderExpiryDays: 3,
     confirmExpiryMins: 60,
-    cancelExpiryMins: 60,
+    cancelExpiryMins: 10,
     maxAttempts: 3
   });
   const [configSaving, setConfigSaving] = useState(false);
