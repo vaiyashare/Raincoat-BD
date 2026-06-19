@@ -17,7 +17,7 @@ import {
   orderBy
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { RaincoatOrder, IncompleteOrder, InventoryItem, ProductColor, Size, MediaItem, ActiveSession, Product, HomepageBannerSlide, HomepageBannerSettings, CustomPage, CustomerReview, AdvancedAddonsSettings } from '../types';
+import { RaincoatOrder, IncompleteOrder, InventoryItem, ProductColor, Size, MediaItem, ActiveSession, Product, HomepageBannerSlide, HomepageBannerSettings, CustomPage, CustomerReview, AdvancedAddonsSettings, Coupon } from '../types';
 export type { AdvancedAddonsSettings };
 import { performFraudCheck } from './fraudCheck';
 
@@ -1652,6 +1652,88 @@ export async function saveCallingConfigToFirestore(config: CallingConfig): Promi
     console.warn("saveCallingConfigToFirestore failed:", error);
   }
 }
+
+// Coupon Persistence API methods (Firestore with fallback)
+export async function getCouponsFromFirestore(): Promise<Coupon[]> {
+  const path = 'coupons';
+  if (isQuotaTripped) {
+    const cached = localStorage.getItem('raincoat_shop_coupons');
+    return cached ? JSON.parse(cached) : [];
+  }
+  const results: Coupon[] = [];
+  try {
+    const q = query(collection(db, 'coupons'));
+    const querySnapshot = await getDocs(q);
+    querySnapshot.forEach((doc) => {
+      const data = doc.data() as Coupon;
+      results.push(data);
+    });
+    try {
+      localStorage.setItem('raincoat_shop_coupons', JSON.stringify(results));
+    } catch (_) {}
+    return results;
+  } catch (error) {
+    tripQuotaCircuitBreaker(error);
+    console.warn("Could not query coupons from custom database, trying default fallback:", error);
+    try {
+      const qDefault = query(collection(defaultDb, 'coupons'));
+      const querySnapshotDefault = await getDocs(qDefault);
+      querySnapshotDefault.forEach((doc) => {
+        const data = doc.data() as Coupon;
+        results.push(data);
+      });
+      try {
+        localStorage.setItem('raincoat_shop_coupons', JSON.stringify(results));
+      } catch (_) {}
+      return results;
+    } catch (defaultError) {
+      console.warn("Could not query coupons from default database:", defaultError);
+    }
+  }
+  const cached = localStorage.getItem('raincoat_shop_coupons');
+  return cached ? JSON.parse(cached) : [];
+}
+
+export async function saveCouponToFirestore(coupon: Coupon): Promise<void> {
+  const cleanedCoupon = cleanUndefined(coupon);
+  const cachedStr = localStorage.getItem('raincoat_shop_coupons') || '[]';
+  try {
+    const list = JSON.parse(cachedStr) as Coupon[];
+    const idx = list.findIndex(c => c.id === coupon.id);
+    if (idx > -1) {
+      list[idx] = coupon;
+    } else {
+      list.push(coupon);
+    }
+    localStorage.setItem('raincoat_shop_coupons', JSON.stringify(list));
+  } catch (_) {}
+
+  if (isQuotaTripped) return;
+  try {
+    await setDoc(doc(db, 'coupons', coupon.id), cleanedCoupon);
+  } catch (_) {}
+  try {
+    await setDoc(doc(defaultDb, 'coupons', coupon.id), cleanedCoupon);
+  } catch (_) {}
+}
+
+export async function deleteCouponFromFirestore(couponId: string): Promise<void> {
+  const cachedStr = localStorage.getItem('raincoat_shop_coupons') || '[]';
+  try {
+    const list = JSON.parse(cachedStr) as Coupon[];
+    const updated = list.filter(c => c.id !== couponId);
+    localStorage.setItem('raincoat_shop_coupons', JSON.stringify(updated));
+  } catch (_) {}
+
+  if (isQuotaTripped) return;
+  try {
+    await deleteDoc(doc(db, 'coupons', couponId));
+  } catch (_) {}
+  try {
+    await deleteDoc(doc(defaultDb, 'coupons', couponId));
+  } catch (_) {}
+}
+
 
 
 

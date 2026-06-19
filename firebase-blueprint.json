@@ -189,9 +189,27 @@
         }
       },
       "required": ["id", "brandName", "visible", "enableCategories", "links"]
+    },
+    "Coupon": {
+      "title": "Discount Coupon",
+      "description": "Promo coupon used by customers during checkout",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Lowercase of code used as doc ID" },
+        "code": { "type": "string", "description": "Case-sensitive entered code" },
+        "discountType": { "type": "string", "enum": ["money", "percentage"], "description": "Discount in cash Tk or percentage %" },
+        "discountValue": { "type": "number", "description": "The cash or percentage amount" },
+        "validityDays": { "type": "number", "description": "Days the coupon is valid for" },
+        "createdAt": { "type": "string", "description": "ISO timestamp for creation moment" }
+      },
+      "required": ["id", "code", "discountType", "discountValue", "validityDays", "createdAt"]
     }
   },
   "firestore": {
+    "coupons/{couponId}": {
+      "schema": "Coupon",
+      "description": "Store promo coupons available in checkout"
+    },
     "reviews/{reviewId}": {
       "schema": "Review",
       "description": "Store authentic customer review entries and photo testimonials"

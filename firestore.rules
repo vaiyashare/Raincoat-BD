@@ -151,5 +151,11 @@ service cloud.firestore {
     match /callingAgentLogs/{logId} {
       allow read, write: if true;
     }
+
+    // Coupons Collection Rules
+    match /coupons/{couponId} {
+      allow read: if true;
+      allow create, update, delete: if isValidId(couponId);
+    }
   }
 }

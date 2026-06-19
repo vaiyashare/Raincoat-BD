@@ -22,8 +22,9 @@ import FAQSection from './components/FAQSection';
 import ShopView from './components/ShopView';
 import AmazonMarketplace from './components/AmazonMarketplace';
 import BikeCoverLanding from './components/BikeCoverLanding';
-import MenuBar from './components/MenuBar';
 import CallingAgentPanel from './components/CallingAgentPanel';
+import CartPage from './components/CartPage';
+import ProductDetailsView from './components/ProductDetailsView';
 import navyRaincoatImg from './assets/images/navy_raincoat_1780660053988.png';
 import { Size, ProductColor, RaincoatOrder, ActiveSession } from './types';
 import { motion, AnimatePresence } from 'motion/react';
@@ -851,19 +852,29 @@ export default function App() {
 
   // Routing calculations
   const isAdminRoute = currentPath === '/admin' || currentHash === '#/admin' || currentHash === '#admin';
-  const isAgentPanelRoute = currentPath === '/agent-panel' || currentHash === '#/agent-panel' || currentHash === '#agent-panel';
+  const isAgentPanelRoute = currentPath === '/agtele' || currentHash === '#/agtele' || currentHash === '#agtele';
   const isTrackOrderRoute = currentPath === '/track-order' || currentHash === '#/track-order' || currentHash === '#track-order';
   const isOrderHistoryRoute = currentPath === '/order-history' || currentHash === '#/order-history' || currentHash === '#order-history';
   const isShopRoute = currentPath === '/shop' || currentHash === '#/shop' || currentHash === '#shop';
   const isWriteReviewRoute = currentPath === '/write-review' || currentHash === '#/write-review' || currentHash === '#write-review';
   const isRaincoatLandingRoute = currentPath === '/raincoat' || currentHash === '#/raincoat' || currentHash === '#raincoat';
   const isBikeCoverLandingRoute = currentPath === '/bikecover' || currentHash === '#/bikecover' || currentHash === '#bikecover';
+  const isCartRoute = currentPath === '/cart' || currentHash === '#/cart' || currentHash === '#cart';
+  const isProductRoute = currentPath.startsWith('/product/') || currentHash.startsWith('#/product/');
+
+  let productSlug = '';
+  if (currentPath.startsWith('/product/')) {
+    productSlug = currentPath.split('/product/')[1] || '';
+  } else if (currentHash.startsWith('#/product/')) {
+    productSlug = currentHash.split('#/product/')[1] || '';
+  }
+  productSlug = productSlug.split('?')[0];
 
   // Check if hash matches a custom page slug from custom landing pages collection
   let activeCustomPage = null;
   try {
     const cleanHash = currentHash.replace(/^#\//, '').replace(/^#/, '');
-    if (cleanHash && cleanHash !== 'home' && cleanHash !== 'features' && cleanHash !== 'live-video' && cleanHash !== 'comparison' && cleanHash !== 'bundle-offer' && cleanHash !== 'delivery-timeline' && cleanHash !== 'size-chart' && cleanHash !== 'checkout-form' && cleanHash !== 'track-order' && cleanHash !== 'order-history' && cleanHash !== 'write-review' && cleanHash !== 'agent-panel') {
+    if (cleanHash && cleanHash !== 'home' && cleanHash !== 'features' && cleanHash !== 'live-video' && cleanHash !== 'comparison' && cleanHash !== 'bundle-offer' && cleanHash !== 'delivery-timeline' && cleanHash !== 'size-chart' && cleanHash !== 'checkout-form' && cleanHash !== 'track-order' && cleanHash !== 'order-history' && cleanHash !== 'write-review' && cleanHash !== 'agtele') {
       activeCustomPage = customPages.find((p: any) => p.slug === cleanHash);
     }
   } catch (e) {
@@ -892,7 +903,7 @@ export default function App() {
     return (
       <CallingAgentPanel 
         onClose={() => {
-          if (currentPath === '/agent-panel') {
+          if (currentPath === '/agtele') {
             window.history.pushState(null, '', '/');
             window.dispatchEvent(new Event('popstate'));
           } else {
@@ -1176,6 +1187,20 @@ export default function App() {
     );
   }
 
+  // Handle Standalone Cart Page Routing
+  if (isCartRoute) {
+    return (
+      <CartPage onOrderSuccess={handleOrderCreated} />
+    );
+  }
+
+  // Handle Standalone Product Details Page Routing
+  if (isProductRoute) {
+    return (
+      <ProductDetailsView productSlug={productSlug} />
+    );
+  }
+
   // Handle custom Pages routing
   if (activeCustomPage) {
     return (
@@ -1428,9 +1453,6 @@ export default function App() {
           📊 কাস্টমার অর্ডার হিস্টোরি
         </button>
       </div>
-
-      {/* Customizable Top Navigation Menu Bar */}
-      <MenuBar />
 
       {/* Elegant Header / Hero Section with animated rain backdrop */}
       {(() => {

@@ -252,5 +252,15 @@ export interface AdvancedAddonsSettings {
   bike_triple_cards?: { title: string; imageUrl: string; description?: string }[];
 }
 
+export interface Coupon {
+  id: string; // Document ID, lower-cased code
+  code: string; // The case-sensitive code entered by customer (e.g. "WINTER20")
+  discountType: 'money' | 'percentage'; // Discount in flat BDT money or percentage
+  discountValue: number; // The discount number (e.g. 150 Tk or 20%)
+  validityDays: number; // Number of days coupon is valid after creation
+  createdAt: string; // ISO timestamp
+}
+
+
 
 

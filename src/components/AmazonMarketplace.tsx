@@ -93,6 +93,12 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
   const [banners, setBanners] = useState<HomepageBannerSlide[]>([]);
   const [isMobile, setIsMobile] = useState(false);
 
+  const handleProductClick = (product: Product) => {
+    const slug = encodeURIComponent(product.title.trim().toLowerCase().replace(/\s+/g, '-'));
+    window.history.pushState(null, '', `/product/${slug}`);
+    window.dispatchEvent(new Event('popstate'));
+  };
+
   const defaultBanners: HomepageBannerSlide[] = [
     {
       badge: "Monsoon Flash Deals",
@@ -591,9 +597,9 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="বৃষ্টি নিরোধক রেইনকোট, সু কাভার বা ট্রাভেল ড্রাই ব্যাগ খুঁজুন..."
-              className="w-full pl-4 pr-11 py-2.5 bg-slate-800/80 border border-slate-700/80 rounded-xl focus:bg-white focus:text-slate-900 focus:outline-none focus:border-orange-500 transition-all font-sans text-xs sm:text-sm text-slate-200 placeholder-slate-450"
+              className="w-full pl-4 pr-11 py-2.5 bg-slate-800/80 border border-slate-700/80 rounded-xl focus:bg-white focus:text-slate-900 focus:outline-none focus:border-orange-500 transition-all font-sans text-xs sm:text-sm text-slate-200 placeholder-slate-400"
             />
-            <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400">
+            <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-sans">
               <Search className="h-4 w-4 stroke-[2.5]" />
             </div>
           </div>
@@ -624,10 +630,10 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
 
             <button 
               onClick={() => {
-                window.history.pushState(null, '', '/shop');
+                window.history.pushState(null, '', '/cart');
                 window.dispatchEvent(new Event('popstate'));
               }}
-              className="relative p-2.5 bg-slate-800 hover:bg-slate-750 text-slate-100 font-extrabold rounded-xl transition flex items-center justify-center gap-2 px-3 text-xs"
+              className="relative p-2.5 bg-slate-805 bg-slate-800 hover:bg-slate-750 text-slate-100 font-extrabold rounded-xl transition flex items-center justify-center gap-2 px-3 text-xs cursor-pointer"
             >
               <ShoppingCart className="h-4 w-4 text-orange-400" />
               <span>কার্ট ({cartCount})</span>
@@ -663,14 +669,14 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
               }
             } else {
               // gradient
-              gradientClass = `bg-gradient-to-r ${slide.bgGradient || 'from-slate-900 via-indigo-950 to-slate-900'}`;
+              gradientClass = slide.bgGradient || 'bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900';
             }
-
+            
             return (
-              <div
+              <div 
                 key={idx}
                 style={bgStyle}
-                className={`absolute inset-0 ${gradientClass} p-5 sm:p-12 flex flex-col justify-center text-left transition-all duration-700 ease-in-out ${
+                className={`absolute inset-0 w-full h-full p-6 sm:p-12 md:p-16 flex items-center transition-all duration-700 ease-in-out select-none ${gradientClass} ${
                   isActive ? 'opacity-100 z-10 scale-100 pointer-events-auto shadow-inner' : 'opacity-0 z-0 scale-95 pointer-events-none'
                 }`}
               >
@@ -688,7 +694,7 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
                   <p className="text-slate-200 font-medium text-[10px] sm:text-xs md:text-sm leading-relaxed max-w-lg line-clamp-2 sm:line-clamp-none">
                     {slide.description}
                   </p>
-                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 pt-1 sm:pt-2">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 pt-1 sm:pt-2 font-sans">
                     <button 
                       onClick={() => handleButtonAction(slide.primaryBtnLink)}
                       className="px-3.5 py-1.8 sm:px-6 sm:py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-slate-950 font-black text-[10px] sm:text-[13px] rounded-lg sm:rounded-xl shadow-lg shadow-orange-950/40 transform hover:scale-[1.02] active:scale-[0.98] transition cursor-pointer flex items-center gap-1 sm:gap-1.5"
@@ -710,7 +716,7 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
               </div>
             );
           })}
-
+          
           {/* Navigation Dots on the bottom */}
           <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-20">
             {(banners.length > 0 ? banners : defaultBanners).map((_, idx) => (
@@ -718,7 +724,7 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
                 key={idx}
                 onClick={() => setActiveBannerSlide(idx)}
                 className={`w-2 h-2 rounded-full transition-all duration-300 ${
-                  idx === activeBannerSlide ? 'bg-orange-550 bg-orange-500 w-5 sm:w-6' : 'bg-white/45 hover:bg-white/80'
+                  idx === activeBannerSlide ? 'bg-orange-550 bg-orange-550 w-5 sm:w-6' : 'bg-white/45 hover:bg-white/80'
                 }`}
               />
             ))}
@@ -727,7 +733,7 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
       </section>
 
       {/* 🌟 Amazon Top Brand Indicators */}
-      <section className="max-w-7xl mx-auto px-4 mt-6">
+      <section className="max-w-7xl mx-auto px-4 mt-6 font-sans">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-5 shadow-xs">
           <div className="flex items-center gap-3 p-2">
             <div className="w-10 h-10 rounded-full bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
@@ -735,7 +741,7 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
             </div>
             <div className="text-left">
               <h4 className="text-xs sm:text-sm font-black text-slate-900">ডেলিভারি চার্জ আছে</h4>
-              <p className="text-[10px] text-slate-500 font-medium">সারা বাংলাদেশে হোম ডেলিভারিতে কুরিয়ার</p>
+              <p className="text-[10px] text-slate-500 font-medium tracking-tight">সারা বাংলাদেশে হোম ডেলিভারিতে কুরিয়ার</p>
             </div>
           </div>
           
@@ -744,8 +750,8 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
               <ShieldCheck className="h-5 w-5" />
             </div>
             <div className="text-left">
-              <h4 className="ক্যাশ অন ডেলিভারি text-xs sm:text-sm font-black text-slate-900">অগ্রিম পেমেন্ট নেই</h4>
-              <p className="text-[10px] text-slate-500 font-medium">বুঝে পেয়ে মূল্য পরিশোধ</p>
+              <h4 className="text-xs sm:text-sm font-black text-slate-900">অগ্রিম পেমেন্ট নেই</h4>
+              <p className="text-[10px] text-slate-500 font-medium tracking-tight">বুঝে পেয়ে মূল্য পরিশোধ</p>
             </div>
           </div>
 
@@ -755,24 +761,24 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
             </div>
             <div className="text-left">
               <h4 className="text-xs sm:text-sm font-black text-slate-900">সহজ রিটার্ন পলিসি</h4>
-              <p className="text-[10px] text-slate-500 font-medium">৩ দিনের সহজ রিটার্ন</p>
+              <p className="text-[10px] text-slate-500 font-medium tracking-tight">৩ দিনের সহজ রিটার্ন</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 p-2 font-sans">
+          <div className="flex items-center gap-3 p-2">
             <div className="w-10 h-10 rounded-full bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
               <Sparkles className="h-5 w-5 animate-pulse" />
             </div>
             <div className="text-left">
               <h4 className="text-xs sm:text-sm font-black text-slate-900">১০০% প্রিমিয়াম কোয়ালিটি</h4>
-              <p className="text-[10px] text-slate-500 font-medium">হিট সিলড সেলাই প্রযুক্তি</p>
+              <p className="text-[10px] text-slate-500 font-medium tracking-tight">হিট সিলড সেলাই প্রযুক্তি</p>
             </div>
           </div>
         </div>
       </section>
 
       {/* 🏷️ Horizontal Category Filter Bar */}
-      <section className="max-w-7xl mx-auto px-4 mt-8">
+      <section className="max-w-7xl mx-auto px-4 mt-8 font-sans">
         <div className="flex items-center justify-between border-b border-slate-200 pb-3">
           <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
             <Filter className="h-5 w-5 text-orange-500 shrink-0" />
@@ -789,7 +795,7 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
               className={`px-4 py-2 text-xs sm:text-xs font-black rounded-full shrink-0 transition-all border cursor-pointer ${
                 selectedCategory === cat
                   ? 'bg-orange-500 text-white border-orange-500 shadow-sm'
-                  : 'bg-white text-slate-705 text-slate-700 border-slate-200/80 hover:border-slate-350'
+                  : 'bg-white text-slate-700 border-slate-200/80 hover:border-slate-350'
               }`}
             >
               {cat === 'All' ? '⚡ সব প্রোডাক্ট' : cat}

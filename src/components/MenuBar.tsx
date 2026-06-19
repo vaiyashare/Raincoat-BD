@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Menu as MenuIcon, X, LayoutGrid, ShoppingCart, ChevronDown, Phone, ArrowUpRight } from 'lucide-react';
 import { getMenuBarConfigFromFirestore, MenuBarConfig } from '../lib/firebase';
+import { getCart } from '../lib/cart';
 
 interface MenuBarProps {
   onCategoryFilter?: (category: string) => void;
@@ -13,6 +14,20 @@ export default function MenuBar({ onCategoryFilter, activeSection }: MenuBarProp
   const [loading, setLoading] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
+  const [cartCount, setCartCount] = useState(0);
+
+  useEffect(() => {
+    const updateCount = () => {
+      const cart = getCart();
+      const count = cart.reduce((sum, item) => sum + item.quantity, 0);
+      setCartCount(count);
+    };
+    updateCount();
+    window.addEventListener('cart-updated', updateCount);
+    return () => {
+      window.removeEventListener('cart-updated', updateCount);
+    };
+  }, []);
 
   useEffect(() => {
     async function loadMenu() {
@@ -165,10 +180,45 @@ export default function MenuBar({ onCategoryFilter, activeSection }: MenuBarProp
                 )}
               </div>
             )}
+            {/* Standard Cart Option with count notification */}
+            <button
+              onClick={() => {
+                window.history.pushState(null, '', '/cart');
+                window.dispatchEvent(new Event('popstate'));
+              }}
+              className="relative p-2 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg flex items-center gap-1 cursor-pointer transition active:scale-95"
+              title="শপিং কার্ট দেখুন"
+            >
+              <ShoppingCart className="h-4 w-4 text-rose-500" />
+              <span className="text-xs font-bold font-sans">কার্ট ({cartCount})</span>
+              {cartCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-650 text-white font-black text-[9px] h-4 w-4 flex items-center justify-center rounded-full border border-slate-900 font-mono animate-pulse">
+                  {cartCount}
+                </span>
+              )}
+            </button>
           </div>
 
           {/* Mobile Categories Shortcut & Hamburger Menu */}
           <div className="flex md:hidden items-center gap-2">
+            {/* Mobile Cart Option */}
+            <button
+              onClick={() => {
+                window.history.pushState(null, '', '/cart');
+                window.dispatchEvent(new Event('popstate'));
+              }}
+              className="relative p-2 bg-slate-800 hover:bg-slate-750 text-rose-400 font-bold rounded-lg flex items-center gap-1 active:scale-95 transition text-xs cursor-pointer"
+              title="কার্ট"
+            >
+              <ShoppingCart className="h-4 w-4" />
+              <span>কার্ট ({cartCount})</span>
+              {cartCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 bg-rose-650 text-white font-black text-[9px] h-4.5 w-4.5 flex items-center justify-center rounded-full border border-slate-900 font-mono">
+                  {cartCount}
+                </span>
+              )}
+            </button>
+
             {config.enableCategories && (
               <button
                 onClick={() => setCategoriesOpen(!categoriesOpen)}

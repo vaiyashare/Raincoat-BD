@@ -9,7 +9,6 @@ import { Size, ProductColor, RaincoatOrder } from '../types';
 import { getMediaFromFirestore, addOrderToFirestore, getAdvancedAddonsSettingsFromFirestore } from '../lib/firebase';
 import { trackPixelEvent } from '../lib/tracking';
 import { motion, AnimatePresence } from 'motion/react';
-import MenuBar from './MenuBar';
 
 interface BikeCoverLandingProps {
   onOrderSuccess: (order: RaincoatOrder) => void;
@@ -379,9 +378,6 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
           অর্ডার করুন এখন
         </button>
       </div>
-
-      {/* Customizable top navigation menu bar */}
-      <MenuBar />
 
       {/* Hero Header Section */}
       {(() => {

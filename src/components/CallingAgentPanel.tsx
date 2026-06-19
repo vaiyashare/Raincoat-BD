@@ -31,7 +31,15 @@ export default function CallingAgentPanel({ onClose }: CallingAgentPanelProps) {
   });
 
   // Orders State
-  const [orders, setOrders] = useState<RaincoatOrder[]>([]);
+  const [orders, setOrders] = useState<RaincoatOrder[]>(() => {
+    try {
+      const cached = localStorage.getItem('raincoat_orders_fallback') || localStorage.getItem('raincoat_orders');
+      if (cached) {
+        return JSON.parse(cached) as RaincoatOrder[];
+      }
+    } catch (_) {}
+    return [];
+  });
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Pending' | 'No Answer' | 'Confirmed' | 'Cancelled'>('All');
@@ -57,6 +65,46 @@ export default function CallingAgentPanel({ onClose }: CallingAgentPanelProps) {
   const [editNotes, setEditNotes] = useState('');
   const [editCallStatus, setEditCallStatus] = useState('Pending');
   const [savingEdit, setSavingEdit] = useState(false);
+
+  // Live Fraud Scanning states/triggers for Calling Agent Panel
+  const [checkingFraudLeads, setCheckingFraudLeads] = useState<Record<string, boolean>>({});
+
+  const handleAgentSingleFraudCheck = async (orderId: string, phone: string) => {
+    if (!orderId || !phone) return;
+    if (checkingFraudLeads[orderId]) return;
+    
+    setCheckingFraudLeads(prev => ({ ...prev, [orderId]: true }));
+    try {
+      let customApiKey = '';
+      try {
+        const cached = localStorage.getItem('raincoat_advanced_addons_fallback');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          customApiKey = parsed.fraudshield_api_key;
+        }
+      } catch (_) {}
+      
+      const { performFraudCheck } = await import('../lib/fraudCheck');
+      const result = await performFraudCheck(phone, undefined, customApiKey);
+
+      const updatedFields = {
+        fraudScore: result.score,
+        fraudStatus: result.status,
+        fraudReason: result.reason,
+        fraudTotalParcel: result.totalParcel !== undefined ? result.totalParcel : null,
+        fraudSuccessParcel: result.successParcel !== undefined ? result.successParcel : null,
+        fraudSuccessRatio: result.successRatio !== undefined ? result.successRatio : null
+      };
+
+      await updateDoc(doc(db, 'orders', orderId), updatedFields);
+
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updatedFields } : o));
+    } catch (err) {
+      console.error("Error executing agent single fraud check:", err);
+    } finally {
+      setCheckingFraudLeads(prev => ({ ...prev, [orderId]: false }));
+    }
+  };
 
   // Inline Note State for Order details
   const [tempNotes, setTempNotes] = useState<{[orderId: string]: string}>({});
@@ -687,10 +735,6 @@ export default function CallingAgentPanel({ onClose }: CallingAgentPanelProps) {
               </button>
             </div>
           </form>
-
-          <div className="border-t border-slate-850/50 pt-4 text-center">
-            <span className="text-[10px] text-slate-500 font-mono">Default User: 1234 Pass: 1234</span>
-          </div>
         </div>
       </div>
     );
@@ -1013,9 +1057,72 @@ export default function CallingAgentPanel({ onClose }: CallingAgentPanelProps) {
                       <h4 className="text-base font-black text-white hover:text-cyan-300 transition duration-150">
                         {order.name}
                       </h4>
-                      <p className="text-xs text-orange-400 font-extrabold flex items-center gap-1.5 focus:underline">
-                        📞 <a href={`tel:${order.phone}`} className="hover:underline">{order.phone}</a>
-                      </p>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <p className="text-xs text-orange-400 font-extrabold flex items-center gap-1.5 focus:underline">
+                          📞 <a href={`tel:${order.phone}`} className="hover:underline">{order.phone}</a>
+                        </p>
+
+                        {/* API Fraud Check Results */}
+                        {((order as any).fraudScore !== undefined) ? (
+                          <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                            <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-black font-mono border ${
+                              (order as any).fraudScore >= 75
+                                ? 'bg-rose-500/10 text-rose-450 border-rose-500/20'
+                                : (order as any).fraudScore >= 45
+                                ? 'bg-amber-500/10 text-amber-500 border-amber-500/30'
+                                : 'bg-emerald-500/10 text-emerald-450 border-emerald-500/30'
+                            }`}>
+                              🛡️ এপিআই রিস্ক: {(order as any).fraudScore}%
+                            </span>
+
+                            {((order as any).fraudTotalParcel !== undefined && (order as any).fraudTotalParcel !== null) && (
+                              <>
+                                <span className="bg-slate-950 text-slate-300 border border-slate-800 px-2 py-0.5 rounded text-[10px] font-bold">
+                                  📦 এপিআই অর্ডার: {(order as any).fraudTotalParcel}টি
+                                </span>
+                                <span className={`bg-slate-950 border px-2 py-0.5 rounded text-[10px] font-black font-mono ${
+                                  ((order as any).fraudSuccessRatio || 0) >= 80
+                                    ? 'text-emerald-450 border-emerald-500/20'
+                                    : ((order as any).fraudSuccessRatio || 0) >= 50
+                                    ? 'text-amber-500 border-amber-500/20'
+                                    : 'text-rose-455 border-rose-500/20'
+                                }`}>
+                                  📈 এপিআই সফলতার হার: {(order as any).fraudSuccessRatio || 0}%
+                                </span>
+                              </>
+                            )}
+
+                            <span className="text-[10px] text-slate-500 font-medium truncate max-w-[200px]" title={(order as any).fraudReason}>
+                              ({(order as any).fraudReason || 'নিরাপদ কাস্টমার'})
+                            </span>
+
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                handleAgentSingleFraudCheck(order.id, order.phone);
+                              }}
+                              disabled={checkingFraudLeads[order.id]}
+                              className="text-[10px] text-cyan-400 hover:text-cyan-350 underline font-bold bg-transparent border-0 cursor-pointer ml-1"
+                            >
+                              {checkingFraudLeads[order.id] ? 'স্ক্যান...' : 'রি-চেক ⚡'}
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5 text-slate-500 text-[10px]">
+                            <span>🛡️ ফ্রাড রিলেশন: আনচেকড</span>
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                handleAgentSingleFraudCheck(order.id, order.phone);
+                              }}
+                              disabled={checkingFraudLeads[order.id]}
+                              className="text-[10px] text-[#00e3cd] hover:underline font-bold bg-slate-950 px-2.5 py-0.5 border border-slate-800 rounded-md cursor-pointer animate-pulse"
+                            >
+                              {checkingFraudLeads[order.id] ? 'স্ক্যান হচ্ছে...' : '১-ক্লিক ফ্রাড চেক ⚡'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* Delivery Performance Stats Badge */}

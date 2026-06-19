@@ -27,7 +27,7 @@ export default function UsersAdmin({ currentUser, onRefreshUsers, userRole }: Us
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<'Admin' | 'Editor' | 'ReadOnly'>('Editor');
   const [canEdit, setCanEdit] = useState(true);
-  const [canDelete, setCanDelete] = useState(false);
+  const [canDelete, setCanDelete] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -164,7 +164,7 @@ export default function UsersAdmin({ currentUser, onRefreshUsers, userRole }: Us
     setUsername('');
     setPassword('');
     setCanEdit(true);
-    setCanDelete(false);
+    setCanDelete(true);
     setSuccess(`নতুন টিম ইউজার "${cleanUser}" (${role}) সফলভাবে নিবন্ধিত হয়েছে!`);
     onRefreshUsers();
 

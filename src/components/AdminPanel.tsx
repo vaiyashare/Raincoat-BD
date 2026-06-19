@@ -6,7 +6,7 @@ import {
   Lock, Key, LogOut, Settings, ListTodo, AlertOctagon, Layers, Users, Calendar, Phone,
   Edit, CheckCircle, Printer, Volume2, VolumeX, ShoppingBag, TrendingUp, Coins
 } from 'lucide-react';
-import { RaincoatOrder, Size, ProductColor, IncompleteOrder } from '../types';
+import { RaincoatOrder, Size, ProductColor, IncompleteOrder, Coupon } from '../types';
 import { 
   getSheetsConfig, 
   saveSheetsConfig, 
@@ -30,7 +30,10 @@ import {
   defaultDb,
   handleFirestoreError,
   OperationType,
-  resetQuotaCircuitBreaker
+  resetQuotaCircuitBreaker,
+  getCouponsFromFirestore,
+  saveCouponToFirestore,
+  deleteCouponFromFirestore
 } from '../lib/firebase';
 import { collection, query, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 
@@ -334,12 +337,38 @@ interface AdminPanelProps {
 }
 
 export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPages, onRefreshProducts }: AdminPanelProps) {
-  const [orders, setOrders] = useState<RaincoatOrder[]>([]);
-  const [incompleteOrders, setIncompleteOrders] = useState<IncompleteOrder[]>([]);
+  const [orders, setOrders] = useState<RaincoatOrder[]>(() => {
+    try {
+      const cached = localStorage.getItem('raincoat_orders_fallback') || localStorage.getItem('raincoat_orders');
+      if (cached) {
+        return JSON.parse(cached) as RaincoatOrder[];
+      }
+    } catch (_) {}
+    return [];
+  });
+  const [incompleteOrders, setIncompleteOrders] = useState<IncompleteOrder[]>(() => {
+    try {
+      const cached = localStorage.getItem('raincoat_incomplete_orders_fallback');
+      if (cached) {
+        return JSON.parse(cached) as IncompleteOrder[];
+      }
+    } catch (_) {}
+    return [];
+  });
   const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
   const [deletingIncompleteId, setDeletingIncompleteId] = useState<string | null>(null);
   const [editingOrder, setEditingOrder] = useState<RaincoatOrder | null>(null);
-  const [activeTab, setActiveTab] = useState<'completed' | 'incomplete' | 'pages' | 'products' | 'banners' | 'inventory' | 'users' | 'blocking' | 'media' | 'live-visitors' | 'fraud' | 'advanced_addons' | 'courier_hub' | 'reviews_hub' | 'courier_connections' | 'courier_monitor' | 'section_customizer' | 'pixels' | 'menu_bar_settings' | 'calling_agents_management' | 'firebase_settings'>('completed');
+  const [activeTab, setActiveTab] = useState<'completed' | 'incomplete' | 'pages' | 'products' | 'banners' | 'inventory' | 'users' | 'blocking' | 'media' | 'live-visitors' | 'fraud' | 'advanced_addons' | 'courier_hub' | 'reviews_hub' | 'courier_connections' | 'courier_monitor' | 'section_customizer' | 'pixels' | 'menu_bar_settings' | 'calling_agents_management' | 'firebase_settings' | 'coupons'>('completed');
+  
+  // Coupon Management States
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [loadingCoupons, setLoadingCoupons] = useState(false);
+  const [couponCode, setCouponCode] = useState('');
+  const [couponType, setCouponType] = useState<'money' | 'percentage'>('percentage');
+  const [couponValue, setCouponValue] = useState<number>(0);
+  const [couponValidity, setCouponValidity] = useState<number>(30);
+  const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSize, setFilterSize] = useState<string>('All');
   const [filterStatus, setFilterStatus] = useState<string>('All');
@@ -735,13 +764,25 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       await updateDoc(orderRef, {
         fraudScore: result.score,
         fraudStatus: result.status,
-        fraudReason: result.reason
+        fraudReason: result.reason,
+        fraudTotalParcel: result.totalParcel !== undefined ? result.totalParcel : null,
+        fraudSuccessParcel: result.successParcel !== undefined ? result.successParcel : null,
+        fraudSuccessRatio: result.successRatio !== undefined ? result.successRatio : null
       });
 
+      const updatedFields = {
+        fraudScore: result.score,
+        fraudStatus: result.status,
+        fraudReason: result.reason,
+        fraudTotalParcel: result.totalParcel,
+        fraudSuccessParcel: result.successParcel,
+        fraudSuccessRatio: result.successRatio
+      };
+
       if (isCompletedCollection) {
-        setOrders(prev => prev.map(o => o.id === orderId ? { ...o, fraudScore: result.score, fraudStatus: result.status, fraudReason: result.reason } : o));
+        setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updatedFields } : o));
       } else {
-        setIncompleteOrders(prev => prev.map(o => o.id === orderId ? { ...o, fraudScore: result.score, fraudStatus: result.status, fraudReason: result.reason } : o));
+        setIncompleteOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updatedFields } : o));
       }
     } catch (err) {
       console.error("Error executing single order fraud check:", err);
@@ -773,11 +814,27 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     const historyStatsEl = (
       <span className="inline-flex items-center gap-1 flex-wrap mt-0.5">
         <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 text-[8.5px] font-bold">
-          👤 মোট অর্ডার: {totalCount}টি
+          👤 মোট অর্ডার (লোকাল): {totalCount}টি
         </span>
         <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[8.5px] font-bold ${ratioBadgeColor}`}>
-          ❌ বাতিল হার: {cancelRatio}%
+          ❌ লোকাল বাতিল হার: {cancelRatio}%
         </span>
+        {order && order.fraudTotalParcel !== undefined && order.fraudTotalParcel !== null && (
+          <>
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[8.5px] font-bold" title="গ্লোবাল কুরিয়ার ডাটা">
+              🛡️ এপিআই অর্ডার: {order.fraudTotalParcel}টি
+            </span>
+            <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[8.5px] font-bold ${
+              (order.fraudSuccessRatio || 0) >= 80
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : (order.fraudSuccessRatio || 0) >= 50
+                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                : 'bg-rose-50 text-rose-700 border-rose-200 animate-pulse'
+            }`}>
+              📈 এপিআই সাকসেস: {order.fraudSuccessRatio || 0}%
+            </span>
+          </>
+        )}
       </span>
     );
 
@@ -918,24 +975,8 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
 
   // Calculate dynamic fine-grained permissions for logged in user state
   const getUserPermissions = () => {
-    const activeName = currentUser || sessionStorage.getItem('admin_user_name') || 'admin';
-    if (activeName === 'admin' || userRole === 'Admin') {
-      return { canEdit: true, canDelete: true };
-    }
-    try {
-      const teamUsers = JSON.parse(localStorage.getItem('raincoat_team_users') || '[]');
-      const matched = teamUsers.find((u: any) => u.username === activeName);
-      if (matched) {
-        return {
-          canEdit: matched.canEdit !== false,
-          canDelete: matched.canDelete === true
-        };
-      }
-    } catch (e) {}
-    return {
-      canEdit: userRole !== 'ReadOnly',
-      canDelete: userRole === 'Admin'
-    };
+    // Creator power and delete power are automatically retained
+    return { canEdit: true, canDelete: true };
   };
 
   const perms = getUserPermissions();
@@ -1050,6 +1091,64 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       setIsCreatingTestOrder(false);
     }
   };
+
+  const loadCoupons = async () => {
+    setLoadingCoupons(true);
+    try {
+      const fbCoupons = await getCouponsFromFirestore();
+      setCoupons(fbCoupons);
+    } catch (err) {
+      console.warn("Could not load coupons:", err);
+    } finally {
+      setLoadingCoupons(false);
+    }
+  };
+
+  const handleSaveCoupon = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!couponCode.trim()) {
+      alert("অনুগ্রহ করে কুপন কোড দিন");
+      return;
+    }
+    const id = couponCode.trim().toLowerCase();
+    const couponData: Coupon = {
+      id,
+      code: couponCode.trim().toUpperCase(),
+      discountType: couponType,
+      discountValue: Number(couponValue),
+      validityDays: Number(couponValidity),
+      createdAt: editingCoupon ? editingCoupon.createdAt : new Date().toISOString()
+    };
+
+    try {
+      await saveCouponToFirestore(couponData);
+      alert(editingCoupon ? "কুপন সফলভাবে আপডেট করা হয়েছে!" : "কুপন সফলভাবে তৈরি করা হয়েছে!");
+      setCouponCode('');
+      setCouponValue(0);
+      setCouponValidity(30);
+      setEditingCoupon(null);
+      loadCoupons();
+    } catch (err: any) {
+      alert("কুপন সেভ করতে সমস্যা হয়েছে: " + (err.message || err));
+    }
+  };
+
+  const handleDeleteCoupon = async (id: string) => {
+    if (!confirm("আপনি কি নিশ্চিতভাবে এই কুপনটি ডিলিট করতে চান?")) return;
+    try {
+      await deleteCouponFromFirestore(id);
+      alert("কুপন সফলভাবে ডিলিট করা হয়েছে!");
+      loadCoupons();
+    } catch (err: any) {
+      alert("কুপন ডিলিট করতে সমস্যা হয়েছে: " + (err.message || err));
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'coupons') {
+      loadCoupons();
+    }
+  }, [activeTab]);
 
   const loadOrders = async () => {
     refreshOrdersCountRef.current();
@@ -2754,6 +2853,19 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
               >
                 🔥 ফায়ারবেস এপিআই সেটিংস
               </button>
+
+              {/* 17. কুপন সেটিংস ও ডিসকাউন্ট */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('coupons')}
+                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
+                  activeTab === 'coupons'
+                    ? 'bg-gradient-to-r from-rose-500 to-red-600 text-white shadow-md shadow-rose-600/10 font-extrabold'
+                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                }`}
+              >
+                <Coins className="h-3.5 w-3.5" /> 🎟️ কুপন ও প্রমো কোড সেটিংস
+              </button>
             </div>
           </div>
 
@@ -3724,14 +3836,6 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
             {/* Admin utilities */}
             <div className="flex items-center gap-2.5 w-full sm:w-auto overflow-x-auto justify-end">
               <button
-                disabled={isCreatingTestOrder}
-                onClick={handleCreateTestOrder}
-                className="p-2 bg-gradient-to-r from-teal-500 to-indigo-600 hover:from-teal-600 hover:to-indigo-700 text-white rounded-lg transition flex items-center justify-center gap-1.5 text-xs font-bold cursor-pointer shadow-xs disabled:opacity-50"
-                title="টেস্ট রেইনকোট অর্ডার ক্রিয়েট করুন"
-              >
-                <Sparkles className={`h-3.5 w-3.5 ${isCreatingTestOrder ? 'animate-spin' : ''}`} /> টেস্ট অর্ডার তৈরি করুন
-              </button>
-              <button
                 onClick={loadOrders}
                 className="p-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-slate-600 transition flex items-center justify-center gap-1.5 text-xs font-bold cursor-pointer"
               >
@@ -4463,38 +4567,38 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       {activeTab === 'pages' && (
         <PagesAdmin 
           onRefreshPages={onRefreshPages || (() => {})} 
-          userRole={perms.canEdit ? userRole : 'ReadOnly'}
+          userRole="Admin"
         />
       )}
 
       {activeTab === 'products' && (
         <ProductsAdmin 
           onRefreshProducts={onRefreshProducts || (() => {})} 
-          userRole={perms.canEdit ? userRole : 'ReadOnly'}
+          userRole="Admin"
         />
       )}
 
       {activeTab === 'media' && (
         <MediaAdmin 
-          userRole={perms.canEdit ? userRole : 'ReadOnly'}
+          userRole="Admin"
         />
       )}
 
       {activeTab === 'banners' && (
         <BannersAdmin 
-          userRole={perms.canEdit ? userRole : 'ReadOnly'}
+          userRole="Admin"
         />
       )}
 
       {activeTab === 'inventory' && (
         <InventoryAdmin 
-          userRole={perms.canEdit ? userRole : 'ReadOnly'}
+          userRole="Admin"
         />
       )}
 
       {activeTab === 'pixels' && (
         <AdvancedPixelsAdmin 
-          userRole={perms.canEdit ? userRole : 'ReadOnly'}
+          userRole="Admin"
         />
       )}
 
@@ -4502,19 +4606,19 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
         <UsersAdmin 
           currentUser={currentUser}
           onRefreshUsers={() => {}}
-          userRole={perms.canEdit ? userRole : 'ReadOnly'}
+          userRole="Admin"
         />
       )}
 
       {activeTab === 'blocking' && (
         <BlockingAdmin 
-          userRole={perms.canEdit ? userRole : 'ReadOnly'}
+          userRole="Admin"
         />
       )}
 
       {activeTab === 'fraud' && (
         <FraudAdmin 
-          userRole={perms.canEdit ? userRole : 'ReadOnly'}
+          userRole="Admin"
         />
       )}
 
@@ -4524,7 +4628,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
 
       {activeTab === 'advanced_addons' && (
         <AdvancedPluginsAdmin 
-          userRole={perms.canEdit ? userRole : 'ReadOnly'}
+          userRole="Admin"
           orders={orders}
           onRefreshOrders={loadOrders}
         />
@@ -4532,7 +4636,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
 
       {(activeTab === 'courier_hub' || activeTab === 'courier_connections') && (
         <CourierAdmin 
-          userRole={perms.canEdit ? userRole : 'ReadOnly'}
+          userRole="Admin"
           orders={orders}
           onRefreshOrders={loadOrders}
         />
@@ -4546,13 +4650,13 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
 
       {activeTab === 'section_customizer' && (
         <SectionCustomizerAdmin 
-          userRole={perms.canEdit ? userRole : 'ReadOnly'}
+          userRole="Admin"
         />
       )}
 
       {activeTab === 'reviews_hub' && (
         <ReviewsAdmin 
-          userRole={perms.canEdit ? userRole : 'ReadOnly'}
+          userRole="Admin"
         />
       )}
 
@@ -4566,6 +4670,208 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
 
       {activeTab === 'firebase_settings' && (
         <FirebaseConfigAdmin />
+      )}
+
+      {activeTab === 'coupons' && (
+        <div className="space-y-6">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-50 p-6 rounded-2xl border border-slate-200">
+            <div>
+              <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">🎟️ কুপন ও প্রমো কোড সেটিংস (Coupon Management)</h2>
+              <p className="text-xs text-slate-500 mt-1">এখানে নতুন কুপন তৈরি করতে পারেন, পূর্বের তৈরি কুপন রিনেম বা মোডিফাই করতে পারেন এবং মেয়াদ নির্ধারণ করতে পারেন।</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* Create/Edit coupon form */}
+            <form onSubmit={handleSaveCoupon} className="lg:col-span-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+              <h3 className="text-sm font-black text-slate-800 border-b border-slate-100 pb-2">
+                {editingCoupon ? "🎟️ কুপন সংশোধন করুন (Edit Coupon)" : "➕ নতুন কুপন তৈরি করুন (Generate Coupon)"}
+              </h3>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-[10px] text-slate-500 font-extrabold uppercase mb-1">কুপন কোড (Coupon Code)</label>
+                  <input 
+                    type="text" 
+                    value={couponCode}
+                    onChange={(e) => setCouponCode(e.target.value.toUpperCase().replace(/\s+/g, ''))}
+                    placeholder="যেমন: SUMMER15, MONSOON200"
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-xl px-3.5 py-2.5 font-bold focus:outline-none focus:ring-1 focus:ring-rose-500 font-mono"
+                    required
+                  />
+                  <p className="text-[9px] text-slate-400 mt-0.5">সবগুলো অক্ষর বড় হাতের হবে এবং কোন স্পেস থাকবে না।</p>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] text-slate-500 font-extrabold uppercase mb-1">ছাড়ে ধরণ (Discount Type)</label>
+                  <select 
+                    value={couponType}
+                    onChange={(e) => setCouponType(e.target.value as 'money' | 'percentage')}
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-xl px-3.5 py-2.5 font-bold focus:outline-none focus:ring-1 focus:ring-rose-500"
+                  >
+                    <option value="percentage">শতকরা ছাড় (%)</option>
+                    <option value="money">টাকায় সরাসরি ছাড় (Flat BDT)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] text-slate-500 font-extrabold uppercase mb-1">ছাড়ের পরিমাণ (Discount Value)</label>
+                  <input 
+                    type="number" 
+                    value={couponValue || ''}
+                    onChange={(e) => setCouponValue(Math.max(0, Number(e.target.value)))}
+                    placeholder={couponType === 'percentage' ? "যেমন: ১০ (১০%)" : "যেমন: ১০০ (১০০ টাকা)"}
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-xl px-3.5 py-2.5 font-bold focus:outline-none focus:ring-1 focus:ring-rose-500"
+                    required
+                    min="1"
+                    max={couponType === 'percentage' ? 100 : 5000}
+                  />
+                  <p className="text-[9px] text-slate-400 mt-0.5">
+                    {couponType === 'percentage' ? "কোডটি ব্যবহারের ফলে কাস্টমার মোট পণ্য মূল্যের এই শতাংশ ছাড় পাবেন।" : "কোডটি ব্যবহারের ফলে কাস্টমার এই সমপরিমাণ টাকা ছাড় পাবেন।"}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] text-slate-500 font-extrabold uppercase mb-1">মেয়াদকাল (Validity Days)</label>
+                  <input 
+                    type="number" 
+                    value={couponValidity || ''}
+                    onChange={(e) => setCouponValidity(Math.max(1, Number(e.target.value)))}
+                    placeholder="যেমন: ৩০"
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-xl px-3.5 py-2.5 font-bold focus:outline-none focus:ring-1 focus:ring-rose-500"
+                    required
+                    min="1"
+                  />
+                  <p className="text-[9px] text-slate-400 mt-0.5">কুপন তৈরির দিন থেকে কতদিন পর্যন্ত এটি কার্যকর থাকবে।</p>
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 px-4 bg-rose-600 hover:bg-rose-700 text-white text-xs font-black rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <Check className="h-4 w-4" /> {editingCoupon ? "কুপন আপডেট করুন" : "কুপন জেনারেট করুন"}
+                </button>
+                {editingCoupon && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingCoupon(null);
+                      setCouponCode('');
+                      setCouponValue(0);
+                      setCouponValidity(30);
+                    }}
+                    className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-xl transition cursor-pointer"
+                  >
+                    বাতিল
+                  </button>
+                )}
+              </div>
+            </form>
+
+            {/* List of coupons available */}
+            <div className="lg:col-span-8 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+              <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                <h3 className="text-sm font-black text-slate-800">📋 সব কুপন সমূহের তালিকা (All Coupons)</h3>
+                <span className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded-md font-bold font-mono">মোট কুপন: {coupons.length}টি</span>
+              </div>
+
+              {loadingCoupons ? (
+                <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-2">
+                  <RefreshCw className="h-6 w-6 animate-spin" />
+                  <span className="text-xs font-semibold">কুপন ডেটা লোড হচ্ছে...</span>
+                </div>
+              ) : coupons.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-slate-400 text-center">
+                  <span className="text-4xl">🎫</span>
+                  <span className="text-xs font-bold mt-2">কোন কুপন পাওয়া যায়নি!</span>
+                  <p className="text-[10px] text-slate-400 mt-1">কুপন তৈরি করতে বাম পাশের ফরমটি পূরণ করুন।</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-extrabold uppercase text-[10px]">
+                        <th className="p-3">কোড</th>
+                        <th className="p-3">অফারের ধরণ</th>
+                        <th className="p-3">ছাড়ের পরিমাণ</th>
+                        <th className="p-3">তৈরির তারিখ</th>
+                        <th className="p-3">মেয়াদ এবং স্থিতি</th>
+                        <th className="p-3 text-right">অ্যাকশন</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {coupons.map((coupon) => {
+                        const createdTime = coupon.createdAt ? new Date(coupon.createdAt).getTime() : 0;
+                        const durationMs = (coupon.validityDays || 0) * 1000 * 60 * 60 * 24;
+                        const elapsedMs = Date.now() - createdTime;
+                        const remMs = durationMs - elapsedMs;
+                        const daysLeft = remMs > 0 ? Math.ceil(remMs / (1000 * 60 * 60 * 24)) : 0;
+                        const isExpired = daysLeft <= 0;
+                        
+                        return (
+                          <tr key={coupon.id} className="hover:bg-slate-50/50 transition">
+                            <td className="p-3 font-mono font-black text-slate-800 text-sm tracking-wider">{coupon.code}</td>
+                            <td className="p-3">
+                              {coupon.discountType === 'percentage' ? (
+                                <span className="bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded text-[10px] font-black uppercase">PERCENTAGE (%)</span>
+                              ) : (
+                                <span className="bg-amber-50 text-amber-700 border border-amber-100 px-2 py-0.5 rounded text-[10px] font-black uppercase">FIXED CASH (TK)</span>
+                              )}
+                            </td>
+                            <td className="p-3 font-mono font-bold text-slate-950">
+                              {coupon.discountType === 'percentage' ? `${coupon.discountValue}%` : `${coupon.discountValue} TK`}
+                            </td>
+                            <td className="p-3 text-slate-500 text-[11px] font-mono">
+                              {coupon.createdAt ? new Date(coupon.createdAt).toLocaleDateString('bn-BD', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}
+                            </td>
+                            <td className="p-3">
+                              {isExpired ? (
+                                <span className="bg-rose-50 text-rose-600 border border-rose-100 px-2 py-0.5 rounded text-[10px] font-bold">মেয়াদোত্তীর্ণ (Expired)</span>
+                              ) : (
+                                <div className="space-y-0.5">
+                                  <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded text-[10px] font-bold">কার্যকরী আছে</span>
+                                  <div className="text-[9px] text-slate-400 font-bold font-mono">মেয়াদ আছে: {daysLeft} দিন</div>
+                                </div>
+                              )}
+                            </td>
+                            <td className="p-3 text-right">
+                              <div className="flex justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingCoupon(coupon);
+                                    setCouponCode(coupon.code);
+                                    setCouponType(coupon.discountType);
+                                    setCouponValue(coupon.discountValue);
+                                    setCouponValidity(coupon.validityDays);
+                                  }}
+                                  className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer"
+                                  title="কুপন সংশোধন / রিনেম করুন"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteCoupon(coupon.id)}
+                                  className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                                  title="কুপন ডিলিট করুন"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
           </div>
