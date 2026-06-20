@@ -76,10 +76,14 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
 // Initialize Cloud Firestore Database with instance ID and force long polling to bypass iframe socket blocks
-const dbId = (firebaseConfig as any).firestoreDatabaseId;
+// If running on a user's own live GCP/Firebase project (e.g., gen-lang-client-...),
+// we fall back to the "(default)" database to match the database they provisioned in their standard setup.
+const isSandboxProject = firebaseConfig.projectId.startsWith('ai-studio-') || firebaseConfig.projectId.includes('aistudio');
+const dbId = isSandboxProject ? (firebaseConfig as any).firestoreDatabaseId : undefined;
+
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true
-}, dbId);
+}, dbId || undefined);
 
 // Initialize default database so we can fetch previous or old data if stored there in default fallback
 export const defaultDb = initializeFirestore(app, {
@@ -1736,6 +1740,89 @@ export async function deleteCouponFromFirestore(couponId: string): Promise<void>
     await deleteDoc(doc(defaultDb, 'coupons', couponId));
   } catch (_) {}
 }
+
+export interface MigrationProgress {
+  collection: string;
+  current: number;
+  total: number;
+  status: 'pending' | 'processing' | 'completed' | 'error';
+  errorMessage?: string;
+}
+
+export async function migrateAllData(onProgress: (progress: Record<string, MigrationProgress>) => void): Promise<void> {
+  const collectionsToMigrate = [
+    { name: 'orders', type: 'collection' },
+    { name: 'incompleteOrders', type: 'collection' },
+    { name: 'products', type: 'collection' },
+    { name: 'media', type: 'collection' },
+    { name: 'coupons', type: 'collection' },
+    { name: 'settings_docs', type: 'settings' }
+  ];
+
+  const state: Record<string, MigrationProgress> = {
+    orders: { collection: 'Orders (সফল অর্ডার)', current: 0, total: 0, status: 'pending' },
+    incompleteOrders: { collection: 'Drafts (ড্রাফট অর্ডার)', current: 0, total: 0, status: 'pending' },
+    products: { collection: 'Products (পণ্যসমূহ)', current: 0, total: 0, status: 'pending' },
+    media: { collection: 'Media (গ্যালারি ইমেজ)', current: 0, total: 0, status: 'pending' },
+    coupons: { collection: 'Coupons (কুপনসমূহ)', current: 0, total: 0, status: 'pending' },
+    settings_docs: { collection: 'Settings (কনফিগারেশন ও সেটিংস)', current: 0, total: 0, status: 'pending' }
+  };
+
+  onProgress({ ...state });
+
+  for (const item of collectionsToMigrate) {
+    try {
+      state[item.name].status = 'processing';
+      onProgress({ ...state });
+
+      if (item.type === 'collection') {
+        // Fetch all docs from defaultDb
+        const querySnap = await getDocs(query(collection(defaultDb, item.name)));
+        const docs = querySnap.docs;
+        state[item.name].total = docs.length;
+        onProgress({ ...state });
+
+        let current = 0;
+        for (const docObj of docs) {
+          const docData = docObj.data();
+          await setDoc(doc(db, item.name, docObj.id), docData);
+          current++;
+          state[item.name].current = current;
+          onProgress({ ...state });
+        }
+        
+        state[item.name].status = 'completed';
+      } else if (item.type === 'settings') {
+        const settingsDocs = ['integrations', 'advanced_addons', 'menu_bar', 'homepage_banner'];
+        state[item.name].total = settingsDocs.length;
+        onProgress({ ...state });
+
+        let current = 0;
+        for (const setSnapId of settingsDocs) {
+          try {
+            const docSnap = await getDoc(doc(defaultDb, 'settings', setSnapId));
+            if (docSnap.exists()) {
+              await setDoc(doc(db, 'settings', setSnapId), docSnap.data());
+            }
+          } catch (e) {
+            console.warn(`Skipped setting doc: ${setSnapId}`, e);
+          }
+          current++;
+          state[item.name].current = current;
+          onProgress({ ...state });
+        }
+        state[item.name].status = 'completed';
+      }
+      onProgress({ ...state });
+    } catch (err: any) {
+      console.error(`Migration error on ${item.name}:`, err);
+      state[item.name].status = 'error';
+      state[item.name].errorMessage = err.message || 'Error migrating';
+      onProgress({ ...state });
+    }
+  }
+}
+
 
 
 
