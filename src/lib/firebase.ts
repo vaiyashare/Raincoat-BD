@@ -482,13 +482,16 @@ export async function addIncompleteOrderToFirestore(draft: IncompleteOrder): Pro
 
 export async function deleteIncompleteOrderFromFirestore(draftId: string): Promise<void> {
   const path = `incompleteOrders/${draftId}`;
+  
+  // Always clean up fallback localStorage cache regardless of quota state
+  const cachedStr = localStorage.getItem('raincoat_incomplete_orders_fallback') || '[]';
+  try {
+    const list = JSON.parse(cachedStr) as IncompleteOrder[];
+    const filtered = list.filter(o => o.id !== draftId);
+    localStorage.setItem('raincoat_incomplete_orders_fallback', JSON.stringify(filtered));
+  } catch (_) {}
+
   if (isQuotaTripped) {
-    const cachedStr = localStorage.getItem('raincoat_incomplete_orders_fallback') || '[]';
-    try {
-      const list = JSON.parse(cachedStr) as IncompleteOrder[];
-      const filtered = list.filter(o => o.id !== draftId);
-      localStorage.setItem('raincoat_incomplete_orders_fallback', JSON.stringify(filtered));
-    } catch (_) {}
     return;
   }
   try {

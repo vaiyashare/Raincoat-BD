@@ -64,6 +64,9 @@ export default function CallingAgentPanel({ onClose }: CallingAgentPanelProps) {
   const [editVillage, setEditVillage] = useState('');
   const [editNotes, setEditNotes] = useState('');
   const [editCallStatus, setEditCallStatus] = useState('Pending');
+  const [editSize, setEditSize] = useState('');
+  const [editColor, setEditColor] = useState('');
+  const [editPrice, setEditPrice] = useState<number | string>('');
   const [savingEdit, setSavingEdit] = useState(false);
 
   // Live Fraud Scanning states/triggers for Calling Agent Panel
@@ -537,11 +540,14 @@ export default function CallingAgentPanel({ onClose }: CallingAgentPanelProps) {
   // Open Edit Modal
   const startEditing = (order: RaincoatOrder) => {
     setEditingOrder(order);
-    setEditName(order.name);
-    setEditPhone(order.phone);
-    setEditVillage(order.village);
+    setEditName(order.name || '');
+    setEditPhone(order.phone || '');
+    setEditVillage(order.village || '');
     setEditNotes((order as any).agentNotes || '');
     setEditCallStatus((order as any).callStatus || 'Pending');
+    setEditSize(order.size || '');
+    setEditColor(order.color || '');
+    setEditPrice(order.price !== undefined && order.price !== null ? order.price : '');
   };
 
   // Save Note & Edited Data
@@ -558,7 +564,10 @@ export default function CallingAgentPanel({ onClose }: CallingAgentPanelProps) {
         village: editVillage,
         agentNotes: editNotes,
         orderNotes: editNotes, // Sync standard note fields as fallback
-        callStatus: editCallStatus
+        callStatus: editCallStatus,
+        size: editSize,
+        color: editColor,
+        price: editPrice === '' ? 0 : Number(editPrice)
       };
 
       if (editCallStatus === 'Confirmed' && previousCallStatus !== 'Confirmed') {
@@ -1389,6 +1398,77 @@ export default function CallingAgentPanel({ onClose }: CallingAgentPanelProps) {
                   <option value="Confirmed">কনফার্মড (Confirmed)</option>
                   <option value="Cancelled">বাতিলকৃত (Cancelled)</option>
                 </select>
+              </div>
+
+              {/* Added size, color & price edit options */}
+              <div className="grid grid-cols-2 gap-4 border-t border-slate-850 pt-3">
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1.5">সাইজ (Size)</label>
+                  <input
+                    type="text"
+                    value={editSize}
+                    onChange={(e) => setEditSize(e.target.value)}
+                    placeholder="e.g. XL, XXL, 3XL"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-white font-semibold focus:outline-hidden focus:border-cyan-400"
+                  />
+                  <div className="flex gap-1 mt-1.5 flex-wrap">
+                    {['XL', 'XXL', '3XL', '4XL', 'N/A'].map((sz) => (
+                      <button
+                        key={sz}
+                        type="button"
+                        onClick={() => setEditSize(sz)}
+                        className={`px-1.5 py-0.5 rounded text-[9px] border transition font-bold ${
+                          editSize === sz 
+                            ? 'bg-cyan-500 text-slate-950 border-cyan-400' 
+                            : 'bg-slate-850 text-slate-300 border-slate-800 hover:bg-slate-800'
+                        }`}
+                      >
+                        {sz}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1.5">কালার (Color)</label>
+                  <input
+                    type="text"
+                    value={editColor}
+                    onChange={(e) => setEditColor(e.target.value)}
+                    placeholder="e.g. Black, Navy Blue"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-white font-semibold focus:outline-hidden focus:border-cyan-400"
+                  />
+                  <div className="flex gap-1 mt-1.5 flex-wrap">
+                    {['Black', 'Navy Blue', 'N/A'].map((col) => (
+                      <button
+                        key={col}
+                        type="button"
+                        onClick={() => setEditColor(col)}
+                        className={`px-1.5 py-0.5 rounded text-[9px] border transition font-bold ${
+                          editColor === col 
+                            ? 'bg-cyan-500 text-slate-950 border-cyan-400' 
+                            : 'bg-slate-850 text-slate-300 border-slate-800 hover:bg-slate-800'
+                        }`}
+                      >
+                        {col === 'Black' ? 'ব্ল্যাক' : col === 'Navy Blue' ? 'নেভি ব্লু' : col}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t border-slate-850 pt-3">
+                <label className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-2">অর্ডারের মোট মূল্য (Order Price / Amount)</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    value={editPrice}
+                    onChange={(e) => setEditPrice(e.target.value)}
+                    placeholder="যেমন: ১০৫০"
+                    className="w-full pl-8 pr-4 py-2.5 bg-slate-950 border border-slate-850 rounded-xl text-white font-bold text-sm focus:outline-hidden focus:border-cyan-400"
+                  />
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 font-extrabold text-xs">৳</span>
+                </div>
               </div>
             </div>
 
