@@ -1749,7 +1749,30 @@ export interface MigrationProgress {
   errorMessage?: string;
 }
 
-export async function migrateAllData(onProgress: (progress: Record<string, MigrationProgress>) => void): Promise<void> {
+export async function migrateAllData(
+  onProgress: (progress: Record<string, MigrationProgress>) => void,
+  sourceProjectId: string = 'gen-lang-client-0382926351',
+  sourceDatabaseId: string = 'ai-studio-e96a9d5f-9e04-4248-a4e5-49a2955072ec',
+  sourceApiKey: string = 'AIzaSyDeKf0X8_h_wTbyON5W69vLRG2Uh0g4kEc'
+): Promise<void> {
+  // 1. Initialize the Source Firebase App
+  const sourceAppName = `migration_source_${Date.now()}`;
+  const sourceApp = initializeApp({
+    apiKey: sourceApiKey || 'AIzaSyDeKf0X8_h_wTbyON5W69vLRG2Uh0g4kEc',
+    projectId: sourceProjectId,
+    authDomain: `${sourceProjectId}.firebaseapp.com`,
+    storageBucket: `${sourceProjectId}.firebasestorage.app`
+  }, sourceAppName);
+
+  // Initialize both custom database and default database instances
+  const sourceDbCustom = sourceDatabaseId ? initializeFirestore(sourceApp, {
+    experimentalForceLongPolling: true
+  }, sourceDatabaseId) : null;
+
+  const sourceDbDefault = initializeFirestore(sourceApp, {
+    experimentalForceLongPolling: true
+  });
+
   const collectionsToMigrate = [
     { name: 'orders', type: 'collection' },
     { name: 'incompleteOrders', type: 'collection' },
@@ -1775,10 +1798,28 @@ export async function migrateAllData(onProgress: (progress: Record<string, Migra
       state[item.name].status = 'processing';
       onProgress({ ...state });
 
-      if (item.type === 'collection') {
-        // Fetch all docs from defaultDb
-        const querySnap = await getDocs(query(collection(defaultDb, item.name)));
-        const docs = querySnap.docs;
+      let docs: any[] = [];
+      const isCollectionType = item.type === 'collection';
+
+      if (isCollectionType) {
+        // Attempt 1: Fetch from custom DB if specified
+        if (sourceDbCustom) {
+          try {
+            const querySnap = await getDocs(query(collection(sourceDbCustom, item.name)));
+            docs = querySnap.docs;
+            console.log(`Successfully fetched ${docs.length} docs from custom database ${sourceDatabaseId} for ${item.name}`);
+          } catch (e: any) {
+            console.warn(`Failed to fetch from customDB ${sourceDatabaseId} for ${item.name}: ${e.message}. Trying default...`);
+          }
+        }
+
+        // Attempt 2: Fetch from default db of the project
+        if (docs.length === 0) {
+          const querySnap = await getDocs(query(collection(sourceDbDefault, item.name)));
+          docs = querySnap.docs;
+          console.log(`Successfully fetched ${docs.length} docs from default database of ${sourceProjectId} for ${item.name}`);
+        }
+
         state[item.name].total = docs.length;
         onProgress({ ...state });
 
@@ -1799,14 +1840,28 @@ export async function migrateAllData(onProgress: (progress: Record<string, Migra
 
         let current = 0;
         for (const setSnapId of settingsDocs) {
-          try {
-            const docSnap = await getDoc(doc(defaultDb, 'settings', setSnapId));
-            if (docSnap.exists()) {
-              await setDoc(doc(db, 'settings', setSnapId), docSnap.data());
-            }
-          } catch (e) {
-            console.warn(`Skipped setting doc: ${setSnapId}`, e);
+          let docData: any = null;
+          if (sourceDbCustom) {
+            try {
+              const docSnap = await getDoc(doc(sourceDbCustom, 'settings', setSnapId));
+              if (docSnap.exists()) {
+                docData = docSnap.data();
+              }
+            } catch (e) {}
           }
+          if (!docData) {
+            try {
+              const docSnap = await getDoc(doc(sourceDbDefault, 'settings', setSnapId));
+              if (docSnap.exists()) {
+                docData = docSnap.data();
+              }
+            } catch (e) {}
+          }
+
+          if (docData) {
+            await setDoc(doc(db, 'settings', setSnapId), docData);
+          }
+
           current++;
           state[item.name].current = current;
           onProgress({ ...state });

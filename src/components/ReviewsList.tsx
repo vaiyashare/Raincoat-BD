@@ -297,21 +297,6 @@ export default function ReviewsList() {
         </div>
       </div>
 
-      {/* CLIENT FEEDBACK SUBMISSION BANNER LINK */}
-      <div className="mt-8 pt-8 border-t border-slate-800 max-w-4xl mx-auto font-sans text-center space-y-3">
-        <p className="text-xs text-slate-400 leading-normal">
-          আপনি কি ইতিমধ্যে আমাদের রেনকোট ব্যবহার করছেন? আপনার জাদুকরী ফিডব্যাকের ছবি ও বিস্তারিত রিভিউ শেয়ার করতে এখানে কাস্টম পেইজে যান।
-        </p>
-        <button
-          onClick={() => {
-            window.history.pushState(null, '', '/write-review');
-            window.dispatchEvent(new Event('popstate'));
-          }}
-          className="px-6 py-2.5 bg-orange-500 hover:bg-orange-600 active:scale-95 text-white font-black text-xs rounded-xl flex items-center gap-2 cursor-pointer transition shadow-lg inline-flex"
-        >
-          <Camera className="h-4 w-4" /> কাস্টমার রিভিউ ও ছবি সরাসরি আপলোড করুন
-        </button>
-      </div>
     </div>
   );
 }

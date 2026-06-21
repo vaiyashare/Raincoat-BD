@@ -2239,6 +2239,34 @@ export default function App() {
             />
           )}
 
+          {/* Still Need Help card footnote */}
+          <div className="mt-8 bg-gradient-to-r from-slate-900 to-slate-950 p-6 rounded-2xl border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left shadow-lg">
+            <div className="space-y-1 font-sans">
+              <h4 className="text-white font-extrabold text-sm sm:text-base flex items-center justify-center sm:justify-start gap-2">
+                <span>💬</span> এখনো আপনার কোনো জিজ্ঞাসা আছে?
+              </h4>
+              <p className="text-slate-400 text-xs leading-relaxed max-w-md">
+                আমাদের কাস্টমার রিলেশন ডেস্কে সরাসরি কল অথবা হোয়াটসঅ্যাপ মেসেজ করুন, আমরা ১ মিনিটের মধ্যে সমাধান দিব।
+              </p>
+            </div>
+            <div className="flex items-center gap-2 font-sans shrink-0">
+              <a
+                href="https://wa.me/8801624933949"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-black transition shadow-xs cursor-pointer flex items-center gap-1.5"
+              >
+                হোয়াটসঅ্যাপ
+              </a>
+              <a
+                href="tel:+8801624933949"
+                className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black transition shadow-xs cursor-pointer flex items-center gap-1.5"
+              >
+                সরাসরি কল
+              </a>
+            </div>
+          </div>
+
         </div>
       </section>
 

@@ -24,6 +24,9 @@ export default function FirebaseConfigAdmin() {
   const [migrating, setMigrating] = useState(false);
   const [migrationProgress, setMigrationProgress] = useState<Record<string, MigrationProgress> | null>(null);
   const [migrationSuccess, setMigrationSuccess] = useState(false);
+  const [sourceProjectId, setSourceProjectId] = useState('gen-lang-client-0382926351');
+  const [sourceDatabaseId, setSourceDatabaseId] = useState('ai-studio-e96a9d5f-9e04-4248-a4e5-49a2955072ec');
+  const [sourceApiKey, setSourceApiKey] = useState('AIzaSyDeKf0X8_h_wTbyON5W69vLRG2Uh0g4kEc');
 
   const fetchConfig = async () => {
     setLoading(true);
@@ -93,9 +96,14 @@ export default function FirebaseConfigAdmin() {
     setMigrating(true);
     setMigrationSuccess(false);
     try {
-      await migrateAllData((progress) => {
-        setMigrationProgress({ ...progress });
-      });
+      await migrateAllData(
+        (progress) => {
+          setMigrationProgress({ ...progress });
+        },
+        sourceProjectId,
+        sourceDatabaseId,
+        sourceApiKey
+      );
       setMigrationSuccess(true);
     } catch (err: any) {
       console.error('Migration failed:', err);
@@ -376,6 +384,48 @@ export default function FirebaseConfigAdmin() {
               </>
             )}
           </button>
+        </div>
+
+        {/* Source Configuration Inputs */}
+        <div className="bg-slate-950 border border-slate-850 p-4 rounded-xl space-y-3">
+          <h4 className="text-xs font-extrabold text-slate-350 flex items-center gap-1.5">
+            <span>🔗 স্যান্ডবক্স বা পূর্বের ফায়ারবেস প্রজেক্টের তথ্য (Source Firebase Info)</span>
+          </h4>
+          <p className="text-[11px] text-slate-400 leading-relaxed">
+            ডিফল্টভাবে আপনার পূর্বের স্যান্ডবক্স প্রজেক্টের আইডি এবং এপিআই কী সেট করা আছে। আপনি চাইলে অন্য যেকোনো সোর্স প্রজেক্ট থেকে ডাটা মাইগ্রেট করতে এই ঘরগুলো পরিবর্তন করতে পারেন।
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-1.5">
+              <label className="block text-[10px] text-slate-400 uppercase font-bold tracking-wider">Source Project ID</label>
+              <input
+                type="text"
+                value={sourceProjectId}
+                onChange={(e) => setSourceProjectId(e.target.value)}
+                placeholder="e.g. gen-lang-client-..."
+                className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-600 font-mono tracking-wide focus:outline-hidden focus:border-cyan-400"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-[10px] text-slate-400 uppercase font-bold tracking-wider">Source Database ID</label>
+              <input
+                type="text"
+                value={sourceDatabaseId}
+                onChange={(e) => setSourceDatabaseId(e.target.value)}
+                placeholder="e.g. (default)"
+                className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-600 font-mono tracking-wide focus:outline-hidden focus:border-cyan-400"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-[10px] text-slate-400 uppercase font-bold tracking-wider">Source API Key</label>
+              <input
+                type="password"
+                value={sourceApiKey}
+                onChange={(e) => setSourceApiKey(e.target.value)}
+                placeholder="e.g. AIzaSyB..."
+                className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-600 font-mono tracking-wide focus:outline-hidden focus:border-cyan-400"
+              />
+            </div>
+          </div>
         </div>
 
         {migrationSuccess && (
