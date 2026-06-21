@@ -17,7 +17,7 @@ import {
   orderBy
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { RaincoatOrder, IncompleteOrder, InventoryItem, ProductColor, Size, MediaItem, ActiveSession, Product, HomepageBannerSlide, HomepageBannerSettings, CustomPage, CustomerReview, AdvancedAddonsSettings, Coupon } from '../types';
+import { RaincoatOrder, IncompleteOrder, InventoryItem, ProductColor, Size, MediaItem, ActiveSession, Product, HomepageBannerSlide, HomepageBannerSettings, CustomPage, CustomerReview, AdvancedAddonsSettings, Coupon, Subscriber } from '../types';
 export type { AdvancedAddonsSettings };
 import { performFraudCheck } from './fraudCheck';
 
@@ -1875,6 +1875,52 @@ export async function migrateAllData(
       state[item.name].errorMessage = err.message || 'Error migrating';
       onProgress({ ...state });
     }
+  }
+}
+
+/**
+ * Adds a new subscriber's email to Firestore.
+ */
+export async function addSubscriber(email: string): Promise<void> {
+  const path = 'subscribers';
+  try {
+    const cleanEmail = email.trim().toLowerCase();
+    const id = cleanEmail.replace(/[^a-zA-Z0-9_.-]/g, '_'); // safe Firestore document ID
+    const ref = doc(db, path, id);
+    const subscriberData: Subscriber = {
+      id,
+      email: cleanEmail,
+      createdAt: new Date().toISOString(),
+    };
+    await setDoc(ref, subscriberData);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+/**
+ * Retrieves all subscribers from Firestore sorted from newest to oldest.
+ */
+export async function getSubscribers(): Promise<Subscriber[]> {
+  const path = 'subscribers';
+  try {
+    const qSnap = await getDocs(query(collection(db, path), orderBy('createdAt', 'desc')));
+    return qSnap.docs.map(doc => doc.data() as Subscriber);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+}
+
+/**
+ * Deletes a subscriber by ID.
+ */
+export async function deleteSubscriber(id: string): Promise<void> {
+  const path = 'subscribers';
+  try {
+    await deleteDoc(doc(db, path, id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
   }
 }
 

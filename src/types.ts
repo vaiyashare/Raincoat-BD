@@ -261,6 +261,12 @@ export interface Coupon {
   createdAt: string; // ISO timestamp
 }
 
+export interface Subscriber {
+  id: string;
+  email: string;
+  createdAt: string;
+}
+
 
 
 

@@ -25,6 +25,7 @@ import BikeCoverLanding from './components/BikeCoverLanding';
 import CallingAgentPanel from './components/CallingAgentPanel';
 import CartPage from './components/CartPage';
 import ProductDetailsView from './components/ProductDetailsView';
+import SubscriptionForm from './components/SubscriptionForm';
 import navyRaincoatImg from './assets/images/navy_raincoat_1780660053988.png';
 import { Size, ProductColor, RaincoatOrder, ActiveSession } from './types';
 import { motion, AnimatePresence } from 'motion/react';
@@ -2288,6 +2289,9 @@ export default function App() {
           <ShoppingBag className="h-4 w-4" /> দ্রুত অর্ডার করুন (অগ্রিম টাকা ছাড়া)
         </button>
       </div>
+
+      {/* Newsletter Subscription Form */}
+      <SubscriptionForm />
 
       {/* Trust-building Footer and Admin shortcuts */}
       <footer className="bg-slate-900 text-white py-12 px-4 border-t border-slate-800 text-center relative z-25">

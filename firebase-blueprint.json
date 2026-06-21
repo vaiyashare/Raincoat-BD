@@ -203,9 +203,24 @@
         "createdAt": { "type": "string", "description": "ISO timestamp for creation moment" }
       },
       "required": ["id", "code", "discountType", "discountValue", "validityDays", "createdAt"]
+    },
+    "Subscriber": {
+      "title": "Newsletter Subscriber",
+      "description": "An email subscription record for newsletters",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Global unique ID of the subscriber" },
+        "email": { "type": "string", "description": "Subscriber email address" },
+        "createdAt": { "type": "string", "description": "Creation timestamp string" }
+      },
+      "required": ["id", "email", "createdAt"]
     }
   },
   "firestore": {
+    "subscribers/{subscriberId}": {
+      "schema": "Subscriber",
+      "description": "Store newsletter and updates subscriber email entries"
+    },
     "coupons/{couponId}": {
       "schema": "Coupon",
       "description": "Store promo coupons available in checkout"

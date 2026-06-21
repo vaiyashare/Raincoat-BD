@@ -71,6 +71,13 @@ service cloud.firestore {
         && data.updatedAt is string && data.updatedAt.size() <= 100;
     }
 
+    function isValidSubscriber(data) {
+      return data.keys().hasAll(['id', 'email', 'createdAt'])
+        && data.id is string && data.id.size() <= 128
+        && data.email is string && data.email.size() > 0 && data.email.size() <= 200
+        && data.createdAt is string && data.createdAt.size() <= 100;
+    }
+
     // Connection validation target
     match /test-connection-doc/{testId} {
       allow read, write: if true;
@@ -156,6 +163,13 @@ service cloud.firestore {
     match /coupons/{couponId} {
       allow read: if true;
       allow create, update, delete: if isValidId(couponId);
+    }
+
+    // Subscribers Collection Rules
+    match /subscribers/{subscriberId} {
+      allow read: if true;
+      allow create, update: if isValidId(subscriberId) && isValidSubscriber(request.resource.data);
+      allow delete: if true;
     }
   }
 }

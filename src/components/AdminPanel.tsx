@@ -4,7 +4,7 @@ import {
   RefreshCw, X, ShieldCheck, CheckSquare, Globe, Database, Sparkles, 
   Check, ExternalLink, HelpCircle, ChevronDown, ChevronUp,
   Lock, Key, LogOut, Settings, ListTodo, AlertOctagon, Layers, Users, Calendar, Phone,
-  Edit, CheckCircle, Printer, Volume2, VolumeX, ShoppingBag, TrendingUp, Coins, Truck
+  Edit, CheckCircle, Printer, Volume2, VolumeX, ShoppingBag, TrendingUp, Coins, Truck, Mail
 } from 'lucide-react';
 import { RaincoatOrder, Size, ProductColor, IncompleteOrder, Coupon } from '../types';
 import { 
@@ -59,6 +59,7 @@ import SectionCustomizerAdmin from './admin/SectionCustomizerAdmin';
 import MenuBarAdmin from './admin/MenuBarAdmin';
 import CallingAgentsAdmin from './admin/CallingAgentsAdmin';
 import FirebaseConfigAdmin from './admin/FirebaseConfigAdmin';
+import SubscribersAdmin from './admin/SubscribersAdmin';
 
 const getEnglishDistrictName = (order: any): string => {
   const districtValue = order.district ? order.district.trim() : '';
@@ -358,7 +359,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
   const [deletingIncompleteId, setDeletingIncompleteId] = useState<string | null>(null);
   const [editingOrder, setEditingOrder] = useState<RaincoatOrder | null>(null);
-  const [activeTab, setActiveTab] = useState<'completed' | 'incomplete' | 'pages' | 'products' | 'banners' | 'inventory' | 'users' | 'blocking' | 'media' | 'live-visitors' | 'fraud' | 'advanced_addons' | 'courier_hub' | 'reviews_hub' | 'courier_connections' | 'courier_monitor' | 'section_customizer' | 'pixels' | 'menu_bar_settings' | 'calling_agents_management' | 'firebase_settings' | 'coupons'>('completed');
+  const [activeTab, setActiveTab] = useState<'completed' | 'incomplete' | 'pages' | 'products' | 'banners' | 'inventory' | 'users' | 'blocking' | 'media' | 'live-visitors' | 'fraud' | 'advanced_addons' | 'courier_hub' | 'reviews_hub' | 'courier_connections' | 'courier_monitor' | 'section_customizer' | 'pixels' | 'menu_bar_settings' | 'calling_agents_management' | 'firebase_settings' | 'coupons' | 'subscribers'>('completed');
   
   // Coupon Management States
   const [coupons, setCoupons] = useState<Coupon[]>([]);
@@ -2994,6 +2995,19 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
               >
                 <Coins className="h-3.5 w-3.5" /> 🎟️ কুপন ও প্রমো কোড সেটিংস
               </button>
+
+              {/* 18. ইমেইল সাবস্ক্রাইবার তালিকা */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('subscribers')}
+                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
+                  activeTab === 'subscribers'
+                    ? 'bg-gradient-to-r from-orange-550 to-amber-600 text-white shadow-md shadow-orange-600/10 font-extrabold'
+                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                }`}
+              >
+                <Mail className="h-3.5 w-3.5" /> 📬 ইমেইল সাবস্ক্রাইবার তালিকা
+              </button>
             </div>
           </div>
 
@@ -5010,6 +5024,10 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
             </div>
           </div>
         </div>
+      )}
+
+      {activeTab === 'subscribers' && (
+        <SubscribersAdmin />
       )}
 
           </div>
