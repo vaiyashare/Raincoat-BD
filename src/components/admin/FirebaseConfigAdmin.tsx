@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Database, Key, RefreshCw, AlertCircle, CheckCircle2, Lock, Server, ArrowRight, Play, Check } from 'lucide-react';
-import { migrateAllData, MigrationProgress } from '../../lib/firebase';
+import { Save, Database, Key, RefreshCw, AlertCircle, CheckCircle2, Lock, Server } from 'lucide-react';
 
 interface FirebaseConfig {
   projectId: string;
@@ -19,14 +18,6 @@ export default function FirebaseConfigAdmin() {
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  // Migration tools states
-  const [migrating, setMigrating] = useState(false);
-  const [migrationProgress, setMigrationProgress] = useState<Record<string, MigrationProgress> | null>(null);
-  const [migrationSuccess, setMigrationSuccess] = useState(false);
-  const [sourceProjectId, setSourceProjectId] = useState('gen-lang-client-0382926351');
-  const [sourceDatabaseId, setSourceDatabaseId] = useState('ai-studio-e96a9d5f-9e04-4248-a4e5-49a2955072ec');
-  const [sourceApiKey, setSourceApiKey] = useState('AIzaSyDeKf0X8_h_wTbyON5W69vLRG2Uh0g4kEc');
 
   const fetchConfig = async () => {
     setLoading(true);
@@ -88,31 +79,6 @@ export default function FirebaseConfigAdmin() {
     }
   };
 
-  const handleMigrate = async () => {
-    if (migrating) return;
-    const confirmMigrate = window.confirm('আপনি কি পূর্বের স্যান্ডবক্স ফায়ারবেস থেকে আপনার নতুন বিলিং রেডি ফায়ারবেসে সকল কাস্টমার রেকর্ড, অর্ডার হিস্ট্রি, প্রোডাক্ট এবং জেনারেল কনফিগারেশন ট্রান্সফার করতে নিশ্চিত?');
-    if (!confirmMigrate) return;
-
-    setMigrating(true);
-    setMigrationSuccess(false);
-    try {
-      await migrateAllData(
-        (progress) => {
-          setMigrationProgress({ ...progress });
-        },
-        sourceProjectId,
-        sourceDatabaseId,
-        sourceApiKey
-      );
-      setMigrationSuccess(true);
-    } catch (err: any) {
-      console.error('Migration failed:', err);
-      alert('ডাটা ট্রান্সফার ব্যাহত হয়েছে: ' + err.message);
-    } finally {
-      setMigrating(false);
-    }
-  };
-
   const handleChange = (field: keyof FirebaseConfig, value: string) => {
     if (!config) return;
     setConfig({
@@ -152,7 +118,7 @@ export default function FirebaseConfigAdmin() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-850 pb-5 gap-4">
           <div>
             <h2 className="text-lg font-black text-white flex items-center gap-2">
-              <Database className="h-5 w-5 text-amber-500 animate-pulse" />
+              <Database className="h-5 w-5 text-amber-500" />
               <span>ফায়ারবেস এপিআই কানেকশন সেটিংস (Firebase Database Credentials)</span>
             </h2>
             <p className="text-xs text-slate-400 mt-1 leading-relaxed">
@@ -349,172 +315,6 @@ export default function FirebaseConfigAdmin() {
             </button>
           </div>
         </form>
-      </div>
-
-      {/* 🔄 Firebase Data Migrator Card */}
-      <div className="bg-slate-900 rounded-2xl border border-slate-850 p-6 sm:p-8 space-y-5 font-sans text-white relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 rounded-full blur-3xl pointer-events-none"></div>
-        <div className="absolute bottom-0 left-0 w-64 h-64 bg-rose-500/5 rounded-full blur-3xl pointer-events-none"></div>
-
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-850 pb-4 gap-4">
-          <div>
-            <h3 className="text-base font-extrabold text-white flex items-center gap-2">
-              <RefreshCw className={`h-5 w-5 text-cyan-400 ${migrating ? 'animate-spin' : ''}`} />
-              <span>ফায়ারবেস ডেটা ট্রান্সফার টুল (Firebase Old-to-New Data Migrator)</span>
-            </h3>
-            <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-              আপনার আগের স্যান্ডবক্স ফায়ারবেস থেকে নতুন বিলিং রেডি ফায়ারবেসে সকল কাস্টমার রেকর্ড, অর্ডার হিস্ট্রি, প্রোডাক্ট এবং জেনারেল সেটিংস ওয়ান-ক্লিকে ট্রান্সফার করুন।
-            </p>
-          </div>
-
-          <button
-            onClick={handleMigrate}
-            disabled={migrating}
-            className="px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 disabled:opacity-60 text-slate-950 font-black rounded-xl text-xs transition-all shadow-md shadow-cyan-500/15 flex items-center gap-2 cursor-pointer"
-          >
-            {migrating ? (
-              <>
-                <RefreshCw className="h-4 w-4 animate-spin" />
-                <span>ট্রান্সফার হচ্ছে...</span>
-              </>
-            ) : (
-              <>
-                <Play className="h-4 w-4 fill-slate-950" />
-                <span>ট্রান্সফার শুরু করুন</span>
-              </>
-            )}
-          </button>
-        </div>
-
-        {/* Source Configuration Inputs */}
-        <div className="bg-slate-950 border border-slate-850 p-4 rounded-xl space-y-3">
-          <h4 className="text-xs font-extrabold text-slate-350 flex items-center gap-1.5">
-            <span>🔗 স্যান্ডবক্স বা পূর্বের ফায়ারবেস প্রজেক্টের তথ্য (Source Firebase Info)</span>
-          </h4>
-          <p className="text-[11px] text-slate-400 leading-relaxed">
-            ডিফল্টভাবে আপনার পূর্বের স্যান্ডবক্স প্রজেক্টের আইডি এবং এপিআই কী সেট করা আছে। আপনি চাইলে অন্য যেকোনো সোর্স প্রজেক্ট থেকে ডাটা মাইগ্রেট করতে এই ঘরগুলো পরিবর্তন করতে পারেন।
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="space-y-1.5">
-              <label className="block text-[10px] text-slate-400 uppercase font-bold tracking-wider">Source Project ID</label>
-              <input
-                type="text"
-                value={sourceProjectId}
-                onChange={(e) => setSourceProjectId(e.target.value)}
-                placeholder="e.g. gen-lang-client-..."
-                className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-600 font-mono tracking-wide focus:outline-hidden focus:border-cyan-400"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="block text-[10px] text-slate-400 uppercase font-bold tracking-wider">Source Database ID</label>
-              <input
-                type="text"
-                value={sourceDatabaseId}
-                onChange={(e) => setSourceDatabaseId(e.target.value)}
-                placeholder="e.g. (default)"
-                className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-600 font-mono tracking-wide focus:outline-hidden focus:border-cyan-400"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="block text-[10px] text-slate-400 uppercase font-bold tracking-wider">Source API Key</label>
-              <input
-                type="password"
-                value={sourceApiKey}
-                onChange={(e) => setSourceApiKey(e.target.value)}
-                placeholder="e.g. AIzaSyB..."
-                className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-600 font-mono tracking-wide focus:outline-hidden focus:border-cyan-400"
-              />
-            </div>
-          </div>
-        </div>
-
-        {migrationSuccess && (
-          <div className="bg-emerald-950/40 border border-emerald-900/60 p-4 rounded-xl flex items-center gap-3 text-emerald-400 text-xs animate-fadeIn">
-            <CheckCircle2 className="h-6 w-6 shrink-0 text-emerald-400" />
-            <div>
-              <p className="font-extrabold text-sm">সফলভাবে ট্রান্সফার সম্পন্ন হয়েছে (Migration Succeeded)!</p>
-              <p className="text-[11px] text-emerald-500 mt-0.5 leading-relaxed">
-                আলহামদুলিল্লাহ! আপনার পূর্বের সকল সফল অর্ডার, ড্রাফট হিস্টরি, পণ্যসমূহ, কুপন এবং স্টোর কনফিগারেশন সেটিংস সফলভাবে নতুন ডাটাবেসে স্থানান্তরিত হয়েছে।
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Live progress indicators */}
-        <div className="space-y-3.5 bg-slate-950/70 border border-slate-850/60 p-5 rounded-2xl">
-          <h4 className="text-xs font-black text-slate-350 flex items-center justify-between">
-            <span>📊 রিয়েল-টাইম ডাটা মাইগ্রেশন স্ট্যাটাস</span>
-            {migrating && (
-              <span className="text-[10px] text-cyan-400 animate-pulse font-bold flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-cyan-400 inline-block animate-ping"></span>
-                ডাটা রিড ও রাইট করা হচ্ছে...
-              </span>
-            )}
-          </h4>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {migrationProgress ? (
-              (Object.entries(migrationProgress) as [string, MigrationProgress][]).map(([key, item]) => {
-                const isCompleted = item.status === 'completed';
-                const isProcessing = item.status === 'processing';
-                const isError = item.status === 'error';
-                
-                let pct = 0;
-                if (item.total > 0) {
-                  pct = Math.round((item.current / item.total) * 100);
-                } else if (isCompleted) {
-                  pct = 100;
-                }
-
-                return (
-                  <div key={key} className="bg-slate-900 border border-slate-850 p-3.5 rounded-xl space-y-2">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="font-bold flex items-center gap-1.5">
-                        {isCompleted && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />}
-                        {isProcessing && <RefreshCw className="h-3.5 w-3.5 text-cyan-400 animate-spin" />}
-                        {!isCompleted && !isProcessing && <div className="h-3.5 w-3.5 rounded-full border border-slate-700 bg-slate-950"></div>}
-                        <span className={isCompleted ? 'text-slate-300' : 'text-slate-400'}>{item.collection}</span>
-                      </span>
-                      <span className="font-mono text-[10px] text-slate-400 font-extrabold bg-slate-950 px-2 py-0.5 rounded">
-                        {isCompleted ? 'Finished' : isProcessing ? `${item.current} / ${item.total}` : 'Queued'}
-                      </span>
-                    </div>
-
-                    {/* Simple progress bar */}
-                    <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-slate-850">
-                      <div 
-                        className={`h-full transition-all duration-300 ${
-                          isCompleted ? 'bg-emerald-500' : isError ? 'bg-rose-500' : 'bg-cyan-400 animate-pulse'
-                        }`}
-                        style={{ width: `${pct}%` }}
-                      ></div>
-                    </div>
-
-                    {isError && item.errorMessage && (
-                      <p className="text-[10px] text-rose-400">{item.errorMessage}</p>
-                    )}
-                  </div>
-                );
-              })
-            ) : (
-              <div className="col-span-2 text-center py-6 text-xs text-slate-500 font-bold border border-dashed border-slate-800 rounded-xl bg-slate-900/30">
-                ডাটা ট্রান্সফার দেখার জন্য উপরের "ট্রান্সফার শুরু করুন" বাটনে ক্লিক করুন।
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="bg-slate-950 border border-slate-850 p-4 rounded-xl text-[11px] text-slate-400 leading-relaxed space-y-1.5">
-          <p className="font-extrabold text-slate-300 flex items-center gap-1.5">
-            <Check className="h-4 w-4 text-cyan-400" />
-            কেন এটি ব্যবহার করা আবশ্যক?
-          </p>
-          <ul className="list-disc list-inside space-y-1 pl-1 text-slate-400">
-            <li><strong>সম্পূর্ণ ডাটা মাইগ্রেশন:</strong> কাস্টমার ইনফরমেশন যেমন ফোন নাম্বার, ঠিকানা, সাইজ, কালার ইত্যাদি সব কিছু সঠিক ফাইলে কপি হবে।</li>
-            <li><strong>কনফিগারেশন প্রিজারভেশন:</strong> কুরিয়ার এপিআই সেটিংস এবং অটোমেশন কনফিগারেশন পুরোপুরি অক্ষুণ্ণ থাকবে।</li>
-            <li><strong>রিয়েল-টাইম রেভিনিউ ট্র্যাকিং:</strong> ডাটা ট্রান্সফারের পরে আপনার অ্যাডমিন প্যানেল গ্রাফ এবং চার্টগুলি স্বয়ংক্রিয়ভাবে রিলোড হয়ে সব তথ্য দেখাবে।</li>
-          </ul>
-        </div>
       </div>
     </div>
   );
