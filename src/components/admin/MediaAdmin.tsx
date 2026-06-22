@@ -122,6 +122,7 @@ export default function MediaAdmin({ userRole }: MediaAdminProps) {
   const [videoError, setVideoError] = useState('');
   const [isSavingVideo, setIsSavingVideo] = useState(false);
   const [editingVideoId, setEditingVideoId] = useState<string | null>(null);
+  const [videoDescription, setVideoDescription] = useState('aspect-video');
 
   const fetchLiveVideos = async () => {
     try {
@@ -309,6 +310,7 @@ export default function MediaAdmin({ userRole }: MediaAdminProps) {
         url: videoUrl.trim(),
         title: defaultTitle,
         tag: 'LiveVideo',
+        description: videoDescription,
         orderIndex: liveVideos.length + 1,
         createdAt: new Date().toISOString(),
         page: videoPage
@@ -325,13 +327,16 @@ export default function MediaAdmin({ userRole }: MediaAdminProps) {
       setVideoSuccess(editingVideoId ? 'ভিডিও লিংকটি সফলভাবে আপডেট করা হয়েছে!' : 'নতুন ভিডিও লিংকটি সফলভাবে যোগ করা হয়েছে!');
       
       // Trigger update on frontend
-      window.dispatchEvent(new Event('raincoat_live_videos_updated'));
+      window.dispatchEvent(new CustomEvent('raincoat_live_videos_updated', {
+        detail: { videos: filtered }
+      }));
 
       // Clear form
       setVideoUrl('');
       setVideoTitle('');
       setEditingVideoId(null);
       setVideoPage('raincoat');
+      setVideoDescription('aspect-video');
       setTimeout(() => setVideoSuccess(''), 3000);
     } catch (err) {
       console.error(err);
@@ -358,7 +363,9 @@ export default function MediaAdmin({ userRole }: MediaAdminProps) {
       localStorage.setItem('raincoat_live_videos', JSON.stringify(filtered));
 
       setVideoSuccess('ভিডিও লিংকটি মুছে ফেলা হয়েছে!');
-      window.dispatchEvent(new Event('raincoat_live_videos_updated'));
+      window.dispatchEvent(new CustomEvent('raincoat_live_videos_updated', {
+        detail: { videos: filtered }
+      }));
       setTimeout(() => setVideoSuccess(''), 3000);
     } catch (err) {
       console.error(err);
@@ -371,6 +378,7 @@ export default function MediaAdmin({ userRole }: MediaAdminProps) {
     setVideoUrl(video.url);
     setVideoTitle(video.title);
     setVideoPage(video.page || 'raincoat');
+    setVideoDescription(video.description || 'aspect-video');
   };
 
   const handleCancelVideoEdit = () => {
@@ -378,6 +386,7 @@ export default function MediaAdmin({ userRole }: MediaAdminProps) {
     setVideoUrl('');
     setVideoTitle('');
     setVideoPage('raincoat');
+    setVideoDescription('aspect-video');
   };
 
   const loadMedia = async () => {
@@ -982,6 +991,21 @@ export default function MediaAdmin({ userRole }: MediaAdminProps) {
                 className="w-full px-3 py-2 bg-slate-900 border border-slate-750 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-cyan-500"
               />
               <span className="text-[9px] text-slate-500 block">ফেসবুক রিলে বা ভিডিও লিংক অথবা ইউটিউব ভিডিওর পুর্নাঙ্গ লিংক পেস্ট করুন।</span>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] text-slate-400 block font-bold">ভিডিও রেসপন্সিভ সাইজ (Video Aspect Ratio)</label>
+              <select
+                value={videoDescription}
+                onChange={(e) => setVideoDescription(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-900 border border-slate-750 rounded-lg text-slate-100 text-xs font-bold focus:outline-none focus:border-cyan-500"
+              >
+                <option value="aspect-video">📺 সাধারণ আড়াআড়ি (Landscape 16:9)</option>
+                <option value="aspect-[9/16]">📱 খাড়া সম্পূর্ণ রিলস (Vertical Reels 9:16)</option>
+                <option value="aspect-[3/4]">📐 স্ট্যান্ডার্ড পোর্ট্রেট (Standard Portrait 3:4)</option>
+                <option value="aspect-square">🔲 চারকোনা বা স্কয়ার (Square 1:1)</option>
+              </select>
+              <span className="text-[9px] text-slate-500 block">ফেসবুক রিলসের জন্য '📱 খাড়া সম্পূর্ণ রিলস (9:16)' রেশিও নির্বাচন করার সুপারিশ করা হচ্ছে।</span>
             </div>
 
             <div className="flex gap-2 pt-1">

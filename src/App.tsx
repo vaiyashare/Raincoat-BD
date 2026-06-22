@@ -22,10 +22,14 @@ import FAQSection from './components/FAQSection';
 import ShopView from './components/ShopView';
 import AmazonMarketplace from './components/AmazonMarketplace';
 import BikeCoverLanding from './components/BikeCoverLanding';
+import RaincoatBikeCoverComboLanding from './components/RaincoatBikeCoverComboLanding';
+import BoxerLanding from './components/BoxerLanding';
 import CallingAgentPanel from './components/CallingAgentPanel';
 import CartPage from './components/CartPage';
 import ProductDetailsView from './components/ProductDetailsView';
 import SubscriptionForm from './components/SubscriptionForm';
+import SitemapPanel from './components/SitemapPanel';
+import SEOMetaManager from './components/SEOMetaManager';
 import navyRaincoatImg from './assets/images/navy_raincoat_1780660053988.png';
 import { Size, ProductColor, RaincoatOrder, ActiveSession } from './types';
 import { motion, AnimatePresence } from 'motion/react';
@@ -144,6 +148,133 @@ export default function App() {
   const [currentHash, setCurrentHash] = useState(window.location.hash);
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
   const [customPages, setCustomPages] = useState<any[]>([]);
+  const [seoConfigs, setSeoConfigs] = useState<any[]>([]);
+
+  // Read customer-authored, page-by-page SEO meta configurations from Firestore on mount
+  useEffect(() => {
+    async function loadSEOConfigs() {
+      try {
+        const { getSEOConfigs } = await import('./lib/firebase');
+        const configs = await getSEOConfigs();
+        if (configs && configs.length > 0) {
+          setSeoConfigs(configs);
+        }
+      } catch (err) {
+        console.warn('Could not transparently load SEO configuration states.', err);
+      }
+    }
+    loadSEOConfigs();
+
+    window.addEventListener('raincoat_seo_updated', loadSEOConfigs);
+    return () => {
+      window.removeEventListener('raincoat_seo_updated', loadSEOConfigs);
+    };
+  }, []);
+
+  // Update HTML Document Head Meta Tags for Title, Description, Keywords, and RankMath/OpenGraph Compartments
+  useEffect(() => {
+    let matchedPath = '/';
+
+    if (currentPath === '/shop' || currentHash === '#/shop' || currentHash === '#shop') {
+      matchedPath = '/shop';
+    } else if (currentPath === '/raincoat' || currentHash === '#/raincoat' || currentHash === '#raincoat') {
+      matchedPath = '/raincoat';
+    } else if (currentPath === '/bikecover' || currentHash === '#/bikecover' || currentHash === '#bikecover') {
+      matchedPath = '/bikecover';
+    } else if (currentPath === '/rancoatcovercombo' || currentHash === '#/rancoatcovercombo' || currentHash === '#rancoatcovercombo') {
+      matchedPath = '/rancoatcovercombo';
+    } else if (currentPath.toLowerCase() === '/boxer' || currentHash.toLowerCase() === '#/boxer' || currentHash.toLowerCase() === '#boxer') {
+      matchedPath = '/boxer';
+    } else if (currentPath === '/track-order' || currentHash === '#/track-order' || currentHash === '#track-order') {
+      matchedPath = '/track-order';
+    } else if (currentPath === '/order-history' || currentHash === '#/order-history' || currentHash === '#order-history') {
+      matchedPath = '/order-history';
+    } else if (currentPath === '/cart' || currentHash === '#/cart' || currentHash === '#cart') {
+      matchedPath = '/cart';
+    } else if (currentPath === '/write-review' || currentHash === '#/write-review' || currentHash === '#write-review') {
+      matchedPath = '/write-review';
+    } else if (currentPath.startsWith('/product/') || currentHash.startsWith('#/product/')) {
+      let slug = '';
+      if (currentPath.startsWith('/product/')) {
+        slug = currentPath.split('/product/')[1] || '';
+      } else if (currentHash.startsWith('#/product/')) {
+        slug = currentHash.split('#/product/')[1] || '';
+      }
+      slug = slug.split('?')[0];
+      matchedPath = `/product/${slug}`;
+    }
+
+    // Try finding configured item in database configs
+    const config = seoConfigs.find(
+      (c: any) => c.path === matchedPath || c.id === matchedPath || (matchedPath === '/' && c.id === 'homepage')
+    );
+
+    let title = 'প্রিমিয়াম রেইনকোট এবং মোটরসাইকেল কাভার স্টোর - Raincoat Factory';
+    let description = '১০০% ওয়াটারপ্রুফ এবং থার্মাল হিট সিল করা প্রিমিয়াম রেইনকোট, ডাস্টপ্রুফ বাইক কাভার এবং গ্যাজেটস অর্ডার করুন ক্যাশ অন ডেলিভারিতে।';
+    let keywords = 'raincoat, motorcycle cover, waterproof, bike accessories, Bangladesh';
+    let ogImage = 'https://images.unsplash.com/photo-1534349762230-e0cadf78f5da?q=80&w=600&auto=format&fit=crop';
+    let ogTitle = '';
+    let ogDescription = '';
+
+    if (matchedPath === '/shop') {
+      title = 'আমাদের শপ বাজার - সমস্ত কালেকশন | Raincoat Store';
+      description = 'আমাদের শপ বাজার থেকে বাছাই করুন সেরা মানের রেইনকোট, জুতো কাভার, ডাবল ও উইন্ডপ্রুফ ছাতা এবং পানিনিরোধী মোবাইল হোল্ডার।';
+      keywords = 'shop online, raincoat store, umbrella bd, rider accessories';
+    } else if (matchedPath === '/raincoat') {
+      title = '১০০% প্রিমিয়াম লাক্সারি রেইনকোট জ্যাকেট প্যান্ট | Raincoat Factory';
+      description = 'বাইকিং এবং ট্রেকিং এর জন্য বিশেষ সিল কোটিং ওয়াটারপ্রুফ জ্যাকেট ও প্যান্ট কম্বো। সম্পূর্ণ ক্যাশ অন ডেলিভারি বাংলাদেশ জুড়ে।';
+    } else if (matchedPath === '/bikecover') {
+      title = 'আল্ট্রা-হেভি ডিউটি ১০০% ওয়াটারপ্রুফ প্রিমিয়াম বাইক কাভার';
+      description = 'আপনার শখের মোটরবাইককে রোদ, বৃষ্টি, ধুলোবালি এবং স্ক্র্যাচ থেকে সুরক্ষিত রাখতে দ্বিগুণ টেকসই প্রিমিয়াম বাইক কাভার।';
+    } else if (matchedPath === '/rancoatcovercombo') {
+      title = 'বর্ষার ধামাকা স্পেশাল রেইনকোট ও বাইক কাভার সুপার কম্বো ডিল';
+      description = 'রেইনকোট এবং বাইক কাভার একসাথে কিনলেই পাচ্ছেন অবিশ্বাস্য ছাড় এবং ফ্রি ডেলিভারি অফার!';
+    } else if (matchedPath === '/boxer') {
+      title = 'হিম-শীতল আরামদায়ক কটন বক্সার কম্বো অফার | ১০০০% প্রিমিয়াম সুতি';
+      description = '১০০% সফট কম্বড সুতি কটন বক্সার ব্রিফ স্লিভ শর্টস কম্বো সেট। আরামদায়ক ও নিখুঁত ফিটিং গ্যারান্টি।';
+    } else if (matchedPath.startsWith('/product/')) {
+      const displaySlug = matchedPath.split('/product/')[1] || '';
+      title = `${displaySlug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} - Raincoat Factory`;
+      description = '১০০% উচ্চমানের থার্মাল কোটিং সিলড প্রটেকティブ রাইডার পণ্য। দেখে নিন বিস্তারিত বর্ণনা ও আকর্ষণীয় মূল্যছাড়।';
+    }
+
+    if (config) {
+      if (config.title) title = config.title;
+      if (config.description) description = config.description;
+      if (config.keywords) keywords = config.keywords;
+      if (config.ogImage) ogImage = config.ogImage;
+      ogTitle = config.ogTitle || title;
+      ogDescription = config.ogDescription || description;
+    } else {
+      ogTitle = title;
+      ogDescription = description;
+    }
+
+    document.title = title;
+
+    const setMetaTag = (nameAttr: string, valueAttr: string, content: string, isProperty = false) => {
+      const attributeName = isProperty ? 'property' : 'name';
+      let meta = document.querySelector(`meta[${attributeName}="${nameAttr}"]`);
+      if (!meta) {
+        meta = document.createElement('meta');
+        meta.setAttribute(attributeName, nameAttr);
+        document.head.appendChild(meta);
+      }
+      meta.setAttribute(valueAttr, content);
+    };
+
+    setMetaTag('description', 'content', description);
+    setMetaTag('keywords', 'content', keywords);
+    setMetaTag('og:title', 'content', ogTitle, true);
+    setMetaTag('og:description', 'content', ogDescription, true);
+    setMetaTag('og:image', 'content', ogImage, true);
+    setMetaTag('og:type', 'content', 'website', true);
+    setMetaTag('og:url', 'content', window.location.href, true);
+    setMetaTag('twitter:card', 'content', 'summary_large_image');
+    setMetaTag('twitter:title', 'content', ogTitle);
+    setMetaTag('twitter:description', 'content', ogDescription);
+    setMetaTag('twitter:image', 'content', ogImage);
+  }, [currentPath, currentHash, seoConfigs]);
 
   const [thankYouOrder, setThankYouOrder] = useState<RaincoatOrder | null>(null);
   const [thankYouLoading, setThankYouLoading] = useState(true);
@@ -337,17 +468,23 @@ export default function App() {
 
     const resolveLocation = async (): Promise<{ city: string; country: string; countryCode: string }> => {
       try {
+        const cached = sessionStorage.getItem('raincoat_visitor_location');
+        if (cached) {
+          return JSON.parse(cached);
+        }
         const res = await fetch('https://ipapi.co/json/', { 
           signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(3000) : undefined 
         });
         if (res.ok) {
           const data = await res.json();
           if (data.city && data.country_name) {
-            return {
+            const locObj = {
               city: data.city,
               country: data.country_name,
               countryCode: data.country_code || 'BD'
             };
+            sessionStorage.setItem('raincoat_visitor_location', JSON.stringify(locObj));
+            return locObj;
           }
         }
       } catch (error) {
@@ -360,11 +497,13 @@ export default function App() {
       ];
       // Select pseudo-deterministically
       const index = sessionId.length % bdCities.length;
-      return {
+      const fallbackLocObj = {
         city: bdCities[index],
         country: "Bangladesh",
         countryCode: "BD"
       };
+      sessionStorage.setItem('raincoat_visitor_location', JSON.stringify(fallbackLocObj));
+      return fallbackLocObj;
     };
 
     let isSubscribed = true;
@@ -471,7 +610,7 @@ export default function App() {
       document.removeEventListener('click', handleClickTracker);
       if (heartbeatInterval) clearInterval(heartbeatInterval);
     };
-  }, [currentHash, currentPath]);
+  }, []);
 
   // Generate rain drops positions
   const [rainDrops, setRainDrops] = useState<{ left: string; delay: string; duration: string }[]>([]);
@@ -865,8 +1004,11 @@ export default function App() {
   const isWriteReviewRoute = currentPath === '/write-review' || currentHash === '#/write-review' || currentHash === '#write-review';
   const isRaincoatLandingRoute = currentPath === '/raincoat' || currentHash === '#/raincoat' || currentHash === '#raincoat';
   const isBikeCoverLandingRoute = currentPath === '/bikecover' || currentHash === '#/bikecover' || currentHash === '#bikecover';
+  const isComboLandingRoute = currentPath === '/rancoatcovercombo' || currentHash === '#/rancoatcovercombo' || currentHash === '#rancoatcovercombo';
+  const isBoxerLandingRoute = currentPath.toLowerCase() === '/boxer' || currentHash.toLowerCase() === '#/boxer' || currentHash.toLowerCase() === '#boxer';
   const isCartRoute = currentPath === '/cart' || currentHash === '#/cart' || currentHash === '#cart';
   const isProductRoute = currentPath.startsWith('/product/') || currentHash.startsWith('#/product/');
+  const isSitemapRoute = currentPath === '/sitemap.xml' || currentPath === '/sitemap' || currentHash === '#/sitemap' || currentHash === '#sitemap';
 
   let productSlug = '';
   if (currentPath.startsWith('/product/')) {
@@ -1207,6 +1349,13 @@ export default function App() {
     );
   }
 
+  // Handle Standalone Sitemap Panel Page Routing
+  if (isSitemapRoute) {
+    return (
+      <SitemapPanel />
+    );
+  }
+
   // Handle custom Pages routing
   if (activeCustomPage) {
     return (
@@ -1253,6 +1402,42 @@ export default function App() {
     return (
       <div className="min-h-screen bg-slate-950 relative selection:bg-orange-600 selection:text-white flex flex-col justify-between font-sans">
         <BikeCoverLanding onOrderSuccess={handleOrderCreated} />
+        
+        {/* Real-time floating purchase notification toast and success feedback */}
+        <LivePurchaseNotification />
+        {recentOrderForToast && (
+          <SuccessToast 
+            order={recentOrderForToast} 
+            onClose={() => setRecentOrderForToast(null)} 
+          />
+        )}
+      </div>
+    );
+  }
+
+  // Handle Combo Landing Route
+  if (isComboLandingRoute) {
+    return (
+      <div className="min-h-screen bg-slate-950 relative selection:bg-amber-500 selection:text-slate-950 flex flex-col justify-between font-sans">
+        <RaincoatBikeCoverComboLanding onOrderSuccess={handleOrderCreated} />
+        
+        {/* Real-time floating purchase notification toast and success feedback */}
+        <LivePurchaseNotification />
+        {recentOrderForToast && (
+          <SuccessToast 
+            order={recentOrderForToast} 
+            onClose={() => setRecentOrderForToast(null)} 
+          />
+        )}
+      </div>
+    );
+  }
+
+  // Handle Boxer Landing Route
+  if (isBoxerLandingRoute) {
+    return (
+      <div className="min-h-screen bg-slate-950 relative selection:bg-cyan-500 selection:text-slate-950 flex flex-col justify-between font-sans">
+        <BoxerLanding onOrderSuccess={handleOrderCreated} />
         
         {/* Real-time floating purchase notification toast and success feedback */}
         <LivePurchaseNotification />
@@ -1634,7 +1819,7 @@ export default function App() {
                   const embedUrl = getEmbedVideoUrl(video.url);
                   return (
                     <div key={video.id || index} className="flex flex-col items-center">
-                      <div className="relative w-[280px] sm:w-[300px] bg-slate-950 border-[6px] border-slate-800 rounded-3xl shadow-2xl aspect-[9/16] overflow-hidden">
+                      <div className={`relative ${video.description === 'aspect-video' ? 'w-[320px] sm:w-[480px]' : 'w-[280px] sm:w-[300px]'} bg-slate-950 border-[6px] border-slate-800 rounded-3xl shadow-2xl ${video.description || 'aspect-[9/16]'} overflow-hidden`}>
                         {embedUrl ? (
                           <iframe 
                             src={embedUrl}

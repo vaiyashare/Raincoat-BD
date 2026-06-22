@@ -26,7 +26,8 @@ import {
 } from 'lucide-react';
 import { 
   getAdvancedAddonsSettingsFromFirestore, 
-  saveAdvancedAddonsSettingsToFirestore 
+  saveAdvancedAddonsSettingsToFirestore,
+  getProductsFromFirestore
 } from '../../lib/firebase';
 import { AdvancedAddonsSettings } from '../../types';
 
@@ -36,12 +37,14 @@ export interface SectionCustomization {
   textColor: string;
   textAlign: 'left' | 'center' | 'right';
   fontSize: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'default';
-  image_url: string;
+  image_url?: string;
   icon_text: string;
   title_1: string;
   title_2: string;
   body: string;
   video_url?: string;
+  video_url_2?: string;
+  gallery_images?: string[];
   visible_mobile: boolean;
   visible_desktop: boolean;
   padding_vertical?: 'compact' | 'normal' | 'generous';
@@ -53,7 +56,8 @@ interface SectionCustomizerAdminProps {
 
 export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAdminProps) {
   const [settings, setSettings] = useState<AdvancedAddonsSettings | null>(null);
-  const [activePage, setActivePage] = useState<'raincoat' | 'bikecover' | 'global'>('raincoat');
+  const [products, setProducts] = useState<any[]>([]);
+  const [activePage, setActivePage] = useState<'raincoat' | 'bikecover' | 'combo' | 'boxer' | 'global'>('raincoat');
   const [activeSection, setActiveSection] = useState<string>('raincoat_hero');
   const [isSaving, setIsSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
@@ -182,6 +186,162 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
       visible_mobile: true,
       visible_desktop: true,
       padding_vertical: 'normal'
+    },
+    combo_hero: {
+      bgColor: '#090d16',
+      textColor: '#ffffff',
+      textAlign: 'center',
+      fontSize: 'default',
+      image_url: '',
+      icon_text: 'বর্ষার সেরা ধামাকা অফার',
+      title_1: 'রেইনকোট এবং প্রিমিয়াম বাইক কভার কম্বো অফার!',
+      title_2: 'কড়া রোদ আর ঝুম বৃষ্টির হাত থেকে নিজেকে ও নিজের বাইককে শতভাগ সুরক্ষিত রাখুন।',
+      body: 'সম্পূর্ণ থার্মাল পিইউ সিল প্রযুক্তির ওয়াটারপ্রুফ রেইনকোট এবং উচ্চমানের প্যারাশুট সিলভার কোটেড বাইক কভার এখন একসাথে অবিশ্বাস্য অফার মূল্যে পাচ্ছেন! আলাদা ডেলিভারি চার্জ ছাড়া সারা বাংলাদেশে ক্যাশ অন ডেলিভারি!',
+      visible_mobile: true,
+      visible_desktop: true,
+      padding_vertical: 'normal'
+    },
+    combo_video: {
+      bgColor: '#ffffff',
+      textColor: '#0f172a',
+      textAlign: 'center',
+      fontSize: 'default',
+      image_url: '',
+      icon_text: '১০০% বাস্তব ডেমো এবং কোয়ালিটি টেস্ট ভিডিও',
+      title_1: 'আমাদের কম্বো প্রোডাক্টের সরাসরি লাইভ রিভিউ দেখুন!',
+      title_2: 'সরাসরি ভিডিওতে দেখুন রেইনকোট ও বাইক কভারের গুণগত মান ও পানির প্রতিরোধ ক্ষমতা।',
+      body: 'ভিডিও দুটি প্লে করে দেখে নিন আমাদের প্রিমিয়াম কম্বোর কার্যকারিতা। কোনো ভিডিও এডিটিং ছাড়া শতভাগ খাঁটি রিভিউ ভিডিও।',
+      video_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      video_url_2: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      visible_mobile: true,
+      visible_desktop: true,
+      padding_vertical: 'normal'
+    },
+    combo_gallery: {
+      bgColor: '#f8fafc',
+      textColor: '#0f172a',
+      textAlign: 'center',
+      fontSize: 'default',
+      image_url: '',
+      icon_text: 'রেইনকোট প্রোডাক্ট গ্যালারি (Gallery Images)',
+      title_1: 'আমাদের রেইনকোটের বাস্তব আকর্ষণীয় ছবির গ্যালারি!',
+      title_2: 'খাঁটি ফ্যাব্রিক ও প্রিমিয়াম হিট সিল্ড ফিনিশিং এর ৫-৬টি রিয়েল ফটোগ্রাফস।',
+      body: 'ছবির গ্যালারি থেকে সরাসরি দেখে নিন ফিনিশিংটি কেমন। আমরা গ্রাহককে যা ছবিতে দেখাই, হুবহু তাই ডেলিভারি করি।',
+      gallery_images: [
+        'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=600',
+        'https://images.unsplash.com/photo-1558981806-ec527fa84c39?auto=format&fit=crop&q=80&w=600',
+        'https://images.unsplash.com/photo-1508962914676-134849a727f0?auto=format&fit=crop&q=80&w=600',
+        'https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?auto=format&fit=crop&q=80&w=600',
+        'https://images.unsplash.com/photo-1511216113906-8f57bb83e776?auto=format&fit=crop&q=80&w=600',
+        'https://images.unsplash.com/photo-1481944877197-f58c755efb1c?auto=format&fit=crop&q=80&w=600'
+      ],
+      visible_mobile: true,
+      visible_desktop: true,
+      padding_vertical: 'normal'
+    },
+    combo_features: {
+      bgColor: '#ffffff',
+      textColor: '#0f172a',
+      textAlign: 'center',
+      fontSize: 'default',
+      image_url: '',
+      icon_text: 'কেন আমাদের কম্বো প্যাকেজটি সবচেয়ে সেরা?',
+      title_1: 'প্রিমিয়াম রেইনকোট এবং অল-ওয়েদার বাইক কভারের বিশেষত্ব',
+      title_2: 'বাজারের নিম্নমানের পণ্য থেকে নিজেকে রেহাই দিয়ে এই মাস্টারপিস কম্বো বেছে নিন।',
+      body: 'আমাদের কম্বোতে ব্যবহৃত রেইনকোটে রয়েছে ৩ বছর অনায়াসে ব্যবহারের নিশ্চয়তা, ডাবল হিট সিলযুক্ত কব্জি এবং সম্পূর্ণ থার্মাল লিকেজ প্রুফ সীম। বাইক কভারটি উচ্চমানের প্যারাশুট সিলভার কোটেড ফ্যাব্রিকের যা অতিরিক্ত তাপ ও ক্ষতিকর অতিবেগুনী রশ্মি থেকে বাইকের কালার রক্ষা করে।',
+      visible_mobile: true,
+      visible_desktop: true,
+      padding_vertical: 'normal'
+    },
+    combo_checkout: {
+      bgColor: '#f1f5f9',
+      textColor: '#1e293b',
+      textAlign: 'center',
+      fontSize: 'default',
+      image_url: '',
+      icon_text: 'ক্যাশ অন ডেলিভারি (Cash on Delivery)',
+      title_1: 'নিচের চেকআউট ফর্মটি পূরণ করে অর্ডারটি সুনিশ্চিত করুন!',
+      title_2: 'কোনো অগ্রিম পেমেন্ট করতে হবে না, পণ্য হাতে পেয়ে দেখে টাকা পরিশোধ করবেন।',
+      body: 'দয়া করে আপনার সঠিক নাম, সচল মোবাইল নম্বর এবং ডেলিভারির সঠিক ঠিকানা প্রদান করুন। আমাদের প্রতিনিধি অর্ডার নিশ্চিত করতে ফোন করবেন।',
+      visible_mobile: true,
+      visible_desktop: true,
+      padding_vertical: 'normal'
+    },
+    boxer_hero: {
+      bgColor: '#0f172a',
+      textColor: '#ffffff',
+      textAlign: 'center',
+      fontSize: 'default',
+      image_url: 'https://images.unsplash.com/photo-1582966772680-860e372bb558?auto=format&fit=crop&q=80&w=600',
+      icon_text: 'সেরা ধামাকা প্রিমিয়াম কম্বো অফার',
+      title_1: 'সলিড কালার প্রিমিয়াম মেন্স বক্সার ব্রিফ',
+      title_2: '৯৫% কটন ও ৫% স্প্যানডেক্স চায়না লাক্সারি ফেব্রিক্স দিয়ে তৈরি জেন্টলস বক্সার!',
+      body: 'টপ নচ এক্সপার্ট কোয়ালিটি সুইং ও নিখুঁত ট্রিপল সুচ ফিনিশিং। গরমে ও প্রতিদিনের ব্যবহারে সর্বোচ্চ আরামদায়ক সলিড ট্রাঙ্ক বা বক্সার ব্রিফ প্যাক। আলাদা ডেলিভারি চার্জ ছাড়া সারা বাংলাদেশে ক্যাশ অন ডেলিভারি!',
+      visible_mobile: true,
+      visible_desktop: true,
+      padding_vertical: 'normal'
+    },
+    boxer_specs: {
+      bgColor: '#ffffff',
+      textColor: '#0f172a',
+      textAlign: 'center',
+      fontSize: 'default',
+      image_url: '',
+      icon_text: 'আরামদায়ক প্রিমিয়াম ফেব্রিক গ্যারান্টি',
+      title_1: 'অনুপম আরামদায়ক ও নিখুঁত ফিনিশিং',
+      title_2: '১০০% নিখুঁত ফিটিং এবং সুক্ষ্ম ডাবল নিডেল কোয়ালিটি সুইং ডিজাইন!',
+      body: 'আমাদের প্রতিটি বক্সার ব্রিফ ৯ভ% প্রিমিয়াম সুতি বা কটন এবং ৫% লাক্সারি স্প্যানডেক্স ফেব্রিক দিয়ে তৈরি। এটি চায়না প্রিমিয়াম এক্সপোর্ট ফেব্রিক্স এবং চমৎকার ইলাস্টিক ফ্লেক্সিবিলিটি সমৃদ্ধ।',
+      visible_mobile: true,
+      visible_desktop: true,
+      padding_vertical: 'normal'
+    },
+    boxer_video: {
+      bgColor: '#0f172a',
+      textColor: '#ffffff',
+      textAlign: 'center',
+      fontSize: 'default',
+      icon_text: '১০০% বাস্তব কোয়ালিটি রিভিউ ভিডিও',
+      title_1: 'আমাদের বক্সারের সরাসরি লাইভ ও কোয়ালিটি ফিডব্যাক ভিডিও দেখুন',
+      title_2: 'কেন আমাদের বক্সার বাজারে সবচেয়ে সেরা কোয়ালিটির তা সরাসরি ভিডিওতে দেখুন।',
+      body: 'কোনো এডিটিং ছাড়া শতভাগ খাঁটি ওপেনিং ও চমৎকার সুইং ডেমোস্ট্রেশন লাইভ টেস্ট রিভিউ ভিডিও।',
+      video_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      visible_mobile: true,
+      visible_desktop: true,
+      padding_vertical: 'normal'
+    },
+    boxer_gallery: {
+      bgColor: '#f8fafc',
+      textColor: '#0f172a',
+      textAlign: 'center',
+      fontSize: 'default',
+      icon_text: 'বক্সার কালার ও ক্লোজ-আপ গ্যালারি',
+      title_1: 'চারটি আকর্ষণীয় সলিড কালার এবং চমৎকার ইলাস্টিক গ্যালারি',
+      title_2: 'কালো, নেভি ব্লু, সাদা ও অ্যাস কালারে অত্যন্ত স্টাইলিশ সলিড ব্রিফ কালেকশন!',
+      body: 'খুব কাছ থেকে নিখুঁত থ্রেড টপ-কোয়ালিটি গ্যারান্টি স্টিচ দেখার জন্য الصور নিচে ক্লিক করুন।',
+      gallery_images: [
+        'https://images.unsplash.com/photo-1582966772680-860e372bb558?auto=format&fit=crop&q=80&w=600',
+        'https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&q=80&w=600',
+        'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&q=80&w=600',
+        'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&q=80&w=600',
+        'https://images.unsplash.com/photo-1508962914676-134849a727f0?auto=format&fit=crop&q=80&w=600',
+        'https://images.unsplash.com/photo-1481944877197-f58c755efb1c?auto=format&fit=crop&q=80&w=600'
+      ],
+      visible_mobile: true,
+      visible_desktop: true,
+      padding_vertical: 'normal'
+    },
+    boxer_checkout: {
+      bgColor: '#ffffff',
+      textColor: '#1e293b',
+      textAlign: 'center',
+      fontSize: 'default',
+      icon_text: 'অগ্রিম ১ টাকাও পেমেন্ট করা লাগবে না',
+      title_1: 'নিচের চেকআউট ফর্মটি পূরণ করে আপনার Boxer কম্বো সুনিশ্চিত করুন!',
+      title_2: '১ সেট বা ২ সেট আপনার পছন্দের প্যাকেজ সিলেক্ট করে সঠিক ঠিকানা দিন।',
+      body: 'পণ্য ডেলিভারি পাওয়ার পর চেক করে সন্তুষ্ট হয়ে তারপর পেমেন্ট করবেন। কোনো প্রকার রিস্ক ছাড়া শতভাগ নিরাপদ কেনাকাটা।',
+      visible_mobile: true,
+      visible_desktop: true,
+      padding_vertical: 'normal'
     }
   };
 
@@ -220,6 +380,19 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
             bike_triple_cards: defaultTripleCards
           };
           setSettings(fallbackSettings);
+        }
+
+        // Fetch products as well
+        const prod = await getProductsFromFirestore();
+        if (prod && prod.length > 0) {
+          setProducts(prod);
+        } else {
+          const list = localStorage.getItem('raincoat_shop_products');
+          if (list) {
+            try {
+              setProducts(JSON.parse(list));
+            } catch (e) {}
+          }
         }
       } catch (err) {
         console.error("Error loading settings in Customizer", err);
@@ -413,6 +586,64 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
       );
     }
 
+    // Homepage products manual customizer visual mockup
+    if (activeSection === 'homepage_products_customizer') {
+      const isManual = !!settings?.homepage_manual_selection_enabled;
+      return (
+        <div className="p-5 bg-slate-900 text-white w-full rounded-2xl shadow-inner min-h-[400px] text-center flex flex-col justify-between">
+          <div className="space-y-2">
+            <span className="text-[10px] uppercase font-bold tracking-widest text-indigo-400 block">হোমপেজ ক্যাটাগরি ভিউয়ার সিমুলেটর</span>
+            <h4 className="text-sm font-black text-slate-100">ক্যাটাগরি ভিত্তিক পণ্য সাজানোর রিয়েল-টাইম নমুনা</h4>
+            <div className="p-2.5 inline-block bg-white/10 rounded-xl border border-white/10 text-xs font-bold text-slate-350">
+              {isManual ? (
+                <span className="text-emerald-400 flex items-center justify-center gap-1.5">
+                  ● ম্যানুয়াল সিলেকশন মোড সচল আছে
+                </span>
+              ) : (
+                <span className="text-amber-400 flex items-center justify-center gap-1.5">
+                  ○ অটোমেটিক মোড সচল (সব প্রোডাক্ট ক্যাটাগরিভিত্তিক দেখাবে)
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="my-6 space-y-4 max-h-[300px] overflow-y-auto custom-scrollbar pr-1.5 text-left">
+            {Array.from(new Set(products.map(p => p.category).filter(Boolean))).map((cat: any) => {
+              const selectedIds = settings?.homepage_category_products?.[cat] || [];
+              const catProducts = products.filter(p => isManual ? selectedIds.includes(p.id) : p.category === cat);
+              
+              return (
+                <div key={cat} className="space-y-1.5">
+                  <span className="text-[10px] bg-indigo-550 bg-indigo-900/40 text-indigo-200 px-2 py-0.5 rounded font-bold border border-indigo-500/20">{cat} ({catProducts.length})</span>
+                  <div className="grid grid-cols-2 gap-2 text-[10px]">
+                    {catProducts.length > 0 ? (
+                      catProducts.map(p => (
+                        <div key={p.id} className="bg-white/5 border border-white/10 rounded-lg p-1.5 flex gap-1.5 items-center">
+                          {p.image ? (
+                            <img src={p.image} className="w-6 h-6 object-cover rounded" referrerPolicy="no-referrer" />
+                          ) : (
+                            <div className="w-6 h-6 bg-white/10 rounded flex items-center justify-center text-[8px]">📷</div>
+                          )}
+                          <div className="truncate flex-1">
+                            <span className="block truncate font-bold text-slate-100">{p.title}</span>
+                            <span className="font-mono text-slate-450 text-slate-400">{p.price} Tk</span>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <span className="text-slate-500 italic col-span-2 text-[9px]">এই ক্যাটাগরিতে কোনো পণ্য সিলেক্ট করা নেই!</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <span className="text-[9px] text-slate-400 font-medium">নিচের ডানদিকের সবুজ "ডিজাইন পাবলিশ করুন" বাটনে ক্লিক করে রিয়েলটাইমে গ্রাহকদের স্ক্রিনে পাবলিশ করুন।</span>
+        </div>
+      );
+    }
+
     // 2. Product catalague mockup rendering
     if (activeSection === 'shop_catalog') {
       return (
@@ -566,8 +797,36 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
           {/* Video Section Mockup buttons */}
           {activeSection === 'raincoat_live_video' && (
             <div className="w-full aspect-video bg-black/60 border border-white/10 rounded-2xl flex flex-col justify-center items-center cursor-pointer select-none group hover:bg-black/70 transition">
-              <div className="w-10 h-10 rounded-full bg-red-650 bg-red-600 flex items-center justify-center text-white text-base shadow-lg group-hover:scale-105 transition">▶</div>
+              <div className="w-10 h-10 rounded-full bg-red-601 bg-red-600 flex items-center justify-center text-white text-base shadow-lg group-hover:scale-105 transition">▶</div>
               <span className="text-[9px] text-slate-300 mt-2 font-mono">{data.video_url || 'YouTube Video Player (Mock)'}</span>
+            </div>
+          )}
+
+          {activeSection === 'combo_video' && (
+            <div className="grid grid-cols-2 gap-2.5 w-full mt-2">
+              <div className="aspect-video bg-slate-900 border border-white/10 rounded-xl flex flex-col justify-center items-center select-none cursor-pointer">
+                <div className="w-7 h-7 rounded-full bg-red-600 flex items-center justify-center text-white text-xs">▶</div>
+                <span className="text-[8px] text-slate-400 mt-1 truncate max-w-full px-1">{data.video_url || 'Video 1'}</span>
+              </div>
+              <div className="aspect-video bg-slate-900 border border-white/10 rounded-xl flex flex-col justify-center items-center select-none cursor-pointer">
+                <div className="w-7 h-7 rounded-full bg-red-600 flex items-center justify-center text-white text-xs">▶</div>
+                <span className="text-[8px] text-slate-400 mt-1 truncate max-w-full px-1">{data.video_url_2 || 'Video 2'}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Gallery Section Mockup */}
+          {activeSection === 'combo_gallery' && (
+            <div className="grid grid-cols-3 gap-2 w-full mt-2">
+              {(data.gallery_images || []).slice(0, 6).map((imgUrl: string, idx: number) => (
+                <div key={idx} className="aspect-square bg-white border border-slate-200 rounded-lg overflow-hidden flex items-center justify-center">
+                  {imgUrl ? (
+                    <img src={imgUrl} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    <span className="text-slate-400 text-[10px]">Image {idx + 1}</span>
+                  )}
+                </div>
+              ))}
             </div>
           )}
 
@@ -630,8 +889,23 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
       { id: 'bikecover_features', name: '🚲 স্পেসিফিকেশন ও কভারেজ' },
       { id: 'bike_triple_cards', name: '🖼️ ৩-ইমেজ আকর্ষণীয় কার্ড সেকশন' }
     ],
+    combo: [
+      { id: 'combo_hero', name: '📦 কম্বো হিরো সেকশন (Combo Hero)' },
+      { id: 'combo_video', name: '🎥 ২-ভিডিও এম্বেড সেকশন' },
+      { id: 'combo_gallery', name: '🖼️ রেইনকোট ৫-৬ ইমেজ গ্যালারি' },
+      { id: 'combo_features', name: '💡 কম্বো প্রোডাক্ট বৈশিষ্ট্যসমূহ' },
+      { id: 'combo_checkout', name: '✍️ চেকআউট শিরোনাম ও বিবরণ' }
+    ],
+    boxer: [
+      { id: 'boxer_hero', name: '🩲 বক্সার হিরো ব্যানার (Boxer Hero)' },
+      { id: 'boxer_specs', name: '🧶 বক্সার প্রিমিয়াম স্পেসিফিকেশনস' },
+      { id: 'boxer_video', name: '🎥 ১-ভিডিও রিভিউ এম্বেড সেকশন' },
+      { id: 'boxer_gallery', name: '🖼️ বক্সার ক্যারাসল গ্যালারি ৬-ইমেজ' },
+      { id: 'boxer_checkout', name: '✍️ বক্সার চেকআউট হেডার ও বার্তা' }
+    ],
     global: [
-      { id: 'global_branding', name: '🌐 গ্লোবাল থিম পরিচিতি' }
+      { id: 'global_branding', name: '🌐 গ্লোবাল থিম পরিচিতি' },
+      { id: 'homepage_products_customizer', name: '🏠 হোমপেজ ক্যাটাগরি প্রোডাক্ট কাস্টমাইজার' }
     ]
   };
 
@@ -848,22 +1122,21 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
 
           {/* Quick toggle between products at bottom of sidebar */}
           <div className="pt-4 border-t border-slate-150 space-y-2 select-none">
-            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-sans">ল্যান্ডিং পেজ সুইচ করুন:</span>
-            <div className="grid grid-cols-3 gap-1.5">
+            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">
+              সরাসরি পেজ পরিবর্তন করুন (Quick switcher)
+            </span>
+            <div className="grid grid-cols-2 gap-1.5">
               <button
                 type="button"
                 onClick={() => {
                   setActivePage('raincoat');
                   setActiveSection('raincoat_hero');
                 }}
-                className={`p-2 rounded-xl border text-[10px] font-extrabold text-center transition cursor-pointer flex flex-col items-center gap-1 leading-snug ${
-                  activePage === 'raincoat'
-                    ? 'bg-slate-900 border-slate-900 text-white shadow-2xs'
-                    : 'bg-white border-slate-150 text-slate-600 hover:bg-slate-50'
+                className={`py-1.5 px-2.5 rounded-lg border text-[10px] font-bold text-center cursor-pointer transition ${
+                  activePage === 'raincoat' ? 'bg-slate-900 border-slate-950 text-white shadow-2xs' : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700'
                 }`}
               >
-                <span>🧥</span>
-                <span>রেইনকোট</span>
+                রেইনকোট
               </button>
               <button
                 type="button"
@@ -871,48 +1144,415 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
                   setActivePage('bikecover');
                   setActiveSection('bikecover_hero');
                 }}
-                className={`p-2 rounded-xl border text-[10px] font-extrabold text-center transition cursor-pointer flex flex-col items-center gap-1 leading-snug ${
-                  activePage === 'bikecover'
-                    ? 'bg-slate-900 border-slate-900 text-white shadow-2xs'
-                    : 'bg-white border-slate-150 text-slate-600 hover:bg-slate-50'
+                className={`py-1.5 px-2.5 rounded-lg border text-[10px] font-bold text-center cursor-pointer transition ${
+                  activePage === 'bikecover' ? 'bg-slate-900 border-slate-950 text-white shadow-2xs' : 'text-slate-705 text-slate-700 bg-white hover:bg-slate-50 border-slate-200'
                 }`}
               >
-                <span>🏍️</span>
-                <span>বাইক কভার</span>
+                বাইক কভার
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActivePage('combo');
+                  setActiveSection('combo_hero');
+                }}
+                className={`py-1.5 px-2.5 rounded-lg border text-[10px] font-bold text-center cursor-pointer transition ${
+                  activePage === 'combo' ? 'bg-slate-900 border-slate-950 text-white shadow-2xs' : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700'
+                }`}
+              >
+                ডাবল কম্বো
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActivePage('boxer');
+                  setActiveSection('boxer_hero');
+                }}
+                className={`py-1.5 px-2.5 rounded-lg border text-[10px] font-bold text-center cursor-pointer transition ${
+                  activePage === 'boxer' ? 'bg-slate-900 border-slate-950 text-white shadow-2xs' : 'text-slate-700 bg-white hover:bg-slate-50 border-slate-200'
+                }`}
+              >
+                মেন্স বক্সার
               </button>
               <button
                 type="button"
                 onClick={() => {
                   setActivePage('global');
-                  setActiveSection('global_branding');
+                  setActiveSection('shop_catalog');
                 }}
-                className={`p-2 rounded-xl border text-[10px] font-extrabold text-center transition cursor-pointer flex flex-col items-center gap-1 leading-snug ${
-                  activePage === 'global'
-                    ? 'bg-slate-900 border-slate-900 text-white shadow-2xs'
-                    : 'bg-white border-slate-150 text-slate-600 hover:bg-slate-50'
+                className={`col-span-2 py-1.5 px-2.5 rounded-lg border text-[10px] font-bold text-center cursor-pointer transition ${
+                  activePage === 'global' ? 'bg-indigo-600 border-indigo-700 text-white shadow-2xs' : 'bg-white hover:bg-indigo-50/70 border-slate-200 text-indigo-950'
                 }`}
               >
-                <span>🌐</span>
-                <span>গ্লোবাল</span>
+                গ্লোবাল পার্ট ও স্টোর কাস্টমাইজেশন
               </button>
             </div>
           </div>
         </div>
 
-        {/* Right Side: Parameter Customize Form Fields with Visual WYSIWYG Option */}
-        <div className={`flex-1 flex flex-col ${editorMode === 'visual' ? 'xl:flex-row' : ''}`}>
+        {/* Right Side: Editor Workspace & Live visual simulator */}
+        <div className="flex-1 flex flex-col xl:flex-row min-w-0">
           
-          {/* Form Fields Controls Panel Column */}
-          <div className={`${editorMode === 'visual' ? 'w-full xl:w-[390px] xl:border-r border-slate-200 bg-slate-50/50 xl:max-h-[800px] xl:overflow-y-auto p-5 space-y-6 shrink-0' : 'w-full p-5 sm:p-6 space-y-6'}`}>
-            
-            {/* Header indicator and brief */}
-            <div className="bg-slate-50 border border-slate-150 p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div>
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block font-sans">সিলেক্টেড সেকশন প্যারামিটারস</span>
-                <h4 className="text-sm font-black text-indigo-900 mt-1 font-sans flex items-center gap-1.5">
-                  ✒️ {pageSections[activePage].find(s => s.id === activeSection)?.name || 'কাস্টম সেকশন'}
-                </h4>
+          {/* Classic Form Controller Column */}
+          <div className="w-full xl:w-[460px] p-4 sm:p-6 border-b xl:border-b-0 xl:border-r border-slate-200/80 overflow-y-auto custom-scrollbar flex flex-col justify-between">
+            <div className="space-y-5">
+              
+              {/* Active Section Header and Visibility */}
+              <div className="pb-3 border-b border-slate-150 flex items-center justify-between gap-3">
+                <div>
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">সম্পাদনা করছেন:</span>
+                  <h4 className="text-xs font-black text-indigo-650 uppercase tracking-wide flex items-center gap-1">
+                    <Sliders className="h-3.5 w-3.5" />
+                    {pageSections[activePage]?.find(s => s.id === activeSection)?.name || 'কাস্টম সেকশন'}
+                  </h4>
+                </div>
               </div>
+
+              {/* Wrapper to hide the duplicate fields down to line 1393 */}
+              <div className="hidden">
+                <div className={`grid gap-5 pt-1 ${editorMode === 'visual' ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'}`}>
+                  
+                  {/* COLUMN 1: VISUALS (Bg, Color, Alignment, Image) */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-1 border-b border-slate-100 pb-1.5">
+                    <Palette className="h-4 w-4 text-slate-400" />
+                    <h5 className="text-[11px] font-black text-slate-800 uppercase tracking-wider">রঙ, আকৃতি ও এলাইনমেন্ট</h5>
+                  </div>
+
+                  {/* Background Color Customization */}
+                  <div className="space-y-2">
+                    <label className="block text-xs font-bold text-slate-700">সেকশন ব্যাকগ্রাউন্ড কালার (Background Color)</label>
+                    <div className="flex gap-2">
+                      <input 
+                        type="color" 
+                        value={currentSectionData.bgColor}
+                        onChange={(e) => handleUpdateValue(activeSection, 'bgColor', e.target.value)}
+                        className="w-10 h-10 border border-slate-200 rounded-xl cursor-pointer p-0"
+                      />
+                      <input 
+                        type="text" 
+                        value={currentSectionData.bgColor}
+                        onChange={(e) => handleUpdateValue(activeSection, 'bgColor', e.target.value)}
+                        placeholder="#ffffff"
+                        className="flex-1 text-xs px-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none font-mono text-slate-800"
+                      />
+                    </div>
+                    
+                    {/* Predefined Color Presets */}
+                    <div className="flex flex-wrap gap-1 pt-1.5">
+                      {predefinedBgColors.map((color) => (
+                        <button
+                          key={color.hex}
+                          type="button"
+                          onClick={() => handleUpdateValue(activeSection, 'bgColor', color.hex)}
+                          className="px-2 py-1 text-[9px] font-semibold border rounded-lg hover:border-slate-400 transition cursor-pointer bg-white"
+                          title={color.name}
+                        >
+                          <span className="inline-block w-2 bg-slate-200 h-2 rounded-full mr-1.5" style={{ backgroundColor: color.hex }}></span>
+                          {color.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Text Alignments */}
+                  <div className="grid grid-cols-2 gap-3.5 pt-2">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">টেক্সট এলাইনমেন্ট (Text Align)</label>
+                      <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl w-fit border border-slate-200/60">
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateValue(activeSection, 'textAlign', 'left')}
+                          className={`p-2 rounded-lg transition ${
+                            currentSectionData.textAlign === 'left' ? 'bg-indigo-600 text-white shadow-2xs' : 'text-slate-500 hover:bg-slate-200/70'
+                          }`}
+                          title="Left"
+                        >
+                          <AlignLeft className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateValue(activeSection, 'textAlign', 'center')}
+                          className={`p-2 rounded-lg transition ${
+                            currentSectionData.textAlign === 'center' ? 'bg-indigo-600 text-white shadow-2xs' : 'text-slate-500 hover:bg-slate-200/70'
+                          }`}
+                          title="Center"
+                        >
+                          <AlignCenter className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateValue(activeSection, 'textAlign', 'right')}
+                          className={`p-2 rounded-lg transition ${
+                            currentSectionData.textAlign === 'right' ? 'bg-indigo-600 text-white shadow-2xs' : 'text-slate-500 hover:bg-slate-200/70'
+                          }`}
+                          title="Right"
+                        >
+                          <AlignRight className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">টেক্সট সাইজ (Font Scale)</label>
+                      <select
+                        value={currentSectionData.fontSize}
+                        onChange={(e) => handleUpdateValue(activeSection, 'fontSize', e.target.value)}
+                        className="w-full px-3 py-1.8 bg-slate-550 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none text-xs text-slate-700 font-bold cursor-pointer"
+                      >
+                        <option value="default">ডিফল্ট রেসপন্সিভ (Default)</option>
+                        <option value="sm">কমপ্যাক্ট ক্রিস্টাল (Small)</option>
+                        <option value="md">স্ট্যান্ডার্ড প্যারাগ্রাফ (Medium)</option>
+                        <option value="lg">অতিরিক্ত বড় বোল্ড (Large)</option>
+                        <option value="xl">মৌলিক বাটন সাইজ (Extra Large)</option>
+                        <option value="2xl">বিশাল সাইনবোর্ড (Giant display)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Vertical Padding Spacing height modifier */}
+                  <div className="pt-1.5">
+                    <label className="block text-xs font-bold text-slate-700 mb-1">প্যাডিং স্পেসিং (Section Height / Padding)</label>
+                    <select
+                      value={currentSectionData.padding_vertical || 'normal'}
+                      onChange={(e) => handleUpdateValue(activeSection, 'padding_vertical', e.target.value)}
+                      className="w-full px-3 py-1.8 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none text-xs text-slate-700 font-bold cursor-pointer"
+                    >
+                      <option value="compact">কম দূরত্ব (Compact - py-6)</option>
+                      <option value="normal">স্ট্যান্ডার্ড (Normal - py-10)</option>
+                      <option value="generous">বিশাল এবং উচু স্পেস (Generous - py-16)</option>
+                    </select>
+                  </div>
+
+                  {/* Custom Image URL background / section illustration */}
+                  <div className="pt-1.5 space-y-2">
+                    <label className="block text-xs font-bold text-slate-700 flex items-center justify-between">
+                      <span>সেকশন ইমেজ লিংক বা ব্যানার হোস্ট URL (Image Input)</span>
+                      <ImageIcon className="h-4 w-4 text-indigo-500" />
+                    </label>
+
+                    {/* Image Preview Box */}
+                    {currentSectionData.image_url && (
+                      <div className="w-full h-36 bg-slate-150 rounded-xl overflow-hidden relative flex items-center justify-center border border-dashed border-slate-300">
+                        <img 
+                          src={currentSectionData.image_url} 
+                          alt="Section Preview" 
+                          className="w-full h-full object-contain bg-white"
+                          referrerPolicy="no-referrer"
+                        />
+                      </div>
+                    )}
+
+                    {/* Direct File Upload button */}
+                    <div className="select-none">
+                      <label className="block cursor-pointer bg-slate-900 border border-slate-800 hover:bg-slate-800 active:scale-98 text-white text-[11px] font-extrabold py-2 text-center rounded-xl shadow-xs transition mb-2">
+                        📥 নতুন ছবি সরাসরি আপলোড করুন
+                        <input 
+                          type="file" 
+                          accept="image/*"
+                          onChange={async (e) => {
+                            const f = e.target.files?.[0];
+                            if (f) {
+                              const base64 = await compressImage(f);
+                              handleUpdateValue(activeSection, 'image_url', base64);
+                            }
+                          }}
+                          className="hidden" 
+                        />
+                      </label>
+                    </div>
+
+                    <input 
+                      type="text" 
+                      value={currentSectionData.image_url || ''}
+                      onChange={(e) => handleUpdateValue(activeSection, 'image_url', e.target.value)}
+                      placeholder="অথবা ফটো হোস্ট ক্যাশিং URL লিংকটি দিন..."
+                      className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-850 focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Visibility control switches */}
+                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-1.5">
+                      <input 
+                        type="checkbox" 
+                        id="visible_mobile_chk"
+                        checked={currentSectionData.visible_mobile}
+                        onChange={(e) => handleUpdateValue(activeSection, 'visible_mobile', e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-505 cursor-pointer"
+                      />
+                      <label htmlFor="visible_mobile_chk" className="text-[11px] font-bold text-slate-700 cursor-pointer">📱 মোবাইলে দেখান</label>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <input 
+                        type="checkbox" 
+                        id="visible_desktop_chk"
+                        checked={currentSectionData.visible_desktop}
+                        onChange={(e) => handleUpdateValue(activeSection, 'visible_desktop', e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-505 cursor-pointer"
+                      />
+                      <label htmlFor="visible_desktop_chk" className="text-[11px] font-bold text-slate-700 cursor-pointer">💻 কম্পিউটারে দেখান</label>
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* COLUMN 2: HEADING CONTENTS & VIDEOS */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-1 border-b border-slate-100 pb-1.5">
+                    <Type className="h-4 w-4 text-slate-400" />
+                    <h5 className="text-[11px] font-black text-slate-800 uppercase tracking-wider">ট্যাগলাইন, হেডিং ও ডেমো লিংক সমূহ</h5>
+                  </div>
+
+                  {/* Sub-header / Badge promo text */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">প্রোমোショナル ট্যাগলাইন বা ব্যাজ টেক্সট</label>
+                    <input 
+                      type="text" 
+                      value={currentSectionData.icon_text}
+                      onChange={(e) => handleUpdateValue(activeSection, 'icon_text', e.target.value)}
+                      placeholder="যেমন: ১০০% প্রিমিয়াম ওয়াটারপ্রুফ গিয়ার"
+                      className="w-full text-xs p-2.5 bg-slate-550 bg-slate-50 border border-slate-200 rounded-lg text-slate-850 focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Main Title 1 */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">প্রধান শিরোনাম লাইন ১ (Primary Header Line 1)</label>
+                    <input 
+                      type="text" 
+                      value={currentSectionData.title_1}
+                      onChange={(e) => handleUpdateValue(activeSection, 'title_1', e.target.value)}
+                      placeholder="যেমন: ঝুম বৃষ্টি কিংবা ঝড়ো হাওয়া—"
+                      className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-850 focus:outline-none font-bold"
+                    />
+                  </div>
+
+                  {/* Main Title 2 */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">প্রধান শিরোনাম লাইন ২ (Primary Header Line 2)</label>
+                    <input 
+                      type="text" 
+                      value={currentSectionData.title_2}
+                      onChange={(e) => handleUpdateValue(activeSection, 'title_2', e.target.value)}
+                      placeholder="যেমন: বাইরে বের হতে আর কোনো ভয় নেই!"
+                      className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-850 focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Body Paragraph description text */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">বিস্তারিত বিবরণ বা মূল প্যারাগ্রাফ (Paragraph Content)</label>
+                    <textarea
+                      rows={4}
+                      value={currentSectionData.body}
+                      onChange={(e) => handleUpdateValue(activeSection, 'body', e.target.value)}
+                      placeholder="রেইনকোটের আকর্ষণীয় এবং তথ্যবহুল সংক্ষিপ্ত একটি বর্ণনা লিখুন..."
+                      className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-850 focus:outline-none leading-relaxed"
+                    />
+                  </div>
+
+                  {activeSection === 'combo_video' && (
+                    <div className="space-y-4 border-t border-slate-150 pt-3">
+                      <span className="text-amber-600 font-extrabold text-[10px] uppercase block">🎥 কম্বো ভিডিও সেটিংস</span>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">पहলা ভিডিও লিংক (Video 1 (Raincoat))</label>
+                        <input 
+                          type="text" 
+                          value={currentSectionData.video_url || ''}
+                          onChange={(e) => handleUpdateValue(activeSection, 'video_url', e.target.value)}
+                          placeholder="যেমন: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+                          className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">দ্বিতীয় ভিডিও লিংক (Video 2 (Bike Cover))</label>
+                        <input 
+                          type="text" 
+                          value={currentSectionData.video_url_2 || ''}
+                          onChange={(e) => handleUpdateValue(activeSection, 'video_url_2', e.target.value)}
+                          placeholder="যেমন: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+                          className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {activeSection === 'boxer_video' && (
+                    <div className="space-y-4 border-t border-slate-150 pt-3">
+                      <span className="text-amber-600 font-extrabold text-[10px] uppercase block">🎥 বক্সার কোয়ালিটি ভিডিও সেটিংস</span>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">ইউটিউব / ফেসবুক ভিডিও লিংক (YouTube URL / iframe URL)</label>
+                        <input 
+                          type="text" 
+                          value={currentSectionData.video_url || ''}
+                          onChange={(e) => handleUpdateValue(activeSection, 'video_url', e.target.value)}
+                          placeholder="যেমন: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+                          className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {(activeSection === 'combo_gallery' || activeSection === 'boxer_gallery') && (
+                    <div className="space-y-4 border-t border-slate-150 pt-3">
+                      <span className="text-amber-600 font-extrabold text-[10px] uppercase block">🖼️ গ্যালারি ও ক্যারাসেল ৬-ইमेज ম্যানেজার</span>
+                      <p className="text-[10px] text-slate-400">এই ল্যান্ডিং পেজে প্রদর্শন করার জন্য ৫-৬টি ছবির লিংক বা ফাইল আপলোড করুন:</p>
+                      {[0, 1, 2, 3, 4, 5].map((idx) => {
+                        const imgs = currentSectionData.gallery_images || [];
+                        const currentVal = imgs[idx] || '';
+                        return (
+                          <div key={idx} className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
+                            <div className="flex justify-between items-center text-[10px] font-bold text-slate-700">
+                              <span>ছবি নং {idx + 1} (Image {idx + 1})</span>
+                              {currentVal && <span className="text-emerald-600">✓ লিঙ্কড</span>}
+                            </div>
+                            
+                            {/* Short preview of thumbnail */}
+                            {currentVal && (
+                              <div className="h-14 w-full rounded-md overflow-hidden bg-white border border-slate-200 flex items-center justify-center">
+                                <img src={currentVal} alt={`Thumb ${idx + 1}`} className="h-full object-contain" referrerPolicy="no-referrer" />
+                              </div>
+                            )}
+
+                            {/* Upload feature */}
+                            <label className="block cursor-pointer bg-white border border-slate-350 bg-slate-50 border border-slate-300 hover:bg-slate-100 text-slate-700 text-[10px] font-black py-1 px-2 text-center rounded-lg shadow-3xs transition">
+                              📤 আপলোড করুন ({idx + 1})
+                              <input 
+                                type="file" 
+                                accept="image/*"
+                                onChange={async (e) => {
+                                  const f = e.target.files?.[0];
+                                  if (f) {
+                                    const base64 = await compressImage(f);
+                                    const newImgs = [...imgs];
+                                    newImgs[idx] = base64;
+                                    handleUpdateValue(activeSection, 'gallery_images', newImgs);
+                                  }
+                                }}
+                                className="hidden" 
+                              />
+                            </label>
+
+                            <input 
+                              type="text"
+                              value={currentVal}
+                              onChange={(e) => {
+                                const newImgs = [...imgs];
+                                newImgs[idx] = e.target.value;
+                                handleUpdateValue(activeSection, 'gallery_images', newImgs);
+                              }}
+                              placeholder="অথবা লিখুন https://example.com/photo.jpg"
+                              className="w-full text-[10px] px-2 py-1.5 bg-white border border-slate-200 rounded text-slate-850 focus:outline-none"
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
               
               {/* Visibility Options */}
               <div className="flex items-center gap-3">
@@ -938,9 +1578,121 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
                   />
                 </label>
               </div>
-            </div>
 
-            {activeSection === 'bike_triple_cards' ? (
+            {activeSection === 'homepage_products_customizer' ? (
+              <div className="space-y-6">
+                <div className="bg-indigo-50 border border-indigo-200 p-4.5 rounded-2xl flex items-start gap-3">
+                  <span className="p-2 bg-indigo-100 text-indigo-700 rounded-xl text-lg font-bold shrink-0">🏠</span>
+                  <div className="text-xs">
+                    <strong className="text-indigo-950 font-extrabold block text-[13px]">হোমপেজ ক্যাটাগরি প্রোডাক্ট কাস্টমাইজার (Manual Selection)</strong>
+                    <p className="text-indigo-800 mt-1.5 leading-relaxed font-semibold">
+                      এখানে আপনি হোমপেজের প্রতিটি ক্যাটাগরিতে কোন কোন প্রোডাক্ট লাইভ থাকবে তা ম্যানуয়ালি সিলেক্ট করতে পারবেন। নিচের সুইচটি অন করে আপনার কাঙ্খিত প্রোডাক্টগুলো টিক দিন এবং সেভ করুন।
+                    </p>
+                  </div>
+                </div>
+
+                {/* Toggle to enable/disable manual selection */}
+                <div className="bg-white border border-slate-200/85 rounded-2xl p-4.5 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-black text-slate-800 block">ম্যানুয়াল প্রোডাক্ট সিলেকশন ব্যবহার করুন</span>
+                      <span className="text-[10px] text-slate-450 mt-0.5 block leading-normal">সচল করলে শুধুমাত্র সিলেক্টেড প্রডাক্টগুলো হোমপেজে দৃশ্যমান থাকবে। নিষ্ক্রিয় করলে সব দেখাবে।</span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer select-none">
+                      <input 
+                        type="checkbox" 
+                        checked={!!settings?.homepage_manual_selection_enabled}
+                        onChange={(e) => {
+                          if (!settings) return;
+                          setSettings({
+                            ...settings,
+                            homepage_manual_selection_enabled: e.target.checked
+                          });
+                        }}
+                        className="sr-only peer" 
+                      />
+                      <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-350 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Grouping by categories available in products */}
+                {Array.from(new Set(products.map(p => p.category).filter(Boolean))).map((cat: any) => {
+                  const catProducts = products.filter(p => p.category === cat);
+                  const selectedIds = settings?.homepage_category_products?.[cat] || [];
+                  
+                  return (
+                    <div key={cat} className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-4">
+                      <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
+                        <span className="font-extrabold text-indigo-950 text-xs flex items-center gap-1.5">
+                          📂 <span className="bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-md font-black">{cat}</span>
+                        </span>
+                        <span className="text-[9px] bg-slate-200 text-slate-700 px-2.5 py-1 rounded-full font-bold">
+                          মোট: {catProducts.length} টি | সিলেক্টেড: {selectedIds.length} টি
+                        </span>
+                      </div>
+
+                      <div className="space-y-2">
+                        {catProducts.map((p) => {
+                          const isChecked = selectedIds.includes(p.id);
+                          return (
+                            <label 
+                              key={p.id} 
+                              className={`flex items-center justify-between p-2.5 rounded-xl border transition cursor-pointer select-none w-full ${
+                                isChecked 
+                                ? 'bg-white border-indigo-300 shadow-xs' 
+                                : 'bg-white/60 border-slate-150 hover:bg-white'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <input 
+                                  type="checkbox" 
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    if (!settings) return;
+                                    const categoryMap = settings.homepage_category_products || {};
+                                    let list = categoryMap[cat] || [];
+                                    if (e.target.checked) {
+                                      if (!list.includes(p.id)) {
+                                        list = [...list, p.id];
+                                      }
+                                    } else {
+                                      list = list.filter(id => id !== p.id);
+                                    }
+                                    setSettings({
+                                      ...settings,
+                                      homepage_category_products: {
+                                        ...categoryMap,
+                                        [cat]: list
+                                      }
+                                    });
+                                  }}
+                                  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4 shrink-0"
+                                />
+                                {p.image ? (
+                                  <img 
+                                    src={p.image} 
+                                    alt="" 
+                                    className="w-10 h-10 object-cover rounded-lg border border-slate-100 shrink-0" 
+                                    referrerPolicy="no-referrer"
+                                  />
+                                ) : (
+                                  <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center text-xs text-slate-400 shrink-0">📷</div>
+                                )}
+                                <div className="text-left leading-tight min-w-0">
+                                  <span className="text-xs font-bold text-slate-800 block truncate">{p.title}</span>
+                                  <span className="text-[10px] font-mono text-slate-500">{p.price} Tk</span>
+                                </div>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : activeSection === 'bike_triple_cards' ? (
               <div className="space-y-6">
                 <div className="bg-amber-50 border border-amber-200 p-4.5 rounded-2xl flex items-center gap-3">
                   <span className="p-2.5 bg-amber-100 text-amber-700 rounded-xl text-lg font-bold">🖼️</span>
@@ -1063,7 +1815,7 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
                         value={currentSectionData.bgColor}
                         onChange={(e) => handleUpdateValue(activeSection, 'bgColor', e.target.value)}
                         placeholder="#ffffff"
-                        className="flex-1 text-xs px-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none font-mono text-slate-800"
+                        className="flex-1 text-xs px-3 bg-slate-550 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none font-mono text-slate-800"
                       />
                     </div>
                     
@@ -1260,6 +2012,89 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
                     />
                   </div>
 
+                  {activeSection === 'combo_video' && (
+                    <div className="space-y-4 border-t border-slate-150 pt-3">
+                      <span className="text-amber-600 font-extrabold text-[10px] uppercase block">🎥 কম্বো ভিডিও সেটিংস</span>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">पहলা ভিডিও লিংক (Video 1 (Raincoat))</label>
+                        <input 
+                          type="text" 
+                          value={currentSectionData.video_url || ''}
+                          onChange={(e) => handleUpdateValue(activeSection, 'video_url', e.target.value)}
+                          placeholder="যেমন: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+                          className="w-full text-xs p-2.5 bg-slate-550 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">দ্বিতীয় ভিডিও লিংক (Video 2 (Bike Cover))</label>
+                        <input 
+                          type="text" 
+                          value={currentSectionData.video_url_2 || ''}
+                          onChange={(e) => handleUpdateValue(activeSection, 'video_url_2', e.target.value)}
+                          placeholder="যেমন: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+                          className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {activeSection === 'combo_gallery' && (
+                    <div className="space-y-4 border-t border-slate-150 pt-3">
+                      <span className="text-amber-600 font-extrabold text-[10px] uppercase block">🖼️ গ্যালারি ৬-ইমেজ ম্যানেজার</span>
+                      <p className="text-[10px] text-slate-400">এই কম্বো ল্যান্ডিং পেজে প্রদর্শন করার জন্য ৫-৬টি ছবির লিংক কাস্টমাইজ করুন:</p>
+                      {[0, 1, 2, 3, 4, 5].map((idx) => {
+                        const imgs = currentSectionData.gallery_images || [];
+                        const currentVal = imgs[idx] || '';
+                        return (
+                          <div key={idx} className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
+                            <div className="flex justify-between items-center text-[10px] font-bold text-slate-700">
+                              <span>ছবি নং {idx + 1} (Image {idx + 1})</span>
+                              {currentVal && <span className="text-emerald-600">✓ লিঙ্কড</span>}
+                            </div>
+                            
+                            {/* Short preview of thumbnail */}
+                            {currentVal && (
+                              <div className="h-14 w-full rounded-md overflow-hidden bg-white border border-slate-200 flex items-center justify-center">
+                                <img src={currentVal} alt={`Thumb ${idx + 1}`} className="h-full object-contain" referrerPolicy="no-referrer" />
+                              </div>
+                            )}
+
+                            {/* Upload feature */}
+                            <label className="block cursor-pointer bg-white border border-slate-300 hover:bg-slate-50 text-slate-755 text-[10px] font-black py-1 px-2 text-center rounded-lg shadow-3xs transition">
+                              📤 আপলোড করুন ({idx + 1})
+                              <input 
+                                type="file" 
+                                accept="image/*"
+                                onChange={async (e) => {
+                                  const f = e.target.files?.[0];
+                                  if (f) {
+                                    const base64 = await compressImage(f);
+                                    const newImgs = [...imgs];
+                                    newImgs[idx] = base64;
+                                    handleUpdateValue(activeSection, 'gallery_images', newImgs);
+                                  }
+                                }}
+                                className="hidden" 
+                              />
+                            </label>
+
+                            <input 
+                              type="text"
+                              value={currentVal}
+                              onChange={(e) => {
+                                const newImgs = [...imgs];
+                                newImgs[idx] = e.target.value;
+                                handleUpdateValue(activeSection, 'gallery_images', newImgs);
+                              }}
+                              placeholder="অথবা লিখুন https://example.com/photo.jpg"
+                              className="w-full text-[10px] px-2 py-1.5 bg-white border border-slate-200 rounded text-slate-800 focus:outline-none"
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   {/* Dynamic Video Embed URL (for live video section only) */}
                   {activeSection === 'raincoat_live_video' && (
                     <div>
@@ -1294,6 +2129,7 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
             </div>
 
           </div>
+        </div>
 
           {/* Visual Live Device Simulator Panel */}
           {editorMode === 'visual' && (
@@ -1317,9 +2153,9 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
                     <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>
                   </div>
                   <div className="flex-1 max-w-[280px] mx-auto text-center bg-white border border-slate-200 py-0.5 rounded text-slate-500 font-sans font-extrabold text-[10px] truncate px-1.5">
-                    🌐 raincoat-factory.bd/{activePage}
+                    🌐 raincoat-factory.bd/{activePage === 'combo' ? 'rancoatcovercombo' : activePage === 'boxer' ? 'boxer' : activePage}
                   </div>
-                  <div className="shrink-0 flex items-center gap-1.5">
+                  <div className="shrink-0 flex items-center gap-1.5 font-sans">
                     {previewTab === 'iframe' && (
                       <button
                         type="button"
@@ -1344,7 +2180,7 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
                     <div className="w-full h-full min-h-[440px] bg-white relative flex-1">
                       <iframe
                         id="preview-iframe"
-                        src={`${window.location.origin}${activePage === 'raincoat' ? '/raincoat' : '/bikecover'}`}
+                        src={`${window.location.origin}${activePage === 'raincoat' ? '/raincoat' : activePage === 'bikecover' ? '/bikecover' : activePage === 'combo' ? '/rancoatcovercombo' : '/boxer'}`}
                         className="w-full h-full min-h-[440px] border-0"
                         title="Visual Site Preview iframe"
                       />

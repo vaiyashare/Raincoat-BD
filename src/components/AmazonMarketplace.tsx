@@ -6,7 +6,7 @@ import {
   X, Check, AlertCircle, RefreshCw
 } from 'lucide-react';
 import { RaincoatOrder } from '../types';
-import { getProductsFromFirestore, saveAllProductsToFirestore, getBannerSettingsFromFirestore, getAdvancedAddonsSettingsFromFirestore } from '../lib/firebase';
+import { getProductsFromFirestore, saveAllProductsToFirestore, getBannerSettingsFromFirestore, getAdvancedAddonsSettingsFromFirestore, getPagesFromFirestore } from '../lib/firebase';
 import { HomepageBannerSlide } from '../types';
 
 interface Product {
@@ -155,26 +155,59 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
   };
 
   const fetchBannersData = async () => {
+    let baseSlides: HomepageBannerSlide[] = [];
     try {
       const fbBanners = await getBannerSettingsFromFirestore();
       if (fbBanners && Array.isArray(fbBanners.slides) && fbBanners.slides.length > 0) {
-        setBanners(fbBanners.slides);
-        return;
+        baseSlides = [...fbBanners.slides];
       }
     } catch (e) {
       console.warn("Error getting Firestore banners on home:", e);
     }
-    const cached = localStorage.getItem('raincoat_banner_settings_fallback');
-    if (cached) {
-      try {
-        const parsed = JSON.parse(cached);
-        if (parsed && Array.isArray(parsed.slides) && parsed.slides.length > 0) {
-          setBanners(parsed.slides);
-          return;
-        }
-      } catch (_) {}
+
+    if (baseSlides.length === 0) {
+      const cached = localStorage.getItem('raincoat_banner_settings_fallback');
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (parsed && Array.isArray(parsed.slides) && parsed.slides.length > 0) {
+            baseSlides = [...parsed.slides];
+          }
+        } catch (_) {}
+      }
     }
-    setBanners(defaultBanners);
+
+    if (baseSlides.length === 0) {
+      baseSlides = [...defaultBanners];
+    }
+
+    // Fetch custom landing pages to dynamically expand the slider!
+    try {
+      const customPages = await getPagesFromFirestore();
+      if (customPages && customPages.length > 0) {
+        const pageSlides = customPages.map(page => {
+          const bestText = page.blocks?.find(b => b.type === 'text' || b.type === 'headline')?.content || 'বিশেষ ল্যান্ডিং ডাবল অফার পেইজ!';
+          return {
+            badge: "ল্যান্ডিং অফার (Offer)",
+            badgeColor: "bg-teal-600/15 border-teal-500/20 text-teal-400",
+            title: page.title || 'বিশেষ অফার প্রোডাক্ট',
+            description: bestText.length > 150 ? bestText.substring(0, 150) + '...' : bestText,
+            bgType: 'gradient' as const,
+            bgGradient: "from-slate-900 via-teal-910 to-indigo-950",
+            textColor: "text-white",
+            primaryBtnText: "✨ অফারটি দেখুন",
+            primaryBtnLink: `/${page.slug}`,
+            secondaryBtnText: "🛒 সম্পূর্ণ শপ",
+            secondaryBtnLink: "/shop"
+          };
+        });
+        baseSlides = [...baseSlides, ...pageSlides];
+      }
+    } catch (err) {
+      console.warn("Could not dynamically append landing pages to slider:", err);
+    }
+
+    setBanners(baseSlides);
   };
 
   const handleButtonAction = (link: string) => {
@@ -434,6 +467,14 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
                         description.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchCategory = selectedCategory === 'All' || category.trim() === selectedCategory.trim();
+    
+    // Check manual homepage category products selection
+    if (siteSettings?.homepage_manual_selection_enabled) {
+      const selectedIds = siteSettings?.homepage_category_products?.[category] || [];
+      if (!selectedIds.includes(product.id)) {
+        return false;
+      }
+    }
     
     return matchSearch && matchCategory;
   });
@@ -804,106 +845,215 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
         </div>
       </section>
 
-      {/* 📦 Alibaba Style Grid displaying 13 dynamic items */}
       <main className="max-w-7xl mx-auto px-4 mt-4">
-        {filteredProducts.length === 0 ? (
-          <div className="bg-white border rounded-2xl p-16 text-center text-slate-500 max-w-lg mx-auto shadow-sm">
-            <AlertCircle className="h-12 w-12 text-slate-400 mx-auto mb-3" />
-            <p className="font-extrabold text-sm text-slate-800">দুঃখিত! অনুসন্ধানকৃত কি-ওয়ার্ডের কোনো প্রোডাক্ট খুজে পাওয়া যায়নি।</p>
-            <button 
-              onClick={() => { setSearchTerm(''); setSelectedCategory('All'); }}
-              className="mt-4 px-4 py-2 bg-slate-900 text-white font-bold text-xs rounded-lg hover:bg-slate-800 cursor-pointer"
-            >
-              রিসেট করুন
-            </button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {filteredProducts.map((product) => {
-              const oldPrice = getOldPrice(product.price);
-              const discountPct = Math.round(((oldPrice - product.price) / oldPrice) * 105);
-              
-              return (
-                <div 
-                  key={product.id}
-                  className="bg-white border border-slate-200/85 rounded-2xl overflow-hidden shadow-xs hover:shadow-lg hover:border-orange-200 group flex flex-col justify-between transition-all duration-300 relative text-left"
-                >
-                  
-                  {/* ABSOLUTE DISCOUNT BADGE */}
-                  <span className="absolute top-3 left-3 bg-orange-600 text-white text-[10px] font-black px-2 py-0.5 rounded-md shadow-xs z-10 animate-bounce">
-                    {discountPct}% OFF
-                  </span>
+        {searchTerm || selectedCategory !== 'All' ? (
+          // Search/filter fallback grid view
+          filteredProducts.length === 0 ? (
+            <div className="bg-white border rounded-2xl p-16 text-center text-slate-500 max-w-lg mx-auto shadow-sm">
+              <AlertCircle className="h-12 w-12 text-slate-400 mx-auto mb-3" />
+              <p className="font-extrabold text-sm text-slate-800">দুঃখিত! অনুসন্ধানকৃত কি-ওয়ার্ডের কোনো প্রোডাক্ট খুজে পাওয়া যায়নি।</p>
+              <button 
+                onClick={() => { setSearchTerm(''); setSelectedCategory('All'); }}
+                className="mt-4 px-4 py-2 bg-slate-900 text-white font-bold text-xs rounded-lg hover:bg-slate-800 cursor-pointer"
+              >
+                রিসেট করুন
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              {filteredProducts.map((product) => {
+                const oldPrice = getOldPrice(product.price);
+                const discountPct = Math.round(((oldPrice - product.price) / oldPrice) * 105);
+                
+                return (
+                  <div 
+                    key={product.id}
+                    className="bg-white border border-slate-200/85 rounded-2xl overflow-hidden shadow-xs hover:shadow-lg hover:border-orange-200 group flex flex-col justify-between transition-all duration-300 relative text-left"
+                  >
+                    <span className="absolute top-3 left-3 bg-orange-600 text-white text-[10px] font-black px-2 py-0.5 rounded-md shadow-xs z-10 animate-bounce">
+                      {discountPct}% OFF
+                    </span>
 
-                  {/* Rating or tag on card upper right */}
-                  <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-xs text-[10px] text-slate-800 font-extrabold px-1.5 py-0.5 rounded border border-slate-200 shadow-xs z-10 flex items-center gap-0.5 font-mono">
-                    <Star className="h-3 w-3 text-amber-500 fill-amber-500 shrink-0" />
-                    4.9
-                  </div>
-
-                  {/* Product Image Area */}
-                  <div className="bg-slate-50 cursor-pointer relative aspect-square overflow-hidden border-b border-slate-100" onClick={() => setSelectedProduct(product)}>
-                    <img 
-                      src={product.image} 
-                      alt={product.title} 
-                      onError={(e) => {
-                        // Keep absolute safety
-                        e.currentTarget.src = 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=600';
-                      }}
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                      referrerPolicy="no-referrer"
-                    />
-                    <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <button className="px-3.5 py-1.8 bg-white/95 backdrop-blur-xs text-slate-900 font-black text-xs rounded-xl shadow-md flex items-center gap-1 scale-90 group-hover:scale-100 transition-all">
-                        <Eye className="h-3.5 w-3.5" /> বিস্তারিত দেখুন
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Content Area */}
-                  <div className="p-4 flex-1 flex flex-col justify-between text-left">
-                    <div className="space-y-1.5">
-                      <span className="text-[10px] font-extrabold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full inline-block">
-                        {product.category}
-                      </span>
-                      <h4 
-                        onClick={() => setSelectedProduct(product)}
-                        className="font-extrabold text-slate-900 text-xs sm:text-xs sm:leading-relaxed line-clamp-2 hover:text-orange-600 cursor-pointer transition-colors"
-                      >
-                        {product.title}
-                      </h4>
-                      <p className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed">
-                        {product.description}
-                      </p>
+                    <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-xs text-[10px] text-slate-800 font-extrabold px-1.5 py-0.5 rounded border border-slate-200 shadow-xs z-10 flex items-center gap-0.5 font-mono">
+                      <Star className="h-3 w-3 text-amber-500 fill-amber-500 shrink-0" />
+                      4.9
                     </div>
 
-                    <div className="mt-4 space-y-3">
-                      {/* Price Grid */}
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-sm sm:text-base font-black text-orange-600">৳{product.price}</span>
-                        <span className="text-xs text-slate-400 font-bold line-through font-mono">৳{oldPrice}</span>
-                        <span className="text-[9px] text-orange-650 font-extrabold font-sans">কুরিয়ার চার্জ প্রযোজ্য</span>
+                    <div className="bg-slate-50 cursor-pointer relative aspect-square overflow-hidden border-b border-slate-100" onClick={() => setSelectedProduct(product)}>
+                      <img 
+                        src={product.image} 
+                        alt={product.title} 
+                        onError={(e) => {
+                          e.currentTarget.src = 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=600';
+                        }}
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <button className="px-3.5 py-1.8 bg-white/95 backdrop-blur-xs text-slate-900 font-black text-xs rounded-xl shadow-md flex items-center gap-1 scale-90 group-hover:scale-100 transition-all">
+                          <Eye className="h-3.5 w-3.5" /> বিস্তারিত দেখুন
+                        </button>
                       </div>
+                    </div>
 
-                      {/* Buy Action Triggers */}
-                      <div className="flex gap-2">
-                        <button
+                    <div className="p-4 flex-1 flex flex-col justify-between text-left">
+                      <div className="space-y-1.5">
+                        <span className="text-[10px] font-extrabold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full inline-block">
+                          {product.category}
+                        </span>
+                        <h4 
                           onClick={() => setSelectedProduct(product)}
-                          className="flex-1 py-2 border border-slate-200 hover:border-slate-350 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-[10px] sm:text-xs rounded-xl transition cursor-pointer"
+                          className="font-extrabold text-slate-900 text-xs sm:text-xs sm:leading-relaxed line-clamp-2 hover:text-orange-600 cursor-pointer transition-colors"
                         >
-                          বিস্তারিত
-                        </button>
-                        
-                        <button
-                          onClick={() => handleOpenQuickOrder(product)}
-                          className="flex-1.5 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-slate-950 font-black text-[10px] sm:text-xs rounded-xl transition shadow-sm hover:shadow-md cursor-pointer flex items-center justify-center gap-1"
-                        >
-                          <ShoppingBag className="h-3 w-3 shrink-0" /> ক্যাশ অন ডেলিভারি
-                        </button>
+                          {product.title}
+                        </h4>
+                        <p className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed">
+                          {product.description}
+                        </p>
                       </div>
 
+                      <div className="mt-4 space-y-3">
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-sm sm:text-base font-black text-orange-600">৳{product.price}</span>
+                          <span className="text-xs text-slate-400 font-bold line-through font-mono">৳{oldPrice}</span>
+                        </div>
+
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setSelectedProduct(product)}
+                            className="flex-1 py-2 border border-slate-200 hover:border-slate-350 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-[10px] sm:text-xs rounded-xl transition cursor-pointer"
+                          >
+                            বিস্তারিত
+                          </button>
+                          
+                          <button
+                            onClick={() => handleOpenQuickOrder(product)}
+                            className="flex-1.5 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-slate-950 font-black text-[10px] sm:text-xs rounded-xl transition shadow-sm hover:shadow-md cursor-pointer flex items-center justify-center gap-1"
+                          >
+                            <ShoppingBag className="h-3 w-3 shrink-0" /> ক্যাশ অন ডেলিভারি
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
+                );
+              })}
+            </div>
+          )
+        ) : (
+          // Mega View: Show all products grouped by category on homepages
+          <div className="space-y-12">
+            {categoriesList.filter(c => c !== 'All').map(cat => {
+              let catProducts = products.filter(p => p && p.category === cat);
+              
+              if (siteSettings?.homepage_manual_selection_enabled) {
+                const selectedIds = siteSettings?.homepage_category_products?.[cat] || [];
+                catProducts = catProducts.filter(p => p && selectedIds.includes(p.id));
+                catProducts.sort((a, b) => selectedIds.indexOf(a.id) - selectedIds.indexOf(b.id));
+              }
+              
+              if (catProducts.length === 0) return null;
+              
+              // Get custom visual details for headers
+              const catHeading = cat === 'রেইনকোট' ? '🌧️ রেইনকোট কালেকশন (Premium Rain Jackets)' :
+                                cat === 'বাইকিং গিয়ার' ? '🏍️ বাইকারস গিয়ার ও কভার (Bike Enclosures)' :
+                                cat === 'অনুষঙ্গ' ? '🎒 অনুষঙ্গ ও নিরাপত্তা সামগ্রী' : `📦 ${cat} জোন`;
 
+              return (
+                <div key={cat} className="space-y-4">
+                  {/* Category Header Ribbon Banner */}
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-2 bg-slate-100/50 p-2 rounded-xl">
+                    <h3 className="text-sm sm:text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                      <span className="text-orange-550 text-base">{catHeading}</span>
+                      <span className="text-[10px] bg-orange-600/10 text-orange-600 border border-orange-600/20 px-2 py-0.5 rounded-full font-black">
+                        {catProducts.length} টি পণ্য
+                      </span>
+                    </h3>
+                    <button 
+                      onClick={() => setSelectedCategory(cat)}
+                      className="text-[11px] font-extrabold text-orange-600 hover:text-orange-700 underline"
+                    >
+                      সবগুলি দেখুন ➔
+                    </button>
+                  </div>
+
+                  {/* Responsive grid for this category */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                    {catProducts.map((product) => {
+                      const oldPrice = getOldPrice(product.price);
+                      const discountPct = Math.round(((oldPrice - product.price) / oldPrice) * 105);
+
+                      return (
+                        <div 
+                          key={product.id}
+                          className="bg-white border border-slate-200/85 rounded-2xl overflow-hidden shadow-xs hover:shadow-lg hover:border-orange-200 group flex flex-col justify-between transition-all duration-300 relative text-left animate-fade-in"
+                        >
+                          <span className="absolute top-3 left-3 bg-orange-600 text-white text-[10px] font-black px-2 py-0.5 rounded-md shadow-xs z-10">
+                            {discountPct}% OFF
+                          </span>
+
+                          <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-xs text-[10px] text-slate-800 font-extrabold px-1.5 py-0.5 rounded border border-slate-200 shadow-xs z-10 flex items-center gap-0.5 font-mono">
+                            <Star className="h-3 w-3 text-amber-500 fill-amber-500 shrink-0" />
+                            4.9
+                          </div>
+
+                          <div className="bg-slate-50 cursor-pointer relative aspect-square overflow-hidden border-b border-slate-100" onClick={() => setSelectedProduct(product)}>
+                            <img 
+                              src={product.image} 
+                              alt={product.title} 
+                              onError={(e) => {
+                                e.currentTarget.src = 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=600';
+                              }}
+                              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                              referrerPolicy="no-referrer"
+                            />
+                            <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                              <button className="px-3.5 py-1.8 bg-white/95 backdrop-blur-xs text-slate-900 font-black text-xs rounded-xl shadow-md flex items-center gap-1 scale-90 group-hover:scale-100 transition-all">
+                                <Eye className="h-3.5 w-3.5" /> বিস্তারিত দেখুন
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="p-4 flex-1 flex flex-col justify-between text-left">
+                            <div className="space-y-1.5">
+                              <h4 
+                                onClick={() => setSelectedProduct(product)}
+                                className="font-extrabold text-slate-900 text-xs sm:text-xs sm:leading-relaxed line-clamp-2 hover:text-orange-600 cursor-pointer transition-colors"
+                              >
+                                {product.title}
+                              </h4>
+                              <p className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed">
+                                {product.description}
+                              </p>
+                            </div>
+
+                            <div className="mt-4 space-y-3">
+                              <div className="flex items-baseline gap-2">
+                                <span className="text-sm sm:text-base font-black text-orange-600">৳{product.price}</span>
+                                <span className="text-xs text-slate-400 font-bold line-through font-mono">৳{oldPrice}</span>
+                              </div>
+
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => setSelectedProduct(product)}
+                                  className="flex-1 py-2 border border-slate-200 hover:border-slate-350 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-[10px] sm:text-xs rounded-xl transition cursor-pointer"
+                                >
+                                  বিস্তারিত
+                                </button>
+                                
+                                <button
+                                  onClick={() => handleOpenQuickOrder(product)}
+                                  className="flex-1.5 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-slate-950 font-black text-[10px] sm:text-xs rounded-xl transition shadow-sm hover:shadow-md cursor-pointer flex items-center justify-center gap-1"
+                                >
+                                  <ShoppingBag className="h-3 w-3 shrink-0" /> ক্যাশ অন ডেলিভারি
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })}

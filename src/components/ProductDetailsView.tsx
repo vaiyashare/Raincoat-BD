@@ -52,11 +52,92 @@ export default function ProductDetailsView({ productSlug }: ProductDetailsViewPr
         setAddons(fbAddons);
 
         // Find match based on product title slug match
+        const englishMap: Record<string, string> = {
+          'premium-waterproof-raincoat': 'p-1',
+          'premium-raincoat': 'p-1',
+          'raincoat-jacket-pant': 'p-1',
+          
+          'heavy-duty-waterproof-motorcycle-shoe-cover': 'p-2',
+          'shoe-guard': 'p-2',
+          'shoe-cover': 'p-2',
+          'motorcycle-shoe-cover': 'p-2',
+
+          'double-part-windproof-umbrella': 'p-3',
+          'premium-laptop-defense': 'p-3',
+          'umbrella': 'p-3',
+
+          'motorcycle-handlebar-waterproof-hand-gloves': 'p-4',
+          'motorcycle-gloves': 'p-4',
+          'gloves': 'p-4',
+
+          'premium-self-locking-waterproof-bike-mobile-holder': 'p-5',
+          'bike-mobile-holder': 'p-5',
+          'mobile-holder': 'p-5',
+
+          'backpack-waterproof-ultra-shield-rain-cover': 'p-6',
+          'backpack-cover': 'p-6',
+          'rain-shield': 'p-6',
+
+          'sports-ultra-light-breathable-windbreaker-rain-jacket': 'p-7',
+          'sports-rain-jacket': 'p-7',
+          'windbreaker': 'p-7',
+
+          'kids-funny-cartoon-waterproof-raincoat': 'p-8',
+          'kids-raincoat': 'p-8',
+
+          'ladies-classic-long-belt-raincoat-trail-coat': 'p-9',
+          'ladies-raincoat': 'p-9',
+          'ladies-long-coat': 'p-9',
+
+          'outdoor-travelers-waterproof-dry-bag': 'p-10',
+          'dry-bag': 'p-10',
+          'travelers-bag': 'p-10',
+
+          'night-safe-high-visibility-reflective-safety-rain-vest': 'p-11',
+          'reflective-safety-vest': 'p-11',
+          'safety-vest': 'p-11',
+          'rain-vest': 'p-11',
+
+          'heavy-heat-sealed-premium-rain-poncho': 'p-12',
+          'premium-rain-poncho': 'p-12',
+          'rain-poncho': 'p-12',
+          'poncho': 'p-12',
+
+          'silicon-elastic-anti-slip-rain-shoe-cover': 'p-13',
+          'silicon-shoe-cover': 'p-13',
+
+          '100-waterproof-dustproof-premium-bike-cover': 'p-14',
+          'premium-bike-cover': 'p-14',
+          'bike-cover': 'p-14'
+        };
+
         const decodedSlug = decodeURIComponent(productSlug).toLowerCase().replace(/-/g, ' ');
-        const matched = fbProducts.find(p => {
-          const matchTitle = p.title.toLowerCase().replace(/-/g, ' ');
-          return matchTitle.includes(decodedSlug) || decodedSlug.includes(matchTitle);
-        }) || fbProducts[0]; // fallback to first product if slug not found
+        const slugKey = productSlug.toLowerCase().trim();
+        
+        let matched = null;
+        if (englishMap[slugKey]) {
+          matched = fbProducts.find(p => p.id === englishMap[slugKey]);
+        }
+        
+        if (!matched) {
+          const matchedBySlugMap = Object.entries(englishMap).find(([key, _]) => {
+            return key.includes(slugKey) || slugKey.includes(key);
+          });
+          if (matchedBySlugMap) {
+            matched = fbProducts.find(p => p.id === matchedBySlugMap[1]);
+          }
+        }
+
+        if (!matched) {
+          matched = fbProducts.find(p => {
+            const matchTitle = p.title.toLowerCase().replace(/-/g, ' ');
+            return matchTitle.includes(decodedSlug) || decodedSlug.includes(matchTitle);
+          });
+        }
+
+        if (!matched) {
+          matched = fbProducts[0];
+        }
 
         if (matched) {
           setProduct(matched);

@@ -214,9 +214,30 @@
         "createdAt": { "type": "string", "description": "Creation timestamp string" }
       },
       "required": ["id", "email", "createdAt"]
+    },
+    "SEOConfig": {
+      "title": "SEO Configuration",
+      "description": "Store custom page-by-page and product-by-product metadata configurations for SEO optimization",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Global unique ID or path locator key, e.g. homepage, shop, path" },
+        "path": { "type": "string", "description": "Target website route path" },
+        "title": { "type": "string", "description": "SEO head document title tag text" },
+        "description": { "type": "string", "description": "SEO head meta description tag content" },
+        "keywords": { "type": "string", "description": "SEO head meta keywords comma separated listing" },
+        "ogImage": { "type": "string", "description": "Social media preview open graph thumbnail image URL" },
+        "ogTitle": { "type": "string", "description": "Social media sharing title tag content" },
+        "ogDescription": { "type": "string", "description": "Social media sharing description tag content" },
+        "lastUpdated": { "type": "string", "description": "Timestamp for the last edit session" }
+      },
+      "required": ["id", "path", "title", "description"]
     }
   },
   "firestore": {
+    "seoConfigs/{seoId}": {
+      "schema": "SEOConfig",
+      "description": "Search engine dynamic meta optimization configuration records for each path or page"
+    },
     "subscribers/{subscriberId}": {
       "schema": "Subscriber",
       "description": "Store newsletter and updates subscriber email entries"

@@ -275,6 +275,68 @@ async function startServer() {
     }
   });
 
+  // Sitemap.xml Dynamic Route
+  app.get("/sitemap.xml", (req, res) => {
+    res.header('Content-Type', 'application/xml');
+    
+    const host = req.get('host') || 'raincoat-factory.bd';
+    const protocol = req.secure ? 'https' : 'http';
+    const baseUrl = `${protocol}://${host}`;
+
+    const staticRoutes = [
+      '',
+      '/shop',
+      '/raincoat',
+      '/bikecover',
+      '/rancoatcovercombo',
+      '/boxer',
+      '/track-order',
+      '/order-history',
+      '/cart'
+    ];
+
+    const productsSlugs = [
+      'premium-waterproof-raincoat',
+      'heavy-duty-waterproof-motorcycle-shoe-cover',
+      'double-part-windproof-umbrella',
+      'motorcycle-handlebar-waterproof-gloves',
+      'premium-self-locking-bike-mobile-holder',
+      'backpack-waterproof-ultra-shield',
+      'sports-ultra-light-windbreaker',
+      'kids-funny-cartoon-raincoat',
+      'ladies-classic-long-belt-raincoat',
+      'outdoor-travelers-waterproof-dry-bag',
+      'night-safe-reflective-safety-vest',
+      'heavy-heat-sealed-rain-poncho',
+      'silicon-elastic-anti-slip-shoe-cover',
+      'premium-bike-cover'
+    ];
+
+    let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+    xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
+
+    staticRoutes.forEach(route => {
+      xml += `  <url>\n`;
+      xml += `    <loc>${baseUrl}${route}</loc>\n`;
+      xml += `    <lastmod>${new Date().toISOString().substring(0, 10)}</lastmod>\n`;
+      xml += `    <changefreq>${route === '' || route === '/shop' ? 'daily' : 'weekly'}</changefreq>\n`;
+      xml += `    <priority>${route === '' ? '1.0' : route === '/shop' ? '0.9' : '0.8'}</priority>\n`;
+      xml += `  </url>\n`;
+    });
+
+    productsSlugs.forEach(slug => {
+      xml += `  <url>\n`;
+      xml += `    <loc>${baseUrl}/product/${slug}</loc>\n`;
+      xml += `    <lastmod>${new Date().toISOString().substring(0, 10)}</lastmod>\n`;
+      xml += `    <changefreq>weekly</changefreq>\n`;
+      xml += `    <priority>0.7</priority>\n`;
+      xml += `  </url>\n`;
+    });
+
+    xml += `</urlset>`;
+    res.send(xml);
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

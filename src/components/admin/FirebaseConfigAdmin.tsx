@@ -283,39 +283,24 @@ export default function FirebaseConfigAdmin() {
                 className="w-full px-4 py-2.5 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white placeholder-slate-600 focus:outline-hidden focus:border-amber-500 transition font-mono"
               />
             </div>
-
-            {/* Measurement ID */}
-            <div className="space-y-1.5">
-              <label className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                Measurement ID
-              </label>
-              <input
-                type="text"
-                value={config?.measurementId || ''}
-                onChange={(e) => handleChange('measurementId', e.target.value)}
-                placeholder="e.g. G-XXXXXX"
-                className="w-full px-4 py-2.5 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white placeholder-slate-600 focus:outline-hidden focus:border-amber-500 transition font-mono"
-              />
-            </div>
-
           </div>
 
           <div className="flex justify-end pt-4 border-t border-slate-850">
-            <button
-              type="submit"
-              disabled={saving}
-              className="w-full sm:w-auto px-6 py-2.5 bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-600 hover:to-rose-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-amber-500/15 flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              {saving ? (
-                <RefreshCw className="h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4" />
-              )}
-              <span>সেটিংস পরিবর্তন করুন</span>
-            </button>
-          </div>
-        </form>
+              <button
+                type="submit"
+                disabled={saving}
+                className="w-full sm:w-auto px-6 py-2.5 bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-600 hover:to-rose-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-amber-500/15 flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                {saving ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                <span>সেটিংস পরিবর্তন করুন</span>
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }

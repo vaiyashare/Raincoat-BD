@@ -256,6 +256,8 @@ export interface AdvancedAddonsSettings {
   footer_snippets?: string;
   section_customizations?: Record<string, any>;
   bike_triple_cards?: { title: string; imageUrl: string; description?: string }[];
+  homepage_manual_selection_enabled?: boolean;
+  homepage_category_products?: Record<string, string[]>;
 }
 
 export interface Coupon {
@@ -272,6 +274,19 @@ export interface Subscriber {
   email: string;
   createdAt: string;
 }
+
+export interface SEOConfig {
+  id: string;
+  path: string;
+  title: string;
+  description: string;
+  keywords: string;
+  ogImage: string;
+  ogTitle: string;
+  ogDescription: string;
+  lastUpdated: string;
+}
+
 
 
 

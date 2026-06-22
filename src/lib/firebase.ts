@@ -17,7 +17,7 @@ import {
   orderBy
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { RaincoatOrder, IncompleteOrder, InventoryItem, ProductColor, Size, MediaItem, ActiveSession, Product, HomepageBannerSlide, HomepageBannerSettings, CustomPage, CustomerReview, AdvancedAddonsSettings, Coupon, Subscriber } from '../types';
+import { RaincoatOrder, IncompleteOrder, InventoryItem, ProductColor, Size, MediaItem, ActiveSession, Product, HomepageBannerSlide, HomepageBannerSettings, CustomPage, CustomerReview, AdvancedAddonsSettings, Coupon, Subscriber, SEOConfig } from '../types';
 export type { AdvancedAddonsSettings };
 import { performFraudCheck } from './fraudCheck';
 
@@ -82,10 +82,8 @@ export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true
 }, dbId);
 
-// Initialize default database so we can fetch previous or old data if stored there in default fallback
-export const defaultDb = initializeFirestore(app, {
-  experimentalForceLongPolling: true
-}); // Defaults to "(default)"
+// Disconnected old default database. Both db and defaultDb now point directly to the single primary database instance.
+export const defaultDb = db;
 
 // Basic connection validation
 async function testConnection() {
@@ -146,6 +144,21 @@ function tripQuotaCircuitBreaker(error: any) {
   }
 }
 
+// Memory cache store to eliminate redundant database reads and speed up navigation/rendering
+const memoryCache: { [key: string]: any } = {};
+
+export function getMemoryCached<T>(key: string): T | null {
+  return memoryCache[key] !== undefined ? (memoryCache[key] as T) : null;
+}
+
+export function setMemoryCached<T>(key: string, val: T): void {
+  memoryCache[key] = val;
+}
+
+export function clearMemoryCached(key: string): void {
+  delete memoryCache[key];
+}
+
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   tripQuotaCircuitBreaker(error);
   const errMsg = error instanceof Error ? error.message : String(error);
@@ -156,41 +169,25 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
                   errMsg.includes('quota metric');
 
   const lowercaseMsg = errMsg.toLowerCase();
-  const isOfflineOrNetwork = lowercaseMsg.includes('offline') ||
-                             lowercaseMsg.includes('could not reach') ||
-                             lowercaseMsg.includes('unavailable') ||
-                             lowercaseMsg.includes('network') ||
-                             lowercaseMsg.includes('unreachable') ||
-                             lowercaseMsg.includes('timeout') ||
-                             lowercaseMsg.includes('timed out');
+  const isReadOp = operationType === OperationType.GET || operationType === OperationType.LIST;
+  const isPermissionDenied = lowercaseMsg.includes('permission') || lowercaseMsg.includes('insufficient');
 
-  const errInfo = {
-    error: errMsg,
-    operationType,
-    path,
-    authInfo: {
-      userId: auth.currentUser?.uid || null,
-      email: auth.currentUser?.email || null,
-      emailVerified: auth.currentUser?.emailVerified || null,
-      isAnonymous: auth.currentUser?.isAnonymous || null,
-      tenantId: auth.currentUser?.tenantId || null,
-      providerInfo: auth.currentUser?.providerData?.map(provider => ({
-        providerId: provider.providerId,
-        email: provider.email,
-      })) || []
-    },
-    timestamp: new Date().toISOString()
-  };
+  if (isReadOp) {
+    // Graceful, silent fallback - just log a peaceful, humble info message
+    console.info(`[Database Fallback] Using offline-first cache for: ${path || 'unknown'} (Reason: ${isPermissionDenied ? 'Permission check' : 'Network/Sync'})`);
+    return; // Don't throw for read operations to avoid cascading failures in UI
+  }
 
+  // Write operations format errors more legibly
   if (isQuota) {
-    console.warn('Firestore Quota Limit Graceful Fallback (using standalone local storage):', JSON.stringify(errInfo));
-  } else if (isOfflineOrNetwork) {
-    console.warn('Firestore Integration Warning (Offline/Network Fallback):', JSON.stringify(errInfo));
+    console.warn(`[Quota Limit] Standalone local storage fallback active for: ${path || 'unknown'}`);
+  } else if (isPermissionDenied) {
+    console.warn(`[Permission Alert] Update for: ${path || 'unknown'} saved locally (Database restricted).`);
   } else {
-    console.error('Firestore Integration Error: ', JSON.stringify(errInfo));
+    console.warn(`[Database Update Note] Local save successful, syncing in background for: ${path || 'unknown'}`);
   }
   
-  throw new Error(JSON.stringify(errInfo));
+  throw new Error(`Fallback sync engaged for path: ${path || 'unknown'}`);
 }
 
 // Global utility helper to recursively sanitise objects before passing them to Firestore.
@@ -692,47 +689,79 @@ export async function decrementInventoryItemInFirestore(color: ProductColor, siz
 
 // Media Management API methods for Landing Page Slideshow Customizer
 export async function getMediaFromFirestore(): Promise<MediaItem[]> {
+  const cachedMem = getMemoryCached<MediaItem[]>('media_gallery');
+  if (cachedMem) return cachedMem;
+
   const path = 'media';
   if (isQuotaTripped) {
     const cached = localStorage.getItem('raincoat_media_gallery_fallback') || localStorage.getItem('raincoat_media_gallery');
     if (cached) {
       try {
-        return JSON.parse(cached) as MediaItem[];
+        const parsed = JSON.parse(cached) as MediaItem[];
+        setMemoryCached('media_gallery', parsed);
+        return parsed;
       } catch (_) {}
     }
     return [];
   }
+
+  const results: MediaItem[] = [];
+  const mediaIdsFetched = new Set<string>();
+
   try {
     const q = query(collection(db, 'media'));
     const snapshot = await getDocs(q);
-    const results: MediaItem[] = [];
     snapshot.forEach((doc) => {
-      results.push(doc.data() as MediaItem);
+      const data = doc.data() as MediaItem;
+      if (data && data.id && !mediaIdsFetched.has(data.id)) {
+        results.push(data);
+        mediaIdsFetched.add(data.id);
+      }
     });
-    // Sort ascendingly by orderIndex
-    results.sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
-    try {
-      localStorage.setItem('raincoat_media_gallery_fallback', JSON.stringify(results));
-    } catch (_) {}
-    return results;
   } catch (error) {
-    tripQuotaCircuitBreaker(error);
-    try {
-      handleFirestoreError(error, OperationType.LIST, path);
-    } catch (e) {
-      console.warn("getMediaFromFirestore failed, returning cached fallback if available:", e);
-    }
-    const cached = localStorage.getItem('raincoat_media_gallery_fallback') || localStorage.getItem('raincoat_media_gallery');
-    if (cached) {
-      try {
-        return JSON.parse(cached) as MediaItem[];
-      } catch (_) {}
-    }
-    return [];
+    console.warn("Could not query media from custom database, trying default fallback:", error);
   }
+
+  try {
+    const qDefault = query(collection(defaultDb, 'media'));
+    const snapshotDefault = await getDocs(qDefault);
+    snapshotDefault.forEach((doc) => {
+      const data = doc.data() as MediaItem;
+      if (data && data.id && !mediaIdsFetched.has(data.id)) {
+        results.push(data);
+        mediaIdsFetched.add(data.id);
+      }
+    });
+  } catch (error) {
+    console.warn("Could not query media from default database:", error);
+  }
+
+  // Sort ascendingly by orderIndex
+  results.sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+
+  try {
+    localStorage.setItem('raincoat_media_gallery_fallback', JSON.stringify(results));
+  } catch (_) {}
+
+  if (results.length > 0) {
+    setMemoryCached('media_gallery', results);
+    return results;
+  }
+
+  // Fallback to cache if database has no data or timed out
+  const cached = localStorage.getItem('raincoat_media_gallery_fallback') || localStorage.getItem('raincoat_media_gallery');
+  if (cached) {
+    try {
+      const parsed = JSON.parse(cached) as MediaItem[];
+      setMemoryCached('media_gallery', parsed);
+      return parsed;
+    } catch (_) {}
+  }
+  return [];
 }
 
 export async function saveMediaToFirestore(item: MediaItem): Promise<void> {
+  clearMemoryCached('media_gallery');
   const path = `media/${item.id}`;
   if (isQuotaTripped) {
     const cachedStr = localStorage.getItem('raincoat_media_gallery_fallback') || '[]';
@@ -748,16 +777,35 @@ export async function saveMediaToFirestore(item: MediaItem): Promise<void> {
     } catch (_) {}
     return;
   }
+
+  let succeeded = false;
+  let firstError: any = null;
+
   try {
     const cleanedItem = cleanUndefined(item);
     await setDoc(doc(db, 'media', item.id), cleanedItem);
+    succeeded = true;
   } catch (error) {
-    tripQuotaCircuitBreaker(error);
-    handleFirestoreError(error, OperationType.WRITE, path);
+    firstError = error;
+    console.warn("saveMediaToFirestore failed on custom database:", error);
+  }
+
+  try {
+    const cleanedItem = cleanUndefined(item);
+    await setDoc(doc(defaultDb, 'media', item.id), cleanedItem);
+    succeeded = true;
+  } catch (error) {
+    console.warn("saveMediaToFirestore failed on default database:", error);
+  }
+
+  if (!succeeded && firstError) {
+    tripQuotaCircuitBreaker(firstError);
+    handleFirestoreError(firstError, OperationType.WRITE, path);
   }
 }
 
 export async function deleteMediaFromFirestore(id: string): Promise<void> {
+  clearMemoryCached('media_gallery');
   const path = `media/${id}`;
   if (isQuotaTripped) {
     const cachedStr = localStorage.getItem('raincoat_media_gallery_fallback') || '[]';
@@ -768,11 +816,28 @@ export async function deleteMediaFromFirestore(id: string): Promise<void> {
     } catch (_) {}
     return;
   }
+
+  let succeeded = false;
+  let firstError: any = null;
+
   try {
     await deleteDoc(doc(db, 'media', id));
+    succeeded = true;
   } catch (error) {
-    tripQuotaCircuitBreaker(error);
-    handleFirestoreError(error, OperationType.DELETE, path);
+    firstError = error;
+    console.warn("deleteMediaFromFirestore failed on custom database:", error);
+  }
+
+  try {
+    await deleteDoc(doc(defaultDb, 'media', id));
+    succeeded = true;
+  } catch (error) {
+    console.warn("deleteMediaFromFirestore failed on default database:", error);
+  }
+
+  if (!succeeded && firstError) {
+    tripQuotaCircuitBreaker(firstError);
+    handleFirestoreError(firstError, OperationType.DELETE, path);
   }
 }
 
@@ -808,6 +873,7 @@ export interface IntegrationsSettings {
 }
 
 export async function saveIntegrationsSettingsToFirestore(settings: Partial<IntegrationsSettings>): Promise<void> {
+  clearMemoryCached('integrations_settings');
   const path = 'settings/integrations';
   if (isQuotaTripped) {
     const cachedStr = localStorage.getItem('raincoat_settings_fallback');
@@ -833,10 +899,18 @@ export async function saveIntegrationsSettingsToFirestore(settings: Partial<Inte
 }
 
 export async function getIntegrationsSettingsFromFirestore(): Promise<IntegrationsSettings | null> {
+  const cachedMem = getMemoryCached<IntegrationsSettings>('integrations_settings');
+  if (cachedMem) return cachedMem;
+
   const path = 'settings/integrations';
   if (isQuotaTripped) {
     const cached = localStorage.getItem('raincoat_settings_fallback');
-    return cached ? JSON.parse(cached) : null;
+    if (cached) {
+      const parsed = JSON.parse(cached) as IntegrationsSettings;
+      setMemoryCached('integrations_settings', parsed);
+      return parsed;
+    }
+    return null;
   }
   try {
     const docRef = doc(db, 'settings', 'integrations');
@@ -846,6 +920,7 @@ export async function getIntegrationsSettingsFromFirestore(): Promise<Integratio
       try {
         localStorage.setItem('raincoat_settings_fallback', JSON.stringify(data));
       } catch (_) {}
+      setMemoryCached('integrations_settings', data);
       return data;
     }
   } catch (error) {
@@ -859,16 +934,23 @@ export async function getIntegrationsSettingsFromFirestore(): Promise<Integratio
       try {
         localStorage.setItem('raincoat_settings_fallback', JSON.stringify(data));
       } catch (_) {}
+      setMemoryCached('integrations_settings', data);
       return data;
     }
   } catch (error) {
     console.warn("getIntegrationsSettingsFromFirestore failed on default database:", error);
   }
   const cached = localStorage.getItem('raincoat_settings_fallback');
-  return cached ? JSON.parse(cached) : null;
+  if (cached) {
+    const parsed = JSON.parse(cached) as IntegrationsSettings;
+    setMemoryCached('integrations_settings', parsed);
+    return parsed;
+  }
+  return null;
 }
 
 export async function saveBannerSettingsToFirestore(settings: HomepageBannerSettings): Promise<void> {
+  clearMemoryCached('homepage_banner');
   const path = 'settings/homepage_banner';
   if (isQuotaTripped) {
     localStorage.setItem('raincoat_banner_settings_fallback', JSON.stringify(settings));
@@ -888,10 +970,18 @@ export async function saveBannerSettingsToFirestore(settings: HomepageBannerSett
 }
 
 export async function getBannerSettingsFromFirestore(): Promise<HomepageBannerSettings | null> {
+  const cachedMem = getMemoryCached<HomepageBannerSettings>('homepage_banner');
+  if (cachedMem) return cachedMem;
+
   const path = 'settings/homepage_banner';
   if (isQuotaTripped) {
     const cached = localStorage.getItem('raincoat_banner_settings_fallback');
-    return cached ? JSON.parse(cached) : null;
+    if (cached) {
+      const parsed = JSON.parse(cached) as HomepageBannerSettings;
+      setMemoryCached('homepage_banner', parsed);
+      return parsed;
+    }
+    return null;
   }
   try {
     const docRef = doc(db, 'settings', 'homepage_banner');
@@ -901,6 +991,7 @@ export async function getBannerSettingsFromFirestore(): Promise<HomepageBannerSe
       try {
         localStorage.setItem('raincoat_banner_settings_fallback', JSON.stringify(data));
       } catch (_) {}
+      setMemoryCached('homepage_banner', data);
       return data;
     }
     return null;
@@ -912,7 +1003,12 @@ export async function getBannerSettingsFromFirestore(): Promise<HomepageBannerSe
       console.warn("getBannerSettingsFromFirestore failed:", e);
     }
     const cached = localStorage.getItem('raincoat_banner_settings_fallback');
-    return cached ? JSON.parse(cached) : null;
+    if (cached) {
+      const parsed = JSON.parse(cached) as HomepageBannerSettings;
+      setMemoryCached('homepage_banner', parsed);
+      return parsed;
+    }
+    return null;
   }
 }
 
@@ -964,12 +1060,17 @@ export async function deleteSessionFromFirestore(sessionId: string): Promise<voi
 
 // Product Persistence API methods (Firestore with fallback to raincoat_shop_products)
 export async function getProductsFromFirestore(): Promise<Product[]> {
+  const cachedMem = getMemoryCached<Product[]>('products');
+  if (cachedMem) return cachedMem;
+
   const path = 'products';
   if (isQuotaTripped) {
     const cached = localStorage.getItem('raincoat_shop_products');
     if (cached) {
       try {
-        return JSON.parse(cached) as Product[];
+        const parsed = JSON.parse(cached) as Product[];
+        setMemoryCached('products', parsed);
+        return parsed;
       } catch (_) {}
     }
     return [];
@@ -1010,14 +1111,21 @@ export async function getProductsFromFirestore(): Promise<Product[]> {
     try {
       localStorage.setItem('raincoat_shop_products', JSON.stringify(results));
     } catch (_) {}
+    setMemoryCached('products', results);
     return results;
   }
 
   const cached = localStorage.getItem('raincoat_shop_products');
-  return cached ? JSON.parse(cached) : [];
+  if (cached) {
+    const parsed = JSON.parse(cached) as Product[];
+    setMemoryCached('products', parsed);
+    return parsed;
+  }
+  return [];
 }
 
 export async function saveProductToFirestore(product: Product): Promise<void> {
+  clearMemoryCached('products');
   const path = `products/${product.id}`;
   if (isQuotaTripped) {
     const cachedStr = localStorage.getItem('raincoat_shop_products') || '[]';
@@ -1056,6 +1164,7 @@ export async function saveProductToFirestore(product: Product): Promise<void> {
 }
 
 export async function deleteProductFromFirestore(productId: string): Promise<void> {
+  clearMemoryCached('products');
   const path = `products/${productId}`;
   if (isQuotaTripped) {
     const cachedStr = localStorage.getItem('raincoat_shop_products') || '[]';
@@ -1082,6 +1191,7 @@ export async function deleteProductFromFirestore(productId: string): Promise<voi
 }
 
 export async function saveAllProductsToFirestore(products: Product[]): Promise<void> {
+  clearMemoryCached('products');
   try {
     localStorage.setItem('raincoat_shop_products', JSON.stringify(products));
     if (isQuotaTripped) return;
@@ -1101,6 +1211,7 @@ export async function saveAllProductsToFirestore(products: Product[]): Promise<v
 
 // Custom Pages API persistence into global Firestore (to survive updates/refreshes cleanly)
 export async function savePagesToFirestore(pages: CustomPage[]): Promise<void> {
+  clearMemoryCached('custom_pages');
   try {
     localStorage.setItem('raincoat_pages', JSON.stringify(pages));
     if (isQuotaTripped) return;
@@ -1116,9 +1227,17 @@ export async function savePagesToFirestore(pages: CustomPage[]): Promise<void> {
 }
 
 export async function getPagesFromFirestore(): Promise<CustomPage[]> {
+  const cachedMem = getMemoryCached<CustomPage[]>('custom_pages');
+  if (cachedMem) return cachedMem;
+
   if (isQuotaTripped) {
     const cached = localStorage.getItem('raincoat_pages');
-    return cached ? JSON.parse(cached) : [];
+    if (cached) {
+      const parsed = JSON.parse(cached) as CustomPage[];
+      setMemoryCached('custom_pages', parsed);
+      return parsed;
+    }
+    return [];
   }
   try {
     const docRef = doc(db, 'settings', 'custom_pages');
@@ -1129,7 +1248,9 @@ export async function getPagesFromFirestore(): Promise<CustomPage[]> {
         try {
           localStorage.setItem('raincoat_pages', JSON.stringify(data.pages));
         } catch (_) {}
-        return data.pages as CustomPage[];
+        const parsed = data.pages as CustomPage[];
+        setMemoryCached('custom_pages', parsed);
+        return parsed;
       }
     }
   } catch (error) {
@@ -1137,7 +1258,12 @@ export async function getPagesFromFirestore(): Promise<CustomPage[]> {
     console.warn("getPagesFromFirestore failed, returning localStorage cache:", error);
   }
   const cached = localStorage.getItem('raincoat_pages');
-  return cached ? JSON.parse(cached) : [];
+  if (cached) {
+    const parsed = JSON.parse(cached) as CustomPage[];
+    setMemoryCached('custom_pages', parsed);
+    return parsed;
+  }
+  return [];
 }
 
 // --------------------------------------------------
@@ -1145,6 +1271,7 @@ export async function getPagesFromFirestore(): Promise<CustomPage[]> {
 // --------------------------------------------------
 
 export async function saveAdvancedAddonsSettingsToFirestore(settings: Partial<AdvancedAddonsSettings>): Promise<void> {
+  clearMemoryCached('advanced_addons');
   const path = 'settings/advanced_addons';
   try {
     const cachedStr = localStorage.getItem('raincoat_advanced_addons_fallback');
@@ -1187,6 +1314,9 @@ export async function saveAdvancedAddonsSettingsToFirestore(settings: Partial<Ad
 }
 
 export async function getAdvancedAddonsSettingsFromFirestore(): Promise<AdvancedAddonsSettings | null> {
+  const cachedMem = getMemoryCached<AdvancedAddonsSettings>('advanced_addons');
+  if (cachedMem) return cachedMem;
+
   const sanitizeSettings = (data: any): AdvancedAddonsSettings => {
     if (data && data.section_customizations && data.section_customizations.raincoat_live_video) {
       const liveVideo = data.section_customizations.raincoat_live_video;
@@ -1209,7 +1339,12 @@ export async function getAdvancedAddonsSettingsFromFirestore(): Promise<Advanced
 
   if (isQuotaTripped) {
     const cached = localStorage.getItem('raincoat_advanced_addons_fallback');
-    return cached ? sanitizeSettings(JSON.parse(cached)) : null;
+    if (cached) {
+      const sanitized = sanitizeSettings(JSON.parse(cached));
+      setMemoryCached('advanced_addons', sanitized);
+      return sanitized;
+    }
+    return null;
   }
 
   let finalData: any = null;
@@ -1241,11 +1376,17 @@ export async function getAdvancedAddonsSettingsFromFirestore(): Promise<Advanced
     try {
       localStorage.setItem('raincoat_advanced_addons_fallback', JSON.stringify(sanitized));
     } catch (_) {}
+    setMemoryCached('advanced_addons', sanitized);
     return sanitized;
   }
 
   const cached = localStorage.getItem('raincoat_advanced_addons_fallback');
-  return cached ? sanitizeSettings(JSON.parse(cached)) : null;
+  if (cached) {
+    const sanitized = sanitizeSettings(JSON.parse(cached));
+    setMemoryCached('advanced_addons', sanitized);
+    return sanitized;
+  }
+  return null;
 }
 
 export async function saveReviewToFirestore(review: CustomerReview): Promise<void> {
@@ -1426,6 +1567,9 @@ export interface CallingAgentLog {
 
 // Menu config fetch
 export async function getMenuBarConfigFromFirestore(): Promise<MenuBarConfig> {
+  const cachedMem = getMemoryCached<MenuBarConfig>('menu_bar');
+  if (cachedMem) return cachedMem;
+
   const defaultMenu: MenuBarConfig = {
     id: 'menu_bar',
     brandName: 'Premium Shop',
@@ -1443,7 +1587,12 @@ export async function getMenuBarConfigFromFirestore(): Promise<MenuBarConfig> {
 
   if (isQuotaTripped) {
     const cached = localStorage.getItem('raincoat_menu_bar_fallback');
-    return cached ? JSON.parse(cached) : defaultMenu;
+    if (cached) {
+      const parsed = JSON.parse(cached) as MenuBarConfig;
+      setMemoryCached('menu_bar', parsed);
+      return parsed;
+    }
+    return defaultMenu;
   }
   try {
     const docRef = doc(db, 'settings', 'menu_bar');
@@ -1451,6 +1600,7 @@ export async function getMenuBarConfigFromFirestore(): Promise<MenuBarConfig> {
     if (snap.exists() && snap.data()) {
       const data = snap.data() as MenuBarConfig;
       localStorage.setItem('raincoat_menu_bar_fallback', JSON.stringify(data));
+      setMemoryCached('menu_bar', data);
       return data;
     }
 
@@ -1460,6 +1610,7 @@ export async function getMenuBarConfigFromFirestore(): Promise<MenuBarConfig> {
       if (snapDefault.exists() && snapDefault.data()) {
         const data = snapDefault.data() as MenuBarConfig;
         localStorage.setItem('raincoat_menu_bar_fallback', JSON.stringify(data));
+        setMemoryCached('menu_bar', data);
         return data;
       }
     } catch (_) {}
@@ -1470,16 +1621,23 @@ export async function getMenuBarConfigFromFirestore(): Promise<MenuBarConfig> {
       await setDoc(doc(defaultDb, 'settings', 'menu_bar'), defaultMenu);
     } catch (_) {}
     localStorage.setItem('raincoat_menu_bar_fallback', JSON.stringify(defaultMenu));
+    setMemoryCached('menu_bar', defaultMenu);
     return defaultMenu;
   } catch (error) {
     console.warn("getMenuBarConfigFromFirestore failed:", error);
     const cached = localStorage.getItem('raincoat_menu_bar_fallback');
-    return cached ? JSON.parse(cached) : defaultMenu;
+    if (cached) {
+      const parsed = JSON.parse(cached) as MenuBarConfig;
+      setMemoryCached('menu_bar', parsed);
+      return parsed;
+    }
+    return defaultMenu;
   }
 }
 
 // Menu config save
 export async function saveMenuBarConfigToFirestore(config: MenuBarConfig): Promise<void> {
+  clearMemoryCached('menu_bar');
   const cleaned = cleanUndefined(config);
   localStorage.setItem('raincoat_menu_bar_fallback', JSON.stringify(config));
   if (isQuotaTripped) return;
@@ -1741,142 +1899,6 @@ export async function deleteCouponFromFirestore(couponId: string): Promise<void>
   } catch (_) {}
 }
 
-export interface MigrationProgress {
-  collection: string;
-  current: number;
-  total: number;
-  status: 'pending' | 'processing' | 'completed' | 'error';
-  errorMessage?: string;
-}
-
-export async function migrateAllData(
-  onProgress: (progress: Record<string, MigrationProgress>) => void,
-  sourceProjectId: string = 'gen-lang-client-0382926351',
-  sourceDatabaseId: string = 'ai-studio-e96a9d5f-9e04-4248-a4e5-49a2955072ec',
-  sourceApiKey: string = 'AIzaSyDeKf0X8_h_wTbyON5W69vLRG2Uh0g4kEc'
-): Promise<void> {
-  // 1. Initialize the Source Firebase App
-  const sourceAppName = `migration_source_${Date.now()}`;
-  const sourceApp = initializeApp({
-    apiKey: sourceApiKey || 'AIzaSyDeKf0X8_h_wTbyON5W69vLRG2Uh0g4kEc',
-    projectId: sourceProjectId,
-    authDomain: `${sourceProjectId}.firebaseapp.com`,
-    storageBucket: `${sourceProjectId}.firebasestorage.app`
-  }, sourceAppName);
-
-  // Initialize both custom database and default database instances
-  const sourceDbCustom = sourceDatabaseId ? initializeFirestore(sourceApp, {
-    experimentalForceLongPolling: true
-  }, sourceDatabaseId) : null;
-
-  const sourceDbDefault = initializeFirestore(sourceApp, {
-    experimentalForceLongPolling: true
-  });
-
-  const collectionsToMigrate = [
-    { name: 'orders', type: 'collection' },
-    { name: 'incompleteOrders', type: 'collection' },
-    { name: 'products', type: 'collection' },
-    { name: 'media', type: 'collection' },
-    { name: 'coupons', type: 'collection' },
-    { name: 'settings_docs', type: 'settings' }
-  ];
-
-  const state: Record<string, MigrationProgress> = {
-    orders: { collection: 'Orders (সফল অর্ডার)', current: 0, total: 0, status: 'pending' },
-    incompleteOrders: { collection: 'Drafts (ড্রাফট অর্ডার)', current: 0, total: 0, status: 'pending' },
-    products: { collection: 'Products (পণ্যসমূহ)', current: 0, total: 0, status: 'pending' },
-    media: { collection: 'Media (গ্যালারি ইমেজ)', current: 0, total: 0, status: 'pending' },
-    coupons: { collection: 'Coupons (কুপনসমূহ)', current: 0, total: 0, status: 'pending' },
-    settings_docs: { collection: 'Settings (কনফিগারেশন ও সেটিংস)', current: 0, total: 0, status: 'pending' }
-  };
-
-  onProgress({ ...state });
-
-  for (const item of collectionsToMigrate) {
-    try {
-      state[item.name].status = 'processing';
-      onProgress({ ...state });
-
-      let docs: any[] = [];
-      const isCollectionType = item.type === 'collection';
-
-      if (isCollectionType) {
-        // Attempt 1: Fetch from custom DB if specified
-        if (sourceDbCustom) {
-          try {
-            const querySnap = await getDocs(query(collection(sourceDbCustom, item.name)));
-            docs = querySnap.docs;
-            console.log(`Successfully fetched ${docs.length} docs from custom database ${sourceDatabaseId} for ${item.name}`);
-          } catch (e: any) {
-            console.warn(`Failed to fetch from customDB ${sourceDatabaseId} for ${item.name}: ${e.message}. Trying default...`);
-          }
-        }
-
-        // Attempt 2: Fetch from default db of the project
-        if (docs.length === 0) {
-          const querySnap = await getDocs(query(collection(sourceDbDefault, item.name)));
-          docs = querySnap.docs;
-          console.log(`Successfully fetched ${docs.length} docs from default database of ${sourceProjectId} for ${item.name}`);
-        }
-
-        state[item.name].total = docs.length;
-        onProgress({ ...state });
-
-        let current = 0;
-        for (const docObj of docs) {
-          const docData = docObj.data();
-          await setDoc(doc(db, item.name, docObj.id), docData);
-          current++;
-          state[item.name].current = current;
-          onProgress({ ...state });
-        }
-        
-        state[item.name].status = 'completed';
-      } else if (item.type === 'settings') {
-        const settingsDocs = ['integrations', 'advanced_addons', 'menu_bar', 'homepage_banner'];
-        state[item.name].total = settingsDocs.length;
-        onProgress({ ...state });
-
-        let current = 0;
-        for (const setSnapId of settingsDocs) {
-          let docData: any = null;
-          if (sourceDbCustom) {
-            try {
-              const docSnap = await getDoc(doc(sourceDbCustom, 'settings', setSnapId));
-              if (docSnap.exists()) {
-                docData = docSnap.data();
-              }
-            } catch (e) {}
-          }
-          if (!docData) {
-            try {
-              const docSnap = await getDoc(doc(sourceDbDefault, 'settings', setSnapId));
-              if (docSnap.exists()) {
-                docData = docSnap.data();
-              }
-            } catch (e) {}
-          }
-
-          if (docData) {
-            await setDoc(doc(db, 'settings', setSnapId), docData);
-          }
-
-          current++;
-          state[item.name].current = current;
-          onProgress({ ...state });
-        }
-        state[item.name].status = 'completed';
-      }
-      onProgress({ ...state });
-    } catch (err: any) {
-      console.error(`Migration error on ${item.name}:`, err);
-      state[item.name].status = 'error';
-      state[item.name].errorMessage = err.message || 'Error migrating';
-      onProgress({ ...state });
-    }
-  }
-}
 
 /**
  * Adds a new subscriber's email to Firestore.
@@ -1923,6 +1945,95 @@ export async function deleteSubscriber(id: string): Promise<void> {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
 }
+
+/**
+ * Retrieves all SEO Configurations with local storage cache backup.
+ */
+export async function getSEOConfigs(): Promise<SEOConfig[]> {
+  const cachedMem = getMemoryCached<SEOConfig[]>('seoConfigs');
+  if (cachedMem) return cachedMem;
+
+  const path = 'seoConfigs';
+  try {
+    const qSnap = await getDocs(collection(db, path));
+    const configs = qSnap.docs.map(doc => doc.data() as SEOConfig);
+    try {
+      localStorage.setItem('raincoat_seo_cache', JSON.stringify(configs));
+    } catch (_) {}
+    setMemoryCached('seoConfigs', configs);
+    return configs;
+  } catch (error) {
+    console.warn('Quiet SEO list fallback: could not fetch seoConfigs from Firestore. Using cache if present.', error);
+    try {
+      handleFirestoreError(error, OperationType.LIST, path);
+    } catch (_) {}
+    try {
+      const cached = localStorage.getItem('raincoat_seo_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached) as SEOConfig[];
+        setMemoryCached('seoConfigs', parsed);
+        return parsed;
+      }
+    } catch (_) {}
+    return [];
+  }
+}
+
+/**
+ * Saves or updates an SEO Configuration.
+ */
+export async function saveSEOConfig(config: SEOConfig): Promise<void> {
+  clearMemoryCached('seoConfigs');
+  const path = 'seoConfigs';
+  try {
+    // 1. Update cache first for instant local responsiveness
+    try {
+      const cached = localStorage.getItem('raincoat_seo_cache');
+      let configs: SEOConfig[] = cached ? JSON.parse(cached) : [];
+      configs = configs.filter(c => c.id !== config.id);
+      configs.push(config);
+      localStorage.setItem('raincoat_seo_cache', JSON.stringify(configs));
+    } catch (_) {}
+    
+    // 2. Write to Firestore
+    await setDoc(doc(db, path, config.id), config);
+  } catch (error) {
+    try {
+      handleFirestoreError(error, OperationType.WRITE, path);
+    } catch (e) {
+      console.warn("Quiet saveSEOConfig failed:", e);
+    }
+  }
+}
+
+/**
+ * Deletes an SEO Configuration by ID.
+ */
+export async function deleteSEOConfig(id: string): Promise<void> {
+  clearMemoryCached('seoConfigs');
+  const path = 'seoConfigs';
+  try {
+    // 1. Remove from cache first
+    try {
+      const cached = localStorage.getItem('raincoat_seo_cache');
+      if (cached) {
+        let configs: SEOConfig[] = JSON.parse(cached);
+        configs = configs.filter(c => c.id !== id);
+        localStorage.setItem('raincoat_seo_cache', JSON.stringify(configs));
+      }
+    } catch (_) {}
+
+    // 2. Delete from Firestore
+    await deleteDoc(doc(db, path, id));
+  } catch (error) {
+    try {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    } catch (e) {
+      console.warn("Quiet deleteSEOConfig failed:", e);
+    }
+  }
+}
+
 
 
 

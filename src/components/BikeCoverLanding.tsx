@@ -109,7 +109,7 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
   }, [slides.length]);
 
   // Load custom banners and videos for /bikecover from Firestore/LocalStorage
-  useEffect(() => {
+  const loadMediaList = () => {
     getMediaFromFirestore().then((mediaList) => {
       // 1. Fetch bikecover specific slide images
       const filteredSlides = mediaList.filter(item => item.page === 'bikecover' && item.tag !== 'LiveVideo');
@@ -143,6 +143,34 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
     }).catch(err => {
       console.warn("Could not load dynamic covers or videos from database:", err);
     });
+  };
+
+  useEffect(() => {
+    loadMediaList();
+
+    const handleVideosUpdated = (e: any) => {
+      if (e.detail && e.detail.videos) {
+        const filteredVideos = e.detail.videos.filter((item: any) => item.page === 'bikecover');
+        if (filteredVideos.length > 0) {
+          setBikeVideos(filteredVideos);
+        } else {
+          setBikeVideos([
+            {
+              id: 'bike-video-default-1',
+              url: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
+              title: '১০০% পানি প্রতিরোধ প্রদর্শন (Waterproof Video Demo)'
+            }
+          ]);
+        }
+      } else {
+        loadMediaList();
+      }
+    };
+
+    window.addEventListener('raincoat_live_videos_updated', handleVideosUpdated);
+    return () => {
+      window.removeEventListener('raincoat_live_videos_updated', handleVideosUpdated);
+    };
   }, []);
 
   useEffect(() => {
@@ -606,9 +634,10 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto items-stretch justify-center">
             {bikeVideos.map((video, idx) => {
               const embed = getEmbedUrl(video.url);
+              const isVertical = video.description === 'aspect-[9/16]' || video.description === 'aspect-[3/4]';
               return (
-                <div key={video.id || idx} className="flex flex-col items-center bg-slate-900/60 p-4 rounded-3xl border border-slate-800 shadow-xl transition hover:border-slate-700">
-                  <div className="w-full aspect-video rounded-2xl overflow-hidden bg-black border border-slate-800 relative shadow-inner">
+                <div key={video.id || idx} className={`flex flex-col justify-between bg-slate-900/60 p-4 rounded-3xl border border-slate-800 shadow-xl transition hover:border-slate-700 ${isVertical ? 'max-w-xs mx-auto w-full' : ''}`}>
+                  <div className={`w-full ${video.description || 'aspect-video'} rounded-2xl overflow-hidden bg-black border border-slate-800 relative shadow-inner`}>
                     {embed ? (
                       <iframe
                         src={embed}
@@ -893,11 +922,11 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
 
       {/* Main Checkout Section */}
       <section className="py-12 bg-slate-950 border-b border-slate-800" id="checkout-form">
-        <div className="container mx-auto px-4 max-w-5xl">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <div className="container mx-auto px-4 max-w-2xl">
+          <div className="w-full">
             
-            {/* Left Box: Terms & Guarantees info */}
-            <div className="lg:col-span-5 space-y-6">
+            {/* Left Box: Terms & Guarantees info (Removed) */}
+            <div className="hidden">
               <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl space-y-5">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-orange-500/10 rounded-xl text-orange-400">
@@ -947,7 +976,7 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
             </div>
 
             {/* Right Box: Dynamic Checkout Form / Invoice Output */}
-            <div className="lg:col-span-7">
+            <div className="w-full">
               {submittedOrder ? (
                 <div id="order-receipt" className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-6 text-center text-white font-sans max-w-lg mx-auto">
                   <div className="w-12 h-12 bg-emerald-550/10 text-emerald-400 rounded-full flex items-center justify-center mx-auto border border-emerald-500/20">

@@ -5,7 +5,7 @@ import {
   RefreshCw, X, ShieldCheck, CheckSquare, Globe, Database, Sparkles, 
   Check, ExternalLink, HelpCircle, ChevronDown, ChevronUp,
   Lock, Key, LogOut, Settings, ListTodo, AlertOctagon, Layers, Users, Calendar, Phone,
-  Edit, CheckCircle, Printer, Volume2, VolumeX, ShoppingBag, TrendingUp, Coins, Truck, Mail
+  Edit, CheckCircle, Printer, Volume2, VolumeX, ShoppingBag, TrendingUp, Coins, Truck, Mail, Zap, Activity
 } from 'lucide-react';
 import { RaincoatOrder, Size, ProductColor, IncompleteOrder, Coupon } from '../types';
 import { 
@@ -56,11 +56,14 @@ import CourierAdmin from './admin/CourierAdmin';
 import ReviewsAdmin from './admin/ReviewsAdmin';
 import DailyOrdersChart from './admin/DailyOrdersChart';
 import CourierMonitorAdmin from './admin/CourierMonitorAdmin';
+import SteadfastLiveSyncAdmin from './admin/SteadfastLiveSyncAdmin';
 import SectionCustomizerAdmin from './admin/SectionCustomizerAdmin';
 import MenuBarAdmin from './admin/MenuBarAdmin';
 import CallingAgentsAdmin from './admin/CallingAgentsAdmin';
+import Barcode from './Barcode';
 import FirebaseConfigAdmin from './admin/FirebaseConfigAdmin';
 import SubscribersAdmin from './admin/SubscribersAdmin';
+import SEOAdmin from './admin/SEOAdmin';
 
 const getEnglishDistrictName = (order: any): string => {
   const districtValue = order.district ? order.district.trim() : '';
@@ -360,7 +363,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
   const [deletingIncompleteId, setDeletingIncompleteId] = useState<string | null>(null);
   const [editingOrder, setEditingOrder] = useState<RaincoatOrder | null>(null);
-  const [activeTab, setActiveTab] = useState<'completed' | 'incomplete' | 'pages' | 'products' | 'banners' | 'inventory' | 'users' | 'blocking' | 'media' | 'live-visitors' | 'fraud' | 'advanced_addons' | 'courier_hub' | 'reviews_hub' | 'courier_connections' | 'courier_monitor' | 'section_customizer' | 'pixels' | 'menu_bar_settings' | 'calling_agents_management' | 'firebase_settings' | 'coupons' | 'subscribers'>('completed');
+  const [activeTab, setActiveTab] = useState<'completed' | 'incomplete' | 'pages' | 'products' | 'banners' | 'inventory' | 'users' | 'blocking' | 'media' | 'live-visitors' | 'fraud' | 'advanced_addons' | 'courier_hub' | 'reviews_hub' | 'courier_connections' | 'courier_monitor' | 'section_customizer' | 'pixels' | 'menu_bar_settings' | 'calling_agents_management' | 'firebase_settings' | 'coupons' | 'subscribers' | 'seo'>('completed');
   
   // Coupon Management States
   const [coupons, setCoupons] = useState<Coupon[]>([]);
@@ -3021,6 +3024,20 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                 📊 কুরিয়ার ও ট্র্যাক মনিটর
               </button>
 
+              {/* 12d. Steadfast লাইভ সিঙ্ক ও নোটিফিকেশন */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('courier_live_sync')}
+                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
+                  activeTab === 'courier_live_sync'
+                    ? 'bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-md shadow-teal-600/10 font-extrabold'
+                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                }`}
+              >
+                <span className="flex h-1.5 w-1.5 rounded-full bg-rose-500 animate-ping absolute right-2.5 top-2.5" />
+                ⚡ Steadfast লাইভ সিঙ্ক
+              </button>
+
               {/* 13. কাস্টমার রিভিউ হাব */}
               <button
                 type="button"
@@ -3098,6 +3115,19 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                 }`}
               >
                 <Mail className="h-3.5 w-3.5" /> 📬 ইমেইল সাবস্ক্রাইবার তালিকা
+              </button>
+
+              {/* 19. RankMath এসইও সেটিংস */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('seo')}
+                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
+                  activeTab === 'seo'
+                    ? 'bg-gradient-to-r from-pink-600 to-rose-600 text-white shadow-md shadow-rose-600/10 font-extrabold'
+                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                }`}
+              >
+                <Sparkles className="h-3.5 w-3.5" /> ⚡ RankMath এসইও সেটিংস
               </button>
             </div>
           </div>
@@ -3219,6 +3249,35 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                     সেটিংস
                   </button>
                 </div>
+              </div>
+
+              {/* Steadfast Realtime Sync Indicator Bar */}
+              <div className="bg-gradient-to-r from-emerald-900/10 via-teal-905/5 to-transparent border border-emerald-500/15 p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-xs animate-pulse duration-2000">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-emerald-500/10 rounded-xl text-emerald-400 border border-emerald-400/20 relative shrink-0">
+                    <Zap className="h-5 w-5 animate-bounce" />
+                    <span className="absolute top-0 right-0 h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black text-slate-800">Steadfast কুরিয়ার রিয়েল-টাইম লাইভ সিঙ্ক</span>
+                      <span className="bg-emerald-500 text-slate-950 font-black text-[9px] px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <span className="w-1 h-1 bg-slate-900 rounded-full animate-ping" />
+                        ACTIVE
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-bold mt-0.5">
+                      গ্রাহকদের লাইভ ট্র্যাকিং স্ট্যাটাস ও বুকিং নোটিফিকেশন প্রতি সেকেন্ডে ড্যাশবোর্ডে সম্পূর্ণ রিয়েলটাইমে আপডেট হচ্ছে।
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('courier_live_sync')}
+                  className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-teal-400 hover:text-teal-300 font-bold text-[10px] rounded-xl flex items-center gap-1 transition cursor-pointer border border-slate-800 shrink-0 self-stretch sm:self-center justify-center"
+                >
+                  <Activity className="h-3.5 w-3.5" /> লাইভ সিঙ্ক ট্র্যাকার দেখুন
+                </button>
               </div>
 
               {/* Quick stats cards */}
@@ -4905,6 +4964,14 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
         />
       )}
 
+      {activeTab === 'courier_live_sync' && (
+        <SteadfastLiveSyncAdmin 
+          orders={orders}
+          onRefreshOrders={loadOrders}
+          settings={courierSettings}
+        />
+      )}
+
       {activeTab === 'section_customizer' && (
         <SectionCustomizerAdmin 
           userRole="Admin"
@@ -5133,6 +5200,10 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
 
       {activeTab === 'subscribers' && (
         <SubscribersAdmin />
+      )}
+
+      {activeTab === 'seo' && (
+        <SEOAdmin />
       )}
 
           </div>
@@ -5417,13 +5488,13 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                         </span>
                       </div>
 
-                      {/* Content: Customer name & phone number */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', margin: '1px 0', width: '100%', textAlign: 'left' }}>
+                      {/* Content: Customer name & active barcode */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5px', margin: '1px 0', width: '100%', textAlign: 'left', boxSizing: 'border-box' }}>
                         <div style={{ fontSize: '9px', fontWeight: '900', color: '#000', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {order.name}
                         </div>
-                        <div style={{ fontSize: '10.5px', fontWeight: '950', fontFamily: 'monospace', color: '#000' }}>
-                          {order.phone}
+                        <div style={{ display: 'flex', justifyContent: 'center', width: '100%', margin: '0.5px 0' }}>
+                          <Barcode value={order.phone} height={16} width={0.8} fontSize={7} margin={1} />
                         </div>
                       </div>
 
@@ -5552,13 +5623,13 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                   </span>
                 </div>
 
-                {/* Body: Customer Name & Phone Number */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', margin: '1px 0', width: '100%', boxSizing: 'border-box' }}>
+                {/* Body: Customer Name & active barcode */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5px', margin: '1px 0', width: '100%', boxSizing: 'border-box' }}>
                   <div style={{ fontSize: '9px', fontWeight: '900', color: '#000', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {order.name}
                   </div>
-                  <div style={{ fontSize: '10.5px', fontWeight: '950', fontFamily: 'monospace', color: '#000' }}>
-                    {order.phone}
+                  <div style={{ display: 'flex', justifyContent: 'center', width: '100%', margin: '0.5px 0' }}>
+                    <Barcode value={order.phone} height={16} width={0.8} fontSize={7} margin={1} />
                   </div>
                   {(order.consignmentId || order.trackingId) && (
                     <div style={{ fontSize: '11px', fontWeight: '950', fontFamily: 'monospace', color: '#000', marginTop: '1.2px' }}>

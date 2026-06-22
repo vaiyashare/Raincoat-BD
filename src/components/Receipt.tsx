@@ -2,6 +2,8 @@ import React from 'react';
 import { CheckCircle, Truck, PackageCheck, ClipboardCheck, ArrowRight, ShoppingBag, PhoneCall, Sparkles, Printer, FileDown, MessageSquare } from 'lucide-react';
 import { RaincoatOrder } from '../types';
 import { jsPDF } from 'jspdf';
+import JsBarcode from 'jsbarcode';
+import Barcode from './Barcode';
 
 interface ReceiptProps {
   order: RaincoatOrder;
@@ -66,6 +68,29 @@ export default function Receipt({ order, onClose }: ReceiptProps) {
       // Line separator
       doc.setDrawColor(226, 232, 240);
       doc.line(14, 53, 196, 53);
+
+      // Render barcode using canvas in-memory and add to jsPDF
+      try {
+        const canvas = document.createElement('canvas');
+        // Clean to only customer phone digits as requested
+        const cleanPhone = (order.phone || '').replace(/[^0-9]/g, '');
+        if (cleanPhone) {
+          // UCC/EAN-128 barcode format compatible standard CODE128
+          JsBarcode(canvas, cleanPhone, {
+            format: "CODE128",
+            width: 3.5, // high crisp resolution
+            height: 60,
+            displayValue: true,
+            text: order.phone, // Human-readable phone format underneath
+            fontSize: 12,
+            margin: 6
+          });
+          const barcodeImg = canvas.toDataURL('image/png');
+          doc.addImage(barcodeImg, 'PNG', 145, 58, 48, 18);
+        }
+      } catch (err) {
+        console.error('Failed to generate offline EAN-128 barcode for PDF invoice:', err);
+      }
 
       let currentY = 60;
       const drawRow = (label: string, value: string) => {
@@ -236,6 +261,12 @@ export default function Receipt({ order, onClose }: ReceiptProps) {
           <div className="flex justify-between font-sans items-center text-blue-950">
             <span className="text-xs font-bold text-slate-700">পরিশোধযোগ্য সর্বমোট মূল্য:</span>
             <span className="text-xl font-mono font-extrabold text-blue-800">{order.price} TK (ক্যাশ অন ডেলিভারি)</span>
+          </div>
+          
+          <div className="h-px bg-slate-200/60 my-1" />
+          <div className="flex flex-col items-center justify-center p-3 bg-white border border-slate-200/90 rounded-2xl mt-4 space-y-1.5 shadow-2xs">
+            <span className="text-[10px] font-black tracking-widest text-slate-400 uppercase">গ্রাহক বারকোড (ACTIVE EAN-128)</span>
+            <Barcode value={order.phone} height={35} width={1.4} fontSize={10} />
           </div>
         </div>
 
