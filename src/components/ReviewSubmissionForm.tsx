@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { CustomerReview } from '../types';
 import { saveReviewToFirestore } from '../lib/firebase';
+import { compressImage } from '../lib/imageCompressor';
 
 interface ReviewSubmissionFormProps {
   onBack: () => void;
@@ -27,19 +28,21 @@ export default function ReviewSubmissionForm({ onBack }: ReviewSubmissionFormPro
   const [formError, setFormError] = useState('');
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
 
-  // Convert uploaded image file to Base64 String
+  // Convert uploaded image file to Base64 String with automatic compression
   const handlePhotoUploadChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
-      alert("দুঃখিত, ২ মেগাবাইটের চেয়ে ছোট সাইজের ছবি আপলোড করুন!");
-      return;
-    }
-
     const reader = new FileReader();
-    reader.onloadend = () => {
-      setWriterPhotoBase64(reader.result as string);
+    reader.onloadend = async () => {
+      if (typeof reader.result === 'string') {
+        try {
+          const compressed = await compressImage(reader.result, 800, 0.55);
+          setWriterPhotoBase64(compressed);
+        } catch (err) {
+          setWriterPhotoBase64(reader.result);
+        }
+      }
     };
     reader.readAsDataURL(file);
   };

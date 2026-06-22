@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Tag, ShoppingBag, Edit, Save, RefreshCw, Star, Upload, X } from 'lucide-react';
+import { Plus, Trash2, Tag, ShoppingBag, Edit, Save, RefreshCw, Star, Upload, X, Image as ImageIcon } from 'lucide-react';
 import { getProductsFromFirestore, saveProductToFirestore, deleteProductFromFirestore, saveAllProductsToFirestore } from '../../lib/firebase';
 import { compressImage } from '../../lib/imageCompressor';
+import MediaPickerModal from './MediaPickerModal';
 
 interface Product {
   id: string;
@@ -40,6 +41,10 @@ export default function ProductsAdmin({ onRefreshProducts, userRole }: ProductsA
   const [addDeliveryCharge, setAddDeliveryCharge] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  // Media Picker popover toggles
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [isGalleryPickerOpen, setIsGalleryPickerOpen] = useState(false);
 
   const handleMainImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -543,7 +548,7 @@ export default function ProductsAdmin({ onRefreshProducts, userRole }: ProductsA
                     value={image}
                     onChange={(e) => setImage(e.target.value)}
                   />
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <label className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 hover:bg-slate-200 text-slate-700 bg-slate-100 border border-slate-300 rounded-lg text-[10px] font-black cursor-pointer transition">
                       <Upload className="h-3.5 w-3.5 text-slate-550" />
                       <span>কম্পিউটার থেকে ছবি আপলোড করুন</span>
@@ -554,6 +559,14 @@ export default function ProductsAdmin({ onRefreshProducts, userRole }: ProductsA
                         className="hidden" 
                       />
                     </label>
+                    <button
+                      type="button"
+                      onClick={() => setIsPickerOpen(true)}
+                      className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-lg text-[10px] font-black cursor-pointer transition select-none"
+                    >
+                      <ImageIcon className="h-3.5 w-3.5 text-indigo-600" />
+                      <span>মিডিয়া গ্যালারি থেকে সিলেক্ট</span>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -615,7 +628,7 @@ export default function ProductsAdmin({ onRefreshProducts, userRole }: ProductsA
               </div>
 
               {/* Back up URL adder input for additional images */}
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap sm:flex-nowrap">
                 <input 
                   type="text" 
                   id="add-gallery-url-input"
@@ -628,7 +641,7 @@ export default function ProductsAdmin({ onRefreshProducts, userRole }: ProductsA
                       target.value = '';
                     }
                   }}
-                  className="flex-1 px-3 py-1.8 border rounded-lg focus:outline-none focus:border-indigo-500 text-slate-800 text-[11px] bg-slate-50"
+                  className="flex-1 px-3 py-1.8 border rounded-lg focus:outline-none focus:border-indigo-500 text-slate-800 text-[11px] bg-slate-50 min-w-[150px]"
                 />
                 <button 
                   type="button"
@@ -642,6 +655,14 @@ export default function ProductsAdmin({ onRefreshProducts, userRole }: ProductsA
                   className="px-3.5 py-1.8 bg-slate-850 hover:bg-slate-950 text-white rounded-lg text-xs font-black cursor-pointer transition"
                 >
                   যোগ করুন
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setIsGalleryPickerOpen(true)}
+                  className="px-3.5 py-1.8 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-lg text-xs font-black cursor-pointer transition flex items-center gap-1.5 select-none shrink-0"
+                >
+                  <ImageIcon className="h-3.5 w-3.5 text-indigo-600" />
+                  <span>গ্যালারি থেকে যোগ</span>
                 </button>
               </div>
               <p className="text-[10px] text-rose-500/80 font-bold leading-normal">
@@ -775,6 +796,21 @@ export default function ProductsAdmin({ onRefreshProducts, userRole }: ProductsA
         </div>
 
       </div>
+
+      {/* Media Pickers Modals */}
+      <MediaPickerModal 
+        isOpen={isPickerOpen}
+        onClose={() => setIsPickerOpen(false)}
+        onSelect={(url) => setImage(url)}
+        title="প্রোডাক্টের প্রধান ছবি বা ইমেজ সিলেক্ট করুন"
+      />
+
+      <MediaPickerModal 
+        isOpen={isGalleryPickerOpen}
+        onClose={() => setIsGalleryPickerOpen(false)}
+        onSelect={(url) => addAdditionalImageUrl(url)}
+        title="গ্যালারির জন্য অতিরিক্ত ছবি বা ইমেজ সিলেক্ট করুন"
+      />
     </div>
   );
 }

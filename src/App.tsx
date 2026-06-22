@@ -515,11 +515,14 @@ export default function App() {
     // Initial load and sync orders count
     setOrdersCount(0);
 
-    // Auto-setup and save Meta Pixel and Conversion API settings from user's request
+    // Auto-setup and save Meta Pixel and Conversion API settings ONLY as initial default if none already stored
     const requestedPixelId = '1145959524284032';
     const requestedToken = 'EAAMY12ZCBQswBRQAXx2MDdDRSTZAgopaWP81nWqY8JYsRnOZAQOn7Nk6L6ZAKk61oFi278KPubqXpZBurmTGi5e8jWjF8Jp7bOhw5meOfl9C7Nn5PXJLs4xYtxSbAnUoAJdKmOwZA6MZCEXqvlnPqo3qZCToLgydC5EvEUZA7uawlJq5LT2AfpKkIEDuMJZCI9ngZDZD';
     
-    if (localStorage.getItem('fb_pixel_id') !== requestedPixelId || localStorage.getItem('fb_capi_token') !== requestedToken) {
+    const currentStoredPixel = localStorage.getItem('fb_pixel_id');
+    const currentStoredToken = localStorage.getItem('fb_capi_token');
+    
+    if (currentStoredPixel === null && currentStoredToken === null) {
       localStorage.setItem('fb_pixel_id', requestedPixelId);
       localStorage.setItem('fb_pixel_enabled', 'true');
       localStorage.setItem('fb_capi_enabled', 'true');
@@ -528,16 +531,18 @@ export default function App() {
       
       import('./lib/firebase').then(({ getIntegrationsSettingsFromFirestore, saveIntegrationsSettingsToFirestore }) => {
         getIntegrationsSettingsFromFirestore().then((existing) => {
-          const updated = {
-            ...existing,
-            fb_pixel_id: requestedPixelId,
-            fb_pixel_enabled: true,
-            fb_capi_enabled: true,
-            fb_capi_token: requestedToken
-          };
-          saveIntegrationsSettingsToFirestore(updated).then(() => {
-            console.log("Successfully auto-configured Meta Pixel & CAPI Settings in Firestore.");
-          }).catch(e => console.warn(e));
+          if (!existing || (!existing.fb_pixel_id && !existing.fb_capi_token)) {
+            const updated = {
+              ...existing,
+              fb_pixel_id: requestedPixelId,
+              fb_pixel_enabled: true,
+              fb_capi_enabled: true,
+              fb_capi_token: requestedToken
+            };
+            saveIntegrationsSettingsToFirestore(updated).then(() => {
+              console.log("Successfully auto-configured Meta Pixel & CAPI Settings in Firestore.");
+            }).catch(e => console.warn(e));
+          }
         }).catch(() => {});
       }).catch(() => {});
     }

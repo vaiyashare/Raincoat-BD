@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { motion } from 'motion/react';
 import { 
   Eye, ShieldAlert, Trash2, ClipboardCopy, FileSpreadsheet, Search, 
   RefreshCw, X, ShieldCheck, CheckSquare, Globe, Database, Sparkles, 
@@ -435,6 +436,44 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   const [alerts, setAlerts] = useState<Array<{ id: string; order: RaincoatOrder }>>([]);
   const triggeredAlertsRef = useRef<Set<string>>(new Set());
   const isInitialLoadRef = useRef(true);
+
+  // Persistent references for database map records to prevent real-time race condition wipeouts
+  const ordersDbMapRef = useRef<{ [id: string]: RaincoatOrder }>({});
+  const ordersDefaultDbMapRef = useRef<{ [id: string]: RaincoatOrder }>({});
+  const incompleteDbMapRef = useRef<{ [id: string]: IncompleteOrder }>({});
+  const incompleteDefaultDbMapRef = useRef<{ [id: string]: IncompleteOrder }>({});
+
+  // Optimized precalculated stats map for customers' phone history (O(M) memory & lookups)
+  const phoneStatsMap = useMemo(() => {
+    const map: Record<string, { totalCount: number; canceledCount: number; cancelRatio: number }> = {};
+    orders.forEach(o => {
+      if (!o || !o.phone) return;
+      const cleanPhone = o.phone.replace(/\D/g, '').slice(-11);
+      if (!cleanPhone) return;
+      
+      if (!map[cleanPhone]) {
+        map[cleanPhone] = {
+          totalCount: 0,
+          canceledCount: 0,
+          cancelRatio: 0
+        };
+      }
+      
+      const stats = map[cleanPhone];
+      stats.totalCount += 1;
+      if (o.status === 'Cancelled' || o.status === 'Canceled' || o.status === 'Canceled Fake Order') {
+        stats.canceledCount += 1;
+      }
+    });
+
+    // Calculate ratio for each phone
+    Object.keys(map).forEach(key => {
+      const stats = map[key];
+      stats.cancelRatio = stats.totalCount > 0 ? Math.round((stats.canceledCount / stats.totalCount) * 100) : 0;
+    });
+
+    return map;
+  }, [orders]);
 
   // Extract all unique active months dynamically from orders & incompleteOrders
   const availableFilterMonths = React.useMemo(() => {
@@ -915,12 +954,11 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     const clean = phone.replace(/[-\s+]/g, '');
     const isScanning = order && checkingFraudOrders[order.id];
 
-    // Compute customer history stats
+    // Compute customer history stats (optimized fast O(1) map lookup)
     const currentCleanPhone = phone.replace(/\D/g, '').slice(-11);
-    const customerMatches = orders.filter(o => o.phone && o.phone.replace(/\D/g, '').slice(-11) === currentCleanPhone);
-    const totalCount = customerMatches.length;
-    const canceledCount = customerMatches.filter(o => o.status === 'Cancelled' || o.status === 'Canceled' || o.status === 'Canceled Fake Order').length;
-    const cancelRatio = totalCount > 0 ? Math.round((canceledCount / totalCount) * 100) : 0;
+    const fastStats = phoneStatsMap[currentCleanPhone] || { totalCount: 0, canceledCount: 0, cancelRatio: 0 };
+    const totalCount = fastStats.totalCount;
+    const cancelRatio = fastStats.cancelRatio;
 
     let ratioBadgeColor = 'bg-emerald-50 text-emerald-700 border-emerald-100';
     if (cancelRatio > 35) {
@@ -1101,6 +1139,9 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   const perms = getUserPermissions();
 
   // Admin access auth states
+  const [isAdminPanelActive, setIsAdminPanelActive] = useState(() => {
+    return localStorage.getItem('is_admin_panel_active') !== 'false';
+  });
   const [isLoggedIn, setIsLoggedIn] = useState(() => {
     return sessionStorage.getItem('admin_logged_in') === 'true';
   });
@@ -1167,6 +1208,15 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       }
 
       const sorted = [...filteredIncompletes].sort((a: any, b: any) => new Date(b.lastUpdatedAt || b.createdAt).getTime() - new Date(a.lastUpdatedAt || a.createdAt).getTime());
+      
+      // Initialize persistent cache map ref to keep real-time listings populated during transitions
+      incompleteDefaultDbMapRef.current = {};
+      fbIncompletes.forEach(i => {
+        if (i && i.id) {
+          incompleteDefaultDbMapRef.current[i.id] = i;
+        }
+      });
+
       setIncompleteOrders(sorted);
     } catch (e) {
       console.error("Failed to load incomplete orders from Firestore:", e);
@@ -1294,6 +1344,15 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
         const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
         return timeB - timeA;
       });
+
+      // Initialize persistent cache map ref to keep real-time listings populated during transitions
+      ordersDefaultDbMapRef.current = {};
+      fbOrders.forEach(o => {
+        if (o && o.id) {
+          ordersDefaultDbMapRef.current[o.id] = o;
+        }
+      });
+
       setOrders(sortedOrders);
       
       await loadIncompleteOrders();
@@ -1311,12 +1370,9 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       setShowSheetsSection(true);
     }
 
-    const ordersDbMap: { [id: string]: RaincoatOrder } = {};
-    const ordersDefaultDbMap: { [id: string]: RaincoatOrder } = {};
-
     const updateMergedOrders = () => {
-      const mergedMap = { ...ordersDefaultDbMap, ...ordersDbMap };
-      let mergedList = Object.values(mergedMap);
+      const mergedMap = { ...ordersDefaultDbMapRef.current, ...ordersDbMapRef.current };
+      let mergedList = Object.values(mergedMap) as RaincoatOrder[];
       
       let deletedIds: string[] = [];
       try {
@@ -1340,12 +1396,9 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       refreshOrdersCountRef.current();
     };
 
-    const incompleteDbMap: { [id: string]: IncompleteOrder } = {};
-    const incompleteDefaultDbMap: { [id: string]: IncompleteOrder } = {};
-
     const updateMergedIncompletes = () => {
-      const mergedMap = { ...incompleteDefaultDbMap, ...incompleteDbMap };
-      let mergedList = Object.values(mergedMap);
+      const mergedMap = { ...incompleteDefaultDbMapRef.current, ...incompleteDbMapRef.current };
+      let mergedList = Object.values(mergedMap) as IncompleteOrder[];
       
       let deletedIds: string[] = [];
       try {
@@ -1382,14 +1435,12 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       isInitialLoadRef.current = false;
 
       // Clear the map first so deleted records are removed
-      for (const key in ordersDbMap) {
-        delete ordersDbMap[key];
-      }
+      ordersDbMapRef.current = {};
 
       snapshot.forEach((doc) => {
         const orderData = doc.data() as RaincoatOrder;
         if (orderData && orderData.id) {
-          ordersDbMap[orderData.id] = orderData;
+          ordersDbMapRef.current[orderData.id] = orderData;
         }
       });
       updateMergedOrders();
@@ -1401,14 +1452,12 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     const qOrdersDefault = query(collection(defaultDb, 'orders'));
     const unsubscribeOrdersDefault = onSnapshot(qOrdersDefault, (snapshot) => {
       // Clear the map first so deleted records are removed
-      for (const key in ordersDefaultDbMap) {
-        delete ordersDefaultDbMap[key];
-      }
+      ordersDefaultDbMapRef.current = {};
 
       snapshot.forEach((doc) => {
          const orderData = doc.data() as RaincoatOrder;
          if (orderData && orderData.id) {
-           ordersDefaultDbMap[orderData.id] = orderData;
+           ordersDefaultDbMapRef.current[orderData.id] = orderData;
          }
       });
       updateMergedOrders();
@@ -1420,14 +1469,12 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     const qIncompletes = query(collection(db, 'incompleteOrders'));
     const unsubscribeIncompletes = onSnapshot(qIncompletes, (snapshot) => {
       // Clear the map first so deleted records are removed
-      for (const key in incompleteDbMap) {
-        delete incompleteDbMap[key];
-      }
+      incompleteDbMapRef.current = {};
 
       snapshot.forEach((doc) => {
         const draftData = doc.data() as IncompleteOrder;
         if (draftData && draftData.id) {
-          incompleteDbMap[draftData.id] = draftData;
+          incompleteDbMapRef.current[draftData.id] = draftData;
         }
       });
       updateMergedIncompletes();
@@ -1439,14 +1486,12 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     const qIncompletesDefault = query(collection(defaultDb, 'incompleteOrders'));
     const unsubscribeIncompletesDefault = onSnapshot(qIncompletesDefault, (snapshot) => {
       // Clear the map first so deleted records are removed
-      for (const key in incompleteDefaultDbMap) {
-        delete incompleteDefaultDbMap[key];
-      }
+      incompleteDefaultDbMapRef.current = {};
 
       snapshot.forEach((doc) => {
          const draftData = doc.data() as IncompleteOrder;
          if (draftData && draftData.id) {
-           incompleteDefaultDbMap[draftData.id] = draftData;
+           incompleteDefaultDbMapRef.current[draftData.id] = draftData;
          }
       });
       updateMergedIncompletes();
@@ -1692,6 +1737,10 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       return;
     }
 
+    if (!window.confirm("আপনি কি নিশ্চিতভাবে এই সম্পূর্ণ সফল অর্ডারটি ডিলিট করতে চান? আপনার অনুমোদন ছাড়া এই ডাটা চিরতরে মুছে যাবে।")) {
+      return;
+    }
+
     try {
       const stored = window.localStorage.getItem('raincoat_deleted_order_ids');
       const deletedIds = stored ? JSON.parse(stored) : [];
@@ -1715,6 +1764,10 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   const handleDeleteIncomplete = (id: string) => {
     if (!perms.canDelete) {
       alert('দুঃখিত, আপনার অ্যাকাউন্টে ড্রাফট ডেটা মুছে ফেলার (Delete) অনুমতি দেওয়া হয়নি!');
+      return;
+    }
+
+    if (!window.confirm("আপনি কি নিশ্চিতভাবে এই ড্রাফট (ইনকমপ্লিট) অর্ডারটি ডিলিট করতে চান?")) {
       return;
     }
 
@@ -2394,6 +2447,44 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   useEffect(() => {
     setCompletedPage(1);
   }, [searchTerm, filterSize, filterStatus, filterDistrict, dateFilter, customStartDate, customEndDate, selectedSpecificDay, selectedSpecificMonth, completedPageSize]);
+
+  // If Admin Panel is inactive, render a beautiful disabled state screen
+  if (!isAdminPanelActive) {
+    return (
+      <div className="min-h-screen w-full bg-slate-950 flex flex-col justify-center items-center p-4 font-sans text-white text-center">
+        <div className="bg-slate-900 border border-slate-800 p-8 rounded-3xl max-w-sm w-full shadow-2xl space-y-6">
+          <div className="mx-auto w-16 h-16 bg-rose-500/10 text-rose-500 border border-rose-500/25 rounded-2xl flex items-center justify-center">
+            <ShieldAlert className="h-8 w-8 animate-bounce text-rose-500" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-base font-black text-rose-450">এডমিন প্যানেলটি বর্তমানে নিষ্ক্রিয় (OFF) করা আছে</h2>
+            <p className="text-slate-400 text-[11px] leading-relaxed">
+              নিরাপত্তা রক্ষার্থে এডমিন প্যানেলটি অফ (Inactive) করা হয়েছে। পুনরায় সক্রিয় করতে নিচের বাটনটি চাপুন।
+            </p>
+          </div>
+          <div className="pt-2">
+            <button
+              onClick={() => {
+                setIsAdminPanelActive(true);
+                localStorage.setItem('is_admin_panel_active', 'true');
+              }}
+              className="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-600 font-extrabold text-[#ffffff] rounded-xl hover:from-emerald-600 hover:to-teal-700 active:scale-95 transition text-xs flex items-center justify-center gap-2 shadow-lg cursor-pointer animate-pulse"
+            >
+              <span>প্যানেল সক্রিয় করুন (Turn Admin Panel ON)</span>
+            </button>
+          </div>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="text-xs text-slate-500 hover:text-slate-350 font-bold block mx-auto hover:underline"
+            >
+              ফিরে যান
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   // If NOT logged in, block and show elegant standalone admin credentials check
   if (!isLoggedIn) {
@@ -4136,8 +4227,15 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                       </td>
                     </tr>
                   ) : (
-                    paginatedOrders.map((order) => (
-                      <tr key={order.id} className="hover:bg-slate-50 transition-colors border-b border-slate-100">
+                    paginatedOrders.map((order, idx) => (
+                      <motion.tr 
+                        key={order.id} 
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        transition={{ duration: 0.22, delay: Math.min(idx * 0.025, 0.35), ease: "easeOut" }}
+                        className="hover:bg-slate-50 transition-colors border-b border-slate-100"
+                      >
                         <td className="px-3 py-1.5 text-center">
                           <div className="flex flex-col items-center justify-center gap-0.5">
                             <input 
@@ -4510,7 +4608,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                             </div>
                           )}
                         </td>
-                      </tr>
+                      </motion.tr>
                     ))
                   )}
                 </tbody>
@@ -4536,8 +4634,15 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                       </td>
                     </tr>
                   ) : (
-                    filteredIncompleteOrders.map((draft) => (
-                      <tr key={draft.id} className="hover:bg-slate-50 transition-colors">
+                    filteredIncompleteOrders.map((draft, idx) => (
+                      <motion.tr 
+                        key={draft.id} 
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        transition={{ duration: 0.22, delay: Math.min(idx * 0.025, 0.35), ease: "easeOut" }}
+                        className="hover:bg-slate-50 transition-colors"
+                      >
                         <td className="px-4 py-3.5">
                           <div className="font-extrabold text-slate-900">
                             {draft.name ? draft.name : <span className="text-slate-350 italic">নাম উল্লেখ করেনি</span>}
@@ -4656,7 +4761,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                             </div>
                           )}
                         </td>
-                      </tr>
+                      </motion.tr>
                     ))
                   )}
                 </tbody>

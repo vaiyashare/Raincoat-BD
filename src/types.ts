@@ -52,6 +52,9 @@ export interface RaincoatOrder {
   fraudScore?: number;
   fraudStatus?: 'Safe' | 'Warning' | 'High Risk' | 'Scammer';
   fraudReason?: string;
+  fraudTotalParcel?: number | null;
+  fraudSuccessParcel?: number | null;
+  fraudSuccessRatio?: number | null;
   orderNotes?: string;
   partialPaymentSender?: string;
   partialPaymentTxnId?: string;
@@ -81,6 +84,9 @@ export interface IncompleteOrder {
   fraudScore?: number;
   fraudStatus?: 'Safe' | 'Warning' | 'High Risk' | 'Scammer';
   fraudReason?: string;
+  fraudTotalParcel?: number | null;
+  fraudSuccessParcel?: number | null;
+  fraudSuccessRatio?: number | null;
   orderNotes?: string;
   whatsappConsent?: boolean;
   synced?: boolean;

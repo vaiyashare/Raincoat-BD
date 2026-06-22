@@ -49,6 +49,12 @@ export default function MediaAdmin({ userRole }: MediaAdminProps) {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Bulk Upload states
+  const [entryMode, setEntryMode] = useState<'single' | 'bulk'>('single');
+  const [bulkFiles, setBulkFiles] = useState<{ name: string; status: 'pending' | 'uploading' | 'success' | 'error' }[]>([]);
+  const [isBulkUploading, setIsBulkUploading] = useState(false);
+  const bulkFileInputRef = useRef<HTMLInputElement>(null);
+
   // Default initial slides array in case Firestore is empty
   const defaultSlides: MediaItem[] = [
     {
@@ -198,12 +204,13 @@ export default function MediaAdmin({ userRole }: MediaAdminProps) {
         if (event.target?.result) {
           const urlData = event.target.result as string;
           try {
-            localStorage.setItem('raincoat_bundle_offer_image', urlData);
-            setBundleOfferImg(urlData);
+            const compressed = await compressImage(urlData, 800, 0.55);
+            localStorage.setItem('raincoat_bundle_offer_image', compressed);
+            setBundleOfferImg(compressed);
             
             const newItem: MediaItem = {
               id: 'bundle-offer-image',
-              url: urlData,
+              url: compressed,
               title: 'Bundle Offer Cover',
               tag: 'Offer',
               description: 'আজকের অফারে যা পাচ্ছেন তার কভার ফটো',
@@ -376,6 +383,7 @@ export default function MediaAdmin({ userRole }: MediaAdminProps) {
   const loadMedia = async () => {
     setIsLoading(true);
     setErrorMsg('');
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000));
     try {
       // 1. Load from localstorage if cached first
       const cached = localStorage.getItem('raincoat_media_gallery');
@@ -383,21 +391,28 @@ export default function MediaAdmin({ userRole }: MediaAdminProps) {
         setMediaItems(JSON.parse(cached).filter((item: any) => item.id !== 'bundle-offer-image' && !String(item.id).startsWith('live-video-')));
       }
       
-      // 2. Fetch from Firestore database
-      const dbMedia = await getMediaFromFirestore();
+      // 2. Fetch from Firestore database with 2s race timeout
+      const dbMedia = await Promise.race([
+        getMediaFromFirestore(),
+        timeoutPromise
+      ]);
       if (dbMedia && dbMedia.length > 0) {
         setMediaItems(dbMedia.filter(item => item.id !== 'bundle-offer-image' && !String(item.id).startsWith('live-video-')));
         localStorage.setItem('raincoat_media_gallery', JSON.stringify(dbMedia));
       } else {
-        // If Firestore results are completely empty, initialize default mock slides
-        if (!cached) {
+        // If Firestore results are completely empty or timed out, and currently no items, use default slides
+        if (!cached || mediaItems.length === 0) {
           setMediaItems(defaultSlides);
           localStorage.setItem('raincoat_media_gallery', JSON.stringify(defaultSlides));
-         }
+        }
       }
     } catch (err) {
       console.error("Error loading media database files:", err);
       setErrorMsg("Firestore থেকে মিডিয়া লোড করা সম্ভব হয়নি। অফলাইন ক্যাশ সচল রয়েছে।");
+      const cached = localStorage.getItem('raincoat_media_gallery');
+      if (!cached) {
+        setMediaItems(defaultSlides);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -429,7 +444,7 @@ export default function MediaAdmin({ userRole }: MediaAdminProps) {
       if (uploadEvent.target?.result) {
         const rawResult = uploadEvent.target.result as string;
         try {
-          const compressed = await compressImage(rawResult, 1000, 0.72);
+          const compressed = await compressImage(rawResult, 800, 0.55);
           setImageUrl(compressed);
           setSuccessMsg('ইমেজ ফাইল সফলভাবে আপলোড ও কমপ্রেস করা হয়েছে!');
           setTimeout(() => setSuccessMsg(''), 2000);
@@ -446,6 +461,77 @@ export default function MediaAdmin({ userRole }: MediaAdminProps) {
     reader.readAsDataURL(file);
   };
 
+  const processBulkFiles = async (files: FileList) => {
+    if (userRole === 'ReadOnly') {
+      setErrorMsg('আপনার রিড-অনলি এক্সেস রয়েছে! বাল্ক ড্রপ ব্লক করা হয়েছে।');
+      return;
+    }
+    setErrorMsg('');
+    setSuccessMsg('');
+    setIsBulkUploading(true);
+
+    const fileListArray = Array.from(files);
+    const initialFilesState = fileListArray.map((f) => ({
+      name: f.name,
+      status: 'pending' as const
+    }));
+    setBulkFiles(initialFilesState);
+
+    const baseIndex = mediaItems.length;
+
+    // Process all files concurrently
+    const uploadPromises = fileListArray.map(async (file, idx) => {
+      // Mark as uploading
+      setBulkFiles(prev => prev.map((item, fIdx) => fIdx === idx ? { ...item, status: 'uploading' } : item));
+
+      const validExtensions = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
+      if (!validExtensions.includes(file.type)) {
+        setBulkFiles(prev => prev.map((item, fIdx) => fIdx === idx ? { ...item, status: 'error' } : item));
+        return null;
+      }
+
+      try {
+        const base64Data = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target?.result as string);
+          reader.onerror = (e) => reject(e);
+          reader.readAsDataURL(file);
+        });
+
+        const compressed = await compressImage(base64Data, 800, 0.55);
+        const generatedId = `bulk-${Date.now()}-${idx}-${Math.floor(Math.random() * 10000)}`;
+        const cleanTitle = file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, ' ');
+
+        const newItem: MediaItem = {
+          id: generatedId,
+          url: compressed,
+          title: cleanTitle.substring(0, 40) || 'বাল্ক আপলোড',
+          tag: tag || 'বাল্ক আপলোড',
+          description: `বাল্ক আপলোডকৃত সোর্স ফাইল: ${file.name}`,
+          orderIndex: baseIndex + idx + 1,
+          page: pageInput,
+          createdAt: new Date().toISOString()
+        };
+
+        await saveMediaToFirestore(newItem);
+        setBulkFiles(prev => prev.map((item, fIdx) => fIdx === idx ? { ...item, status: 'success' } : item));
+        return newItem;
+      } catch (err) {
+        console.error("Bulk upload err for: " + file.name, err);
+        setBulkFiles(prev => prev.map((item, fIdx) => fIdx === idx ? { ...item, status: 'error' } : item));
+        return null;
+      }
+    });
+
+    const results = await Promise.all(uploadPromises);
+    const successfullyUploaded = results.filter((item): item is MediaItem => item !== null);
+
+    setMediaItems(prev => [...prev, ...successfullyUploaded]);
+    setIsBulkUploading(false);
+    setSuccessMsg('বাল্ক ফাইল সমূহের কনকারেন্ট আপলোড সফলভাবে সম্পন্ন হয়েছে!');
+    setTimeout(() => setSuccessMsg(''), 4500);
+  };
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
@@ -455,14 +541,22 @@ export default function MediaAdmin({ userRole }: MediaAdminProps) {
     }
     const files = e.dataTransfer.files;
     if (files && files.length > 0) {
-      processFile(files[0]);
+      if (entryMode === 'bulk') {
+        processBulkFiles(files);
+      } else {
+        processFile(files[0]);
+      }
     }
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
-      processFile(files[0]);
+      if (entryMode === 'bulk') {
+        processBulkFiles(files);
+      } else {
+        processFile(files[0]);
+      }
     }
   };
 
@@ -479,7 +573,7 @@ export default function MediaAdmin({ userRole }: MediaAdminProps) {
       if (uploadEvent.target?.result) {
         const rawResult = uploadEvent.target.result as string;
         try {
-          const compressed = await compressImage(rawResult, 1000, 0.72);
+          const compressed = await compressImage(rawResult, 800, 0.55);
           setBgUrl(compressed);
           setSuccessMsg('ব্যাকগ্রাউন্ড ইমেজ সফলভাবে আপলোড ও কমপ্রেস করা হয়েছে!');
           setTimeout(() => setSuccessMsg(''), 2000);
@@ -974,10 +1068,40 @@ export default function MediaAdmin({ userRole }: MediaAdminProps) {
         
         {/* Left Interactive form including drag and drop area */}
         <div className="w-full lg:w-2/5 bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-4">
+          <div className="flex bg-slate-200/60 p-1 rounded-xl">
+            <button
+              type="button"
+              onClick={() => {
+                if (isBulkUploading) return;
+                setEntryMode('single');
+              }}
+              className={`flex-1 text-center py-1.5 rounded-lg text-xs font-black transition-all ${
+                entryMode === 'single' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              } ${isBulkUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              সিম্পল স্লাইড এন্ট্রি (Single)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (editingId) {
+                  alert('প্রথমে এডিট মোড থেকে বের হোন!');
+                  return;
+                }
+                setEntryMode('bulk');
+              }}
+              className={`flex-1 text-center py-1.5 rounded-lg text-xs font-black transition-all ${
+                entryMode === 'bulk' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              বাল্ক ইমেজ আপলোড (Bulk)
+            </button>
+          </div>
+
           <div className="flex items-center justify-between pb-2 border-b border-slate-200">
             <h3 className="font-extrabold text-slate-900 text-sm flex items-center gap-1.5">
               <Image className="h-4 w-4 text-indigo-600" />
-              {editingId ? 'স্লাইড এডিট করুন' : 'নতুন ইমেজ যোগ করুন'}
+              {entryMode === 'bulk' ? 'বাল্ক ড্র্যাগ এবং ড্রপ আপলোড প্যানেল' : (editingId ? 'স্লাইড এডিট করুন' : 'নতুন ইমেজ যোগ করুন')}
             </h3>
             {editingId && (
               <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded">
@@ -1000,212 +1124,301 @@ export default function MediaAdmin({ userRole }: MediaAdminProps) {
             </div>
           )}
 
-          <form onSubmit={handleSaveMediaItem} className="space-y-3.5 text-left">
-            
-            {/* DRAG AND DROP ZONE */}
-            <div>
-              <label className="block text-[10px] text-slate-500 font-bold uppercase mb-1.5">
-                ১. নতুন ইমেজ ফাইল ড্রপ বা সিলেক্ট করুন (Drag & Drop Image)
-              </label>
-              
-              <div 
-                className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all duration-200 flex flex-col items-center justify-center min-h-[140px] relative ${
+          {entryMode === 'bulk' ? (
+            <div className="space-y-4">
+              <div
+                className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all duration-200 flex flex-col items-center justify-center min-h-[180px] relative ${
                   isDragging 
                     ? 'border-indigo-600 bg-indigo-50/60' 
-                    : imageUrl 
-                      ? 'border-emerald-300 bg-slate-50 hover:bg-slate-100/50' 
+                    : isBulkUploading
+                      ? 'border-indigo-300 bg-slate-100/50 cursor-wait'
                       : 'border-slate-300 bg-white hover:bg-slate-50/50'
                 }`}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => !isBulkUploading && bulkFileInputRef.current?.click()}
               >
                 <input 
                   type="file" 
-                  ref={fileInputRef}
+                  ref={bulkFileInputRef}
                   className="hidden" 
                   accept="image/*"
+                  multiple
+                  disabled={isBulkUploading}
                   onChange={handleFileInputChange}
                 />
 
-                {imageUrl ? (
-                  <div className="space-y-2 w-full flex flex-col items-center">
-                    <div className="w-16 h-16 rounded-lg overflow-hidden border shadow-sm relative shrink-0 bg-white">
-                      <img 
-                        src={imageUrl} 
-                        alt="Preview" 
-                        className="w-full h-full object-cover" 
-                        referrerPolicy="no-referrer"
-                      />
-                    </div>
-                    <div className="text-[10px] text-slate-500 font-medium">
-                      ✓ ইমেজ সিলেক্ট করা হয়েছে! পরিবর্তন করতে আবার ড্র্যাগ করুন।
-                    </div>
+                <div className="space-y-2">
+                  <div className="w-12 h-12 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto shadow-sm">
+                    <Upload className="h-6 w-6" />
                   </div>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center mx-auto">
-                      <Upload className="h-5 w-5" />
-                    </div>
-                    <div className="text-xs">
-                      <span className="font-extrabold text-indigo-600">এখানে ফাইল ড্র্যাগ করুন</span> অথবা <span className="underline font-bold text-slate-700">ক্লিবোর্ন থেকে ব্রাউজ করুন</span>
-                    </div>
-                    <p className="text-[9px] text-slate-400">JPG, PNG বা WEBP (অনধিক ১.৫ মেগাবাইট)</p>
+                  <div className="text-xs">
+                    <span className="font-extrabold text-indigo-600">একাধিক ইমেজ ড্র্যাগ করে এখানে ছাড়ুন</span> <br />অথবা <span className="underline font-bold text-slate-700">ফাইল নির্বাচন করতে ক্লিক করুন</span>
                   </div>
-                )}
+                  <p className="text-[10px] text-slate-400">একসাথে অনেকগুলো ছবি সম্পূর্ণ স্বয়ংক্রিয়ভাবে আপলোড ও অপ্টিমাইজ করুন</p>
+                </div>
               </div>
-            </div>
 
-            {/* Direct URL input fields to override file upload optionally */}
-            <div>
-              <label className="block text-[10px] text-slate-500 font-bold uppercase mb-1">
-                অথবা সরাসরি ইমেজ লিংক (Direct URL Address)
-              </label>
-              <input 
-                type="text"
-                placeholder="https://images.unsplash.com/... বা base64..."
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-indigo-500 text-slate-800 text-xs bg-white font-mono"
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-              />
-            </div>
-
-            {/* Banner Background Image Section */}
-            <div className="p-3 bg-indigo-50/40 border border-indigo-100 rounded-xl space-y-2 text-left">
-              <label className="block text-[10px] text-slate-600 font-extrabold uppercase">
-                ২. ব্যানার ব্যাকগ্রাউন্ড ছবি (Optional Banner Background Image)
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="file"
-                  ref={bgFileInputRef}
-                  className="hidden"
-                  accept="image/*"
-                  onChange={handleBgFileInputChange}
-                />
-                <button
-                  type="button"
-                  onClick={() => bgFileInputRef.current?.click()}
-                  className="px-3 py-1.5 bg-slate-250 hover:bg-slate-300 border text-slate-700 text-[10px] font-black rounded-lg cursor-pointer transition shrink-0 flex items-center gap-1"
-                >
-                  <Upload className="h-3 w-3" /> আপলোড
-                </button>
-                <input 
-                  type="text"
-                  placeholder="সরাসরি ব্যাকগ্রাউন্ড ইমেজের লিংক..."
-                  className="flex-1 px-2.5 py-1.5 border rounded-lg focus:outline-none focus:border-indigo-500 text-slate-800 text-[10px] bg-white font-mono"
-                  value={bgUrl}
-                  onChange={(e) => setBgUrl(e.target.value)}
-                />
+              {/* Bulk upload settings */}
+              <div className="p-3 bg-slate-100/80 border rounded-xl space-y-2 text-left text-xs">
+                <p className="font-extrabold text-slate-700 text-[10px] uppercase tracking-wider">বাল্ক মেটাডাটা সেটিংস (আপলোডকৃত সকল ইমেজের জন্য):</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[9px] text-slate-500 font-bold uppercase mb-1">ডিফল্ট ট্যাগ</label>
+                    <input 
+                      type="text" 
+                      className="w-full px-2 py-1 text-xs border rounded bg-white font-semibold"
+                      value={tag}
+                      onChange={(e) => setTag(e.target.value)}
+                      placeholder="যেমন: নতুন সংগ্রহ"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] text-slate-500 font-bold uppercase mb-1">ডিফল্ট ল্যান্ডিং পেজ</label>
+                    <select 
+                      className="w-full px-2 py-1 text-xs border rounded bg-white font-bold"
+                      value={pageInput}
+                      onChange={(e) => setPageInput(e.target.value as any)}
+                    >
+                      <option value="raincoat">🌧️ রেইনকোট</option>
+                      <option value="bikecover">🏍️ বাইক কভার</option>
+                    </select>
+                  </div>
+                </div>
               </div>
-              {bgUrl && (
-                <div className="flex items-center gap-2 mt-1.5 p-1.5 bg-white border border-slate-150 rounded-lg">
-                  <div className="w-8 h-8 rounded border overflow-hidden shrink-0">
-                    <img src={bgUrl} alt="Background Preview" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+
+              {/* Uploading progress files list */}
+              {bulkFiles.length > 0 && (
+                <div className="border border-slate-200 rounded-xl bg-white p-3 space-y-2 max-h-[180px] overflow-y-auto text-left">
+                  <h4 className="font-extrabold text-slate-800 text-[11px] border-b pb-1 flex items-center justify-between">
+                    <span>আপলোড প্রগ্রেস লিস্ট ({bulkFiles.length} ফাইল)</span>
+                    {isBulkUploading && <span className="text-indigo-600 animate-pulse text-[9px]">প্রসেসিং চলছে...</span>}
+                  </h4>
+                  <div className="space-y-1.5">
+                    {bulkFiles.map((file, i) => (
+                      <div key={i} className="flex justify-between items-center text-[10px] font-medium py-1 px-1.5 rounded bg-slate-50 border border-slate-100">
+                        <span className="truncate max-w-[200px] font-mono text-slate-700">{file.name}</span>
+                        <span>
+                          {file.status === 'pending' && <span className="text-slate-400">অপেক্ষা করুন..</span>}
+                          {file.status === 'uploading' && <span className="text-amber-600 font-black animate-pulse">আপলোড হচ্ছে..</span>}
+                          {file.status === 'success' && <span className="text-emerald-600 font-black">✓ সফল</span>}
+                          {file.status === 'error' && <span className="text-rose-600 font-black">✗ ব্যর্থ</span>}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex-1 min-w-0 text-left">
-                    <p className="text-[9px] text-slate-500 truncate leading-none mb-0.5">ব্যাকগ্রাউন্ড ছবি সিলেক্টেড</p>
-                    <p className="text-[8px] text-slate-400 font-mono truncate leading-none">{bgUrl}</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setBgUrl('')}
-                    className="p-1 text-rose-500 hover:text-rose-700 font-bold text-[9px] cursor-pointer"
-                  >
-                    মুছুন
-                  </button>
                 </div>
               )}
             </div>
-
-            {/* Target Landing Page field to separate sliders */}
-            <div>
-              <label className="block text-[10px] text-slate-500 font-bold uppercase mb-1">
-                টার্গেট ল্যান্ডিং পেজ (Target Landing Page)
-              </label>
-              <select
-                className="w-full px-3 py-1.8 border rounded-lg focus:outline-none focus:border-indigo-500 text-slate-800 text-xs font-bold bg-white"
-                value={pageInput}
-                onChange={(e) => setPageInput(e.target.value as 'raincoat' | 'bikecover')}
-              >
-                <option value="raincoat">🌧️ রেইনকোট ল্যান্ডিং পেজ (Raincoat Page)</option>
-                <option value="bikecover">🏍️ বাইক কভার ল্যান্ডিং পেজ (Bike Cover Page)</option>
-              </select>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[10px] text-slate-500 font-bold uppercase mb-1">স্লাইড টাইটেল (Slide Title)</label>
-                <input 
-                  type="text"
-                  placeholder="যেমন: ১% লিকপ্রুফ সীমিং প্রযুক্তি"
-                  className="w-full px-3 py-1.8 border rounded-lg focus:outline-none focus:border-indigo-500 text-slate-800 text-xs font-bold bg-white"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] text-slate-500 font-bold uppercase mb-1">স্টিকার ব্যাজ/ট্যাগ (Badge Label)</label>
-                <input 
-                  type="text"
-                  placeholder="যেমন: ১০০% ওয়াটারপ্রুফ"
-                  className="w-full px-3 py-1.8 border rounded-lg focus:outline-none focus:border-indigo-500 text-slate-800 text-xs font-semibold bg-white"
-                  value={tag}
-                  onChange={(e) => setTag(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[10px] text-slate-500 font-bold uppercase mb-1">ক্রমিক পজিশন নম্বর (Order Index)</label>
-                <input 
-                  type="number"
-                  className="w-full px-3 py-1.8 border rounded-lg focus:outline-none focus:border-indigo-500 text-slate-800 text-xs font-mono bg-white"
-                  value={orderIndex}
-                  onChange={(e) => setOrderIndex(Number(e.target.value))}
-                  required
-                />
-              </div>
-              <div className="flex items-end justify-end pb-1.5 text-slate-400 text-[10px] font-medium leading-tight">
-                * স্লাইডসমূহ এই তালিকা অনুযায়ী সাজানো হবে।
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-[10px] text-slate-500 font-bold uppercase mb-1">সংক্ষিপ্ত বিবরণ (Description Text)</label>
-              <textarea 
-                rows={2}
-                placeholder="রেইনকোট স্লাইডের বিশেষ টেকনিক্যাল বিবরণ লিখুন..."
-                className="w-full px-3 py-1.8 border rounded-lg focus:outline-none text-slate-800 text-xs bg-white"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </div>
-
-            <div className="flex gap-2">
-              <button 
-                type="submit"
-                className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-lg shadow-sm transition cursor-pointer flex items-center justify-center gap-1"
-              >
-                {editingId ? 'আপডেট নিশ্চিত করুন' : 'গ্যালারিতে যুক্ত করুন'}
-              </button>
+          ) : (
+            <form onSubmit={handleSaveMediaItem} className="space-y-3.5 text-left">
               
-              {(editingId || imageUrl || title) && (
-                <button 
-                  type="button"
-                  onClick={resetForm}
-                  className="py-2 px-3.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-lg transition cursor-pointer"
+              {/* DRAG AND DROP ZONE */}
+              <div>
+                <label className="block text-[10px] text-slate-500 font-bold uppercase mb-1.5">
+                  ১. নতুন ইমেজ ফাইল ড্রপ বা সিলেক্ট করুন (Drag & Drop Image)
+                </label>
+                
+                <div 
+                  className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all duration-200 flex flex-col items-center justify-center min-h-[140px] relative ${
+                    isDragging 
+                      ? 'border-indigo-600 bg-indigo-50/60' 
+                      : imageUrl 
+                        ? 'border-emerald-300 bg-slate-50 hover:bg-slate-100/50' 
+                        : 'border-slate-300 bg-white hover:bg-slate-50/50'
+                  }`}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
                 >
-                  ক্লিয়ার
+                  <input 
+                    type="file" 
+                    ref={fileInputRef}
+                    className="hidden" 
+                    accept="image/*"
+                    onChange={handleFileInputChange}
+                  />
+
+                  {imageUrl ? (
+                    <div className="space-y-2 w-full flex flex-col items-center">
+                      <div className="w-16 h-16 rounded-lg overflow-hidden border shadow-sm relative shrink-0 bg-white">
+                        <img 
+                          src={imageUrl} 
+                          alt="Preview" 
+                          className="w-full h-full object-cover" 
+                          referrerPolicy="no-referrer"
+                        />
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-medium">
+                        ✓ ইমেজ সিলেক্ট করা হয়েছে! পরিবর্তন করতে আবার ড্র্যাগ করুন।
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center mx-auto">
+                        <Upload className="h-5 w-5" />
+                      </div>
+                      <div className="text-xs">
+                        <span className="font-extrabold text-indigo-600">এখানে ফাইল ড্র্যাগ করুন</span> অথবা <span className="underline font-bold text-slate-700">ক্লিবোর্ন থেকে ব্রাউজ করুন</span>
+                      </div>
+                      <p className="text-[9px] text-slate-400">JPG, PNG বা WEBP (অনধিক ১.৫ মেগাবাইট)</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Direct URL input fields to override file upload optionally */}
+              <div>
+                <label className="block text-[10px] text-slate-500 font-bold uppercase mb-1">
+                  অথবা সরাসরি ইমেজ লিংক (Direct URL Address)
+                </label>
+                <input 
+                  type="text"
+                  placeholder="https://images.unsplash.com/... বা base64..."
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-indigo-500 text-slate-800 text-xs bg-white font-mono"
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
+                />
+              </div>
+
+              {/* Banner Background Image Section */}
+              <div className="p-3 bg-indigo-50/40 border border-indigo-100 rounded-xl space-y-2 text-left">
+                <label className="block text-[10px] text-slate-600 font-extrabold uppercase">
+                  ২. ব্যানার ব্যাকগ্রাউন্ড ছবি (Optional Banner Background Image)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="file"
+                    ref={bgFileInputRef}
+                    className="hidden"
+                    accept="image/*"
+                    onChange={handleBgFileInputChange}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => bgFileInputRef.current?.click()}
+                    className="px-3 py-1.5 bg-slate-250 hover:bg-slate-300 border text-slate-700 text-[10px] font-black rounded-lg cursor-pointer transition shrink-0 flex items-center gap-1"
+                  >
+                    <Upload className="h-3 w-3" /> আপলোড
+                  </button>
+                  <input 
+                    type="text"
+                    placeholder="সরাসরি ব্যাকগ্রাউন্ড ইমেজের লিংক..."
+                    className="flex-1 px-2.5 py-1.5 border rounded-lg focus:outline-none focus:border-indigo-500 text-slate-800 text-[10px] bg-white font-mono"
+                    value={bgUrl}
+                    onChange={(e) => setBgUrl(e.target.value)}
+                  />
+                </div>
+                {bgUrl && (
+                  <div className="flex items-center gap-2 mt-1.5 p-1.5 bg-white border border-slate-150 rounded-lg">
+                    <div className="w-8 h-8 rounded border overflow-hidden shrink-0">
+                      <img src={bgUrl} alt="Background Preview" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    </div>
+                    <div className="flex-1 min-w-0 text-left">
+                      <p className="text-[9px] text-slate-500 truncate leading-none mb-0.5">ব্যাকগ্রাউন্ড ছবি সিলেক্টেড</p>
+                      <p className="text-[8px] text-slate-400 font-mono truncate leading-none">{bgUrl}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setBgUrl('')}
+                      className="p-1 text-rose-500 hover:text-rose-700 font-bold text-[9px] cursor-pointer"
+                    >
+                      মুছুন
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Target Landing Page field to separate sliders */}
+              <div>
+                <label className="block text-[10px] text-slate-500 font-bold uppercase mb-1">
+                  টার্গেট ল্যান্ডিং পেজ (Target Landing Page)
+                </label>
+                <select
+                  className="w-full px-3 py-1.8 border rounded-lg focus:outline-none focus:border-indigo-500 text-slate-800 text-xs font-bold bg-white"
+                  value={pageInput}
+                  onChange={(e) => setPageInput(e.target.value as 'raincoat' | 'bikecover')}
+                >
+                  <option value="raincoat">🌧️ রেইনকোট ল্যান্ডিং পেজ (Raincoat Page)</option>
+                  <option value="bikecover">🏍️ বাইক কভার ল্যান্ডিং পেজ (Bike Cover Page)</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] text-slate-500 font-bold uppercase mb-1">স্লাইড টাইটেল (Slide Title)</label>
+                  <input 
+                    type="text"
+                    placeholder="যেমন: ১% লিকপ্রুফ সীমিং প্রযুক্তি"
+                    className="w-full px-3 py-1.8 border rounded-lg focus:outline-none focus:border-indigo-500 text-slate-800 text-xs font-bold bg-white"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] text-slate-500 font-bold uppercase mb-1">স্টিকার ব্যাজ/ট্যাগ (Badge Label)</label>
+                  <input 
+                    type="text"
+                    placeholder="যেমন: ১০০% ওয়াটারপ্রুফ"
+                    className="w-full px-3 py-1.8 border rounded-lg focus:outline-none focus:border-indigo-500 text-slate-800 text-xs font-semibold bg-white"
+                    value={tag}
+                    onChange={(e) => setTag(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] text-slate-500 font-bold uppercase mb-1">ক্রমিক পজিশন নম্বর (Order Index)</label>
+                  <input 
+                    type="number"
+                    className="w-full px-3 py-1.8 border rounded-lg focus:outline-none focus:border-indigo-500 text-slate-800 text-xs font-mono bg-white"
+                    value={orderIndex}
+                    onChange={(e) => setOrderIndex(Number(e.target.value))}
+                    required
+                  />
+                </div>
+                <div className="flex items-end justify-end pb-1.5 text-slate-400 text-[10px] font-medium leading-tight">
+                  * স্লাইডসমূহ এই তালিকা অনুযায়ী সাজানো হবে।
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] text-slate-500 font-bold uppercase mb-1">সংক্ষিপ্ত বিবরণ (Description Text)</label>
+                <textarea 
+                  rows={2}
+                  placeholder="রেইনকোট স্লাইডের বিশেষ টেকনিক্যাল বিবরণ লিখুন..."
+                  className="w-full px-3 py-1.8 border rounded-lg focus:outline-none text-slate-800 text-xs bg-white"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <button 
+                  type="submit"
+                  className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-lg shadow-sm transition cursor-pointer flex items-center justify-center gap-1"
+                >
+                  {editingId ? 'আপডেট নিশ্চিত করুন' : 'গ্যালারিতে যুক্ত করুন'}
                 </button>
-              )}
-            </div>
-          </form>
+                
+                {(editingId || imageUrl || title) && (
+                  <button 
+                    type="button"
+                    onClick={resetForm}
+                    className="py-2 px-3.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-lg transition cursor-pointer"
+                  >
+                    ক্লিয়ার
+                  </button>
+                )}
+              </div>
+            </form>
+          )}
 
           <div className="pt-4 border-t border-slate-200 text-left space-y-2">
             {showResetConfirm ? (

@@ -76,14 +76,11 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
 // Initialize Cloud Firestore Database with instance ID and force long polling to bypass iframe socket blocks
-// If running on a user's own live GCP/Firebase project (e.g., gen-lang-client-...),
-// we fall back to the "(default)" database to match the database they provisioned in their standard setup.
-const isSandboxProject = firebaseConfig.projectId.startsWith('ai-studio-') || firebaseConfig.projectId.includes('aistudio');
-const dbId = isSandboxProject ? (firebaseConfig as any).firestoreDatabaseId : undefined;
+const dbId = (firebaseConfig as any).firestoreDatabaseId || undefined;
 
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true
-}, dbId || undefined);
+}, dbId);
 
 // Initialize default database so we can fetch previous or old data if stored there in default fallback
 export const defaultDb = initializeFirestore(app, {
@@ -287,19 +284,20 @@ export async function addOrderToFirestore(order: RaincoatOrder): Promise<void> {
 
   // 2. Perform the fraud check asynchronously in the background. Once completed, update both documents.
   performFraudCheck(order.phone).then(async (fraud) => {
+    const fraudUpdates = {
+      fraudScore: fraud.score,
+      fraudStatus: fraud.status,
+      fraudReason: fraud.reason,
+      fraudTotalParcel: fraud.totalParcel !== undefined ? fraud.totalParcel : null,
+      fraudSuccessParcel: fraud.successParcel !== undefined ? fraud.successParcel : null,
+      fraudSuccessRatio: fraud.successRatio !== undefined ? fraud.successRatio : null
+    };
+
     try {
-      await updateDoc(doc(db, 'orders', order.id), {
-        fraudScore: fraud.score,
-        fraudStatus: fraud.status,
-        fraudReason: fraud.reason
-      });
+      await updateDoc(doc(db, 'orders', order.id), fraudUpdates);
     } catch (_) {}
     try {
-      await updateDoc(doc(defaultDb, 'orders', order.id), {
-        fraudScore: fraud.score,
-        fraudStatus: fraud.status,
-        fraudReason: fraud.reason
-      });
+      await updateDoc(doc(defaultDb, 'orders', order.id), fraudUpdates);
     } catch (_) {}
   }).catch((fe) => {
     console.error("Fraud Check background task failed:", fe);
@@ -1411,8 +1409,10 @@ export interface MenuBarConfig {
 export interface CallingAgent {
   id: string; // doc ID and username
   username: string;
+  name?: string;
   password?: string;
   createdAt: string;
+  active?: boolean;
 }
 
 export interface CallingAgentLog {

@@ -72,7 +72,7 @@ export default function LivePurchaseNotification() {
   const [isVisible, setIsVisible] = useState(false);
   const [isListOpen, setIsListOpen] = useState(false);
 
-  const activeList = purchaseList.length > 0 ? purchaseList : PURCHASE_DATA;
+  const activeList = purchaseList;
 
   // 1. Subscribe to Live Orders from Firestore
   useEffect(() => {
@@ -126,8 +126,8 @@ export default function LivePurchaseNotification() {
         });
       });
 
-      if (results.length > 0) {
-        setPurchaseList((prevList) => {
+      setPurchaseList((prevList) => {
+        if (results.length > 0) {
           // If we have a new latest order that wasn't at the top of our previous list, flash it!
           if (prevList.length > 0 && results[0]?.id !== prevList[0]?.id) {
             setCurrentIndex(0);
@@ -136,11 +136,11 @@ export default function LivePurchaseNotification() {
             // Auto close preview after 5 seconds
             setTimeout(() => {
               setIsVisible(false);
-            }, 5000);
+            }, 5005);
           }
-          return results;
-        });
-      }
+        }
+        return results;
+      });
     }, (error) => {
       console.warn("Failed to stream live orders for notifications safely: ", error);
     });
@@ -256,31 +256,35 @@ export default function LivePurchaseNotification() {
               
               {/* Scrollable list of last orders */}
               <div className="space-y-2 max-h-56 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-800">
-                {activeList.slice(0, 5).map((item, idx) => {
-                  const itemTimeAgo = item.createdAt ? getBengaliTimeAgo(item.createdAt) : item.timeAgo;
-                  return (
-                    <div 
-                      key={item.id || idx} 
-                      className="p-2 rounded-xl bg-slate-900/40 border border-slate-800/40 flex items-start gap-2.5 hover:bg-slate-900/60 transition"
-                    >
-                      <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center shrink-0">
-                        <ShoppingBag className="h-3.5 w-3.5 text-emerald-400" />
-                      </div>
-                      <div className="flex-1 min-w-0 font-sans text-left">
-                        <div className="flex items-center justify-between gap-1">
-                          <span className="text-[11px] font-black text-slate-200 truncate">{item.name}</span>
-                          <span className="text-[8px] text-emerald-400 font-bold shrink-0">{itemTimeAgo}</span>
+                {activeList.length === 0 ? (
+                  <p className="text-[11px] text-slate-500 text-center py-6 font-semibold font-sans">কোনো রিয়েল-টাইম কোয়ালিফাইড অর্ডার পাওয়া যায়নি</p>
+                ) : (
+                  activeList.slice(0, 15).map((item, idx) => {
+                    const itemTimeAgo = item.createdAt ? getBengaliTimeAgo(item.createdAt) : item.timeAgo;
+                    return (
+                      <div 
+                        key={item.id || idx} 
+                        className="p-2 rounded-xl bg-slate-900/40 border border-slate-800/40 flex items-start gap-2.5 hover:bg-slate-900/60 transition"
+                      >
+                        <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center shrink-0">
+                          <ShoppingBag className="h-3.5 w-3.5 text-emerald-400" />
                         </div>
-                        <p className="text-[9px] text-slate-400 mt-0.5 font-sans">
-                          কালার: <span className="text-orange-400 font-bold">{item.color}</span> | সাইজ: <span className="text-teal-400 font-bold">{item.size}</span>
-                        </p>
-                        <p className="text-[8px] text-slate-500 truncate mt-0.5">
-                          📍 {item.location}
-                        </p>
+                        <div className="flex-1 min-w-0 font-sans text-left">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="text-[11px] font-black text-slate-200 truncate">{item.name}</span>
+                            <span className="text-[8px] text-emerald-400 font-bold shrink-0">{itemTimeAgo}</span>
+                          </div>
+                          <p className="text-[9px] text-slate-400 mt-0.5 font-sans">
+                            কালার: <span className="text-orange-400 font-bold">{item.color}</span> | সাইজ: <span className="text-teal-400 font-bold">{item.size}</span>
+                          </p>
+                          <p className="text-[8px] text-slate-500 truncate mt-0.5">
+                            📍 {item.location}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                )}
               </div>
 
               <div className="mt-3 pt-2 text-center border-t border-slate-900">

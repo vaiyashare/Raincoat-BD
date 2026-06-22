@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, AlertCircle, Check, Plus, Trash2, ArrowUp, ArrowDown, Sparkles, Image, Settings, Eye, ChevronUp, ChevronDown } from 'lucide-react';
+import { Save, AlertCircle, Check, Plus, Trash2, ArrowUp, ArrowDown, Sparkles, Image, Settings, Eye, ChevronUp, ChevronDown, Image as ImageIcon } from 'lucide-react';
 import { HomepageBannerSlide, HomepageBannerSettings } from '../../types';
 import { getBannerSettingsFromFirestore, saveBannerSettingsToFirestore } from '../../lib/firebase';
 import { compressImage } from '../../lib/imageCompressor';
+import MediaPickerModal from './MediaPickerModal';
 
 interface BannersAdminProps {
   userRole: string; // 'Admin' | 'Editor' | 'ReadOnly'
@@ -32,6 +33,10 @@ export default function BannersAdmin({ userRole }: BannersAdminProps) {
   const [primaryBtnLink, setPrimaryBtnLink] = useState('/shop');
   const [secondaryBtnText, setSecondaryBtnText] = useState('🌧️ রেইনকোট অর্ডার করুন');
   const [secondaryBtnLink, setSecondaryBtnLink] = useState('/raincoat');
+
+  // Media Pickers state triggers
+  const [isWebPickerOpen, setIsWebPickerOpen] = useState(false);
+  const [isMobilePickerOpen, setIsMobilePickerOpen] = useState(false);
 
   const fileInputRefWeb = useRef<HTMLInputElement>(null);
   const fileInputRefMobile = useRef<HTMLInputElement>(null);
@@ -125,7 +130,7 @@ export default function BannersAdmin({ userRole }: BannersAdminProps) {
           const rawDataUrl = uploadEvent.target.result as string;
           try {
             // Automatically compress manual uploaded asset in browser
-            const compressed = await compressImage(rawDataUrl, 1000, 0.72);
+            const compressed = await compressImage(rawDataUrl, 800, 0.55);
             if (target === 'web') {
               setBgImage(compressed);
               setBgType('image');
@@ -597,13 +602,22 @@ export default function BannersAdmin({ userRole }: BannersAdminProps) {
                           </button>
                         </div>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => fileInputRefWeb.current?.click()}
-                          className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[10.5px] font-bold border transition"
-                        >
-                          আপলোড করুন (Desktop PC)
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => fileInputRefWeb.current?.click()}
+                            className="flex-1 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[10px] font-bold border transition"
+                          >
+                            কম্পিউটার আপলোড
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIsWebPickerOpen(true)}
+                            className="flex-1 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[10px] font-bold border border-indigo-200 transition flex items-center justify-center gap-1"
+                          >
+                            <ImageIcon className="h-3.5 w-3.5" /> গ্যালারি
+                          </button>
+                        </div>
                       )}
 
                       <div className="pt-1.5 border-t border-slate-100">
@@ -642,13 +656,22 @@ export default function BannersAdmin({ userRole }: BannersAdminProps) {
                           </button>
                         </div>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => fileInputRefMobile.current?.click()}
-                          className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[10.5px] font-bold border transition"
-                        >
-                          আপলোড করুন (Mobile Only)
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => fileInputRefMobile.current?.click()}
+                            className="flex-1 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[10px] font-bold border transition"
+                          >
+                            কম্পিউটার আপলোড
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIsMobilePickerOpen(true)}
+                            className="flex-1 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[10px] font-bold border border-indigo-200 transition flex items-center justify-center gap-1"
+                          >
+                            <ImageIcon className="h-3.5 w-3.5" /> গ্যালারি
+                          </button>
+                        </div>
                       )}
 
                       <div className="pt-1.5 border-t border-slate-100">
@@ -741,6 +764,26 @@ export default function BannersAdmin({ userRole }: BannersAdminProps) {
 
       </div>
 
+      {/* Media Picker Overlays */}
+      <MediaPickerModal 
+        isOpen={isWebPickerOpen}
+        onClose={() => setIsWebPickerOpen(false)}
+        onSelect={(url) => {
+          setBgImage(url);
+          setBgType('image');
+        }}
+        title="ডেস্কটপ ব্যানার ব্যাকগ্রাউন্ড ছবি সিলেক্ট করুন"
+      />
+
+      <MediaPickerModal 
+        isOpen={isMobilePickerOpen}
+        onClose={() => setIsMobilePickerOpen(false)}
+        onSelect={(url) => {
+          setBgImageMobile(url);
+          setBgType('image');
+        }}
+        title="মোবাইল ব্যানার ব্যাকগ্রাউন্ড ছবি সিলেক্ট করুন"
+      />
     </div>
   );
 }

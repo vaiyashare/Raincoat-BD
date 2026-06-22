@@ -40,9 +40,13 @@ export default function CallingAgentsAdmin() {
 
   // Form states
   const [newUsername, setNewUsername] = useState('');
+  const [newName, setNewName] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [editingAgent, setEditingAgent] = useState<CallingAgent | null>(null);
+  const [editUsername, setEditUsername] = useState('');
+  const [editName, setEditName] = useState('');
   const [editPassword, setEditPassword] = useState('');
+  const [editActive, setEditActive] = useState(true);
 
   // Search filter
   const [searchLogQuery, setSearchLogQuery] = useState('');
@@ -123,6 +127,7 @@ export default function CallingAgentsAdmin() {
     }
 
     const cleanedUsername = newUsername.trim().toLowerCase();
+    const cleanName = newName.trim();
     const cleanPassword = newPassword.trim();
 
     // Check if duplicate
@@ -135,6 +140,7 @@ export default function CallingAgentsAdmin() {
       const newAgent: CallingAgent = {
         id: cleanedUsername, // Let id be the username as request
         username: cleanedUsername,
+        name: cleanName || undefined,
         password: cleanPassword,
         createdAt: new Date().toISOString()
       };
@@ -142,6 +148,7 @@ export default function CallingAgentsAdmin() {
       await saveCallingAgentToFirestore(newAgent);
       setAgents(prev => [...prev, newAgent]);
       setNewUsername('');
+      setNewName('');
       setNewPassword('');
       alert("এজেন্ট অ্যাকাউন্ট সফলভাবে তৈরি হয়েছে!");
     } catch (error) {
@@ -169,23 +176,66 @@ export default function CallingAgentsAdmin() {
     }
   };
 
-  const handleUpdatePassword = async () => {
+  const handleUpdateAgent = async () => {
     if (!editingAgent) return;
-    if (!editPassword.trim()) {
-      alert("নতুন পাসওয়ার্ডটি টাইপ করুন!");
+    const cleanUser = editUsername.trim().toLowerCase();
+    const cleanName = editName.trim();
+    const cleanPass = editPassword.trim();
+
+    if (!cleanUser || !cleanPass) {
+      alert("ইউজারনেম এবং পাসওয়ার্ড পূরণ করুন!");
       return;
     }
 
     try {
-      const updated = { ...editingAgent, password: editPassword.trim() };
-      await saveCallingAgentToFirestore(updated);
-      setAgents(prev => prev.map(a => a.id === editingAgent.id ? updated : a));
+      // If the username changed, we must delete the old document ID and create a new doc
+      if (cleanUser !== editingAgent.username) {
+        if (cleanUser !== '1234' && editingAgent.username === '1234') {
+          alert("ডিফল্ট এডমিন এজেন্ট (1234) এর ইউজারনেম পরিবর্তন করা যাবে না!");
+          return;
+        }
+
+        // Verify it doesn't already exist in the other agents
+        if (agents.some(a => a.id === cleanUser && a.id !== editingAgent.id)) {
+          alert("এই ইউজারনেমটি ইতিমধ্যে বিদ্যমান!");
+          return;
+        }
+
+        const newAgent: CallingAgent = {
+          id: cleanUser,
+          username: cleanUser,
+          name: cleanName || undefined,
+          password: cleanPass,
+          active: editActive,
+          createdAt: editingAgent.createdAt || new Date().toISOString()
+        };
+
+        // Create the new agent document
+        await saveCallingAgentToFirestore(newAgent);
+        // Delete the old agent document
+        await deleteCallingAgentFromFirestore(editingAgent.id);
+
+        setAgents(prev => prev.filter(a => a.id !== editingAgent.id).concat(newAgent));
+      } else {
+        const updated: CallingAgent = {
+          ...editingAgent,
+          username: cleanUser,
+          name: cleanName || undefined,
+          password: cleanPass,
+          active: editActive
+        };
+        await saveCallingAgentToFirestore(updated);
+        setAgents(prev => prev.map(a => a.id === editingAgent.id ? updated : a));
+      }
+
       setEditingAgent(null);
+      setEditUsername('');
+      setEditName('');
       setEditPassword('');
-      alert("পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে।");
+      alert("এজেন্ট অ্যাকাউন্ট সফলভাবে আপডেট করা হয়েছে।");
     } catch (err) {
-      console.error("Failed to update password:", err);
-      alert("পাসওয়ার্ড পরিবর্তন করতে ব্যর্থ হয়েছে।");
+      console.error("Failed to update agent account:", err);
+      alert("এজেন্ট অ্যাকাউন্ট আপডেট করতে ব্যর্থ হয়েছে।");
     }
   };
 
@@ -246,6 +296,17 @@ export default function CallingAgentsAdmin() {
                   value={newUsername}
                   onChange={(e) => setNewUsername(e.target.value)}
                   placeholder="যেমন: kamil_call_agent"
+                  className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl focus:outline-hidden focus:border-cyan-400 text-slate-200"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-2">এজেন্ট নাম (Display Name / Name)</label>
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="যেমন: আবির হাসান"
                   className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl focus:outline-hidden focus:border-cyan-400 text-slate-200"
                 />
               </div>
@@ -403,13 +464,13 @@ export default function CallingAgentsAdmin() {
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-950 text-slate-400 uppercase tracking-wider text-[10px] font-black border-b border-slate-850">
-                    <th className="p-3">ইউজারনেম</th>
-                    <th className="p-3">পাসওয়ার্ড</th>
-                    <th className="p-3">তৈরির তারিখ</th>
-                    <th className="p-3 text-center">কনফার্মড লিড (Confirmed)</th>
-                    <th className="p-3 text-center">অ্যাক্টিভিটি (Logged)</th>
-                    <th className="p-3 text-center">পাসওয়ার্ড পরিবর্তন</th>
-                    <th className="p-3 text-center">অ্যাকশন</th>
+                    <th className="p-3 border-r border-slate-850">ইউজারনেম</th>
+                    <th className="p-3 border-r border-slate-850">পাসওয়ার্ড</th>
+                    <th className="p-3 border-r border-slate-850">তৈরির তারিখ</th>
+                    <th className="p-3 text-center border-r border-slate-850">কনফার্মড লিড (Confirmed)</th>
+                    <th className="p-3 text-center border-r border-slate-850">অ্যাক্টিভিটি (Logged)</th>
+                    <th className="p-3 text-center border-r border-slate-850">অ্যাক্সেস সক্রিয়তা (Access)</th>
+                    <th className="p-3 text-center">অ্যাকশন / এডিট</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-855 divide-slate-800">
@@ -423,8 +484,13 @@ export default function CallingAgentsAdmin() {
 
                     return (
                       <tr key={agent.id} className="hover:bg-slate-950/20">
-                        <td className="p-3 text-cyan-400 font-bold font-mono">
-                          {agent.username}
+                        <td className="p-3">
+                          <div className="flex flex-col">
+                            <span className="text-cyan-400 font-bold font-mono">@{agent.username}</span>
+                            {agent.name && (
+                              <span className="text-[10px] text-slate-400 font-sans mt-0.5">{agent.name}</span>
+                            )}
+                          </div>
                         </td>
                         <td className="p-3 font-mono font-medium text-slate-300">
                           {agent.password}
@@ -443,30 +509,58 @@ export default function CallingAgentsAdmin() {
                             {agentTotalLogs} বার
                           </span>
                         </td>
-                        <td className="p-3 text-center">
+                        <td className="p-3 text-center border-r border-slate-850 select-none">
                           <button
-                            onClick={() => {
-                              setEditingAgent(agent);
-                              setEditPassword(agent.password || '');
+                            type="button"
+                            onClick={async () => {
+                              const newActive = agent.active === false ? true : false;
+                              const updated = { ...agent, active: newActive };
+                              try {
+                                await saveCallingAgentToFirestore(updated);
+                                setAgents(prev => prev.map(a => a.id === agent.id ? updated : a));
+                              } catch (err) {
+                                console.error("Failed to toggle access status:", err);
+                              }
                             }}
-                            className="py-1 px-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-md text-[10px] font-bold text-slate-350 active:scale-95 transition cursor-pointer"
+                            className={`py-1 px-3 rounded-full text-[10px] font-black transition active:scale-95 border ${
+                              agent.active !== false
+                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25'
+                                : 'bg-rose-500/10 text-rose-450 border-rose-500/30 hover:bg-rose-500/25'
+                            }`}
+                            title={agent.active !== false ? "অ্যাক্সেস বন্ধ করুন" : "অ্যাক্সেস চালু করুন"}
                           >
-                            পাসওয়ার্ড পরিবর্তন
+                            {agent.active !== false ? '● অন (Active)' : '○ অফ (Blocked)'}
                           </button>
                         </td>
                         <td className="p-3 text-center">
-                          <button
-                            onClick={() => handleDeleteAgent(agent.id, agent.username)}
-                            disabled={agent.username === '1234'}
-                            className={`p-1.5 rounded-lg transition active:scale-95 ${
-                              agent.username === '1234'
-                                ? 'text-slate-650 cursor-not-allowed opacity-30'
-                                : 'text-red-400 hover:text-red-300 hover:bg-red-500/10 cursor-pointer'
-                            }`}
-                            title="Delete Account"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingAgent(agent);
+                                setEditUsername(agent.username);
+                                setEditName(agent.name || '');
+                                setEditPassword(agent.password || '');
+                                setEditActive(agent.active !== false);
+                              }}
+                              className="py-1 px-2.5 bg-slate-950 hover:bg-slate-805 border border-slate-800 rounded-md text-[10px] font-bold text-slate-350 active:scale-95 transition cursor-pointer"
+                            >
+                              এডিট করুন (Edit)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteAgent(agent.id, agent.username)}
+                              disabled={agent.username === '1234'}
+                              className={`p-1.5 rounded-lg transition active:scale-95 ${
+                                agent.username === '1234'
+                                  ? 'text-slate-650 cursor-not-allowed opacity-30 bg-transparent'
+                                  : 'text-red-400 hover:text-red-300 hover:bg-red-500/10 cursor-pointer'
+                              }`}
+                              title="Delete Account"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -556,39 +650,80 @@ export default function CallingAgentsAdmin() {
         )}
       </div>
 
-      {/* Password Edit Modal */}
+      {/* Agent Account Edit Modal */}
       {editingAgent && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="bg-slate-900 border border-slate-800 w-full max-w-sm rounded-2xl p-6 shadow-2xl relative space-y-4">
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-sm rounded-2xl p-6 shadow-2xl relative space-y-4 font-sans">
             
             <h3 className="font-extrabold text-white text-base flex items-center gap-2 border-b border-slate-800 pb-3">
               <Key className="h-4.5 w-4.5 text-cyan-400" />
-              <span>এজেন্ট পাসওয়ার্ড সেট করুন</span>
+              <span>এজেন্ট অ্যাকাউন্ট এডিট করুন</span>
             </h3>
 
-            <div>
-              <p className="text-xs text-slate-400">এজেন্ট ইউজার: <strong className="text-cyan-450 font-mono">@{editingAgent.username}</strong></p>
-            </div>
+            <div className="space-y-3 pt-1">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-450 uppercase tracking-wider mb-1">এজেন্ট ইউজারনেম (Username)</label>
+                <input
+                  type="text"
+                  value={editUsername}
+                  onChange={(e) => setEditUsername(e.target.value)}
+                  className="w-full px-4 py-2 bg-slate-950 border border-slate-850 rounded-xl text-white font-mono text-sm focus:outline-hidden"
+                  disabled={editingAgent.username === '1234'}
+                />
+                {editingAgent.username === '1234' && (
+                  <p className="text-[9px] text-slate-500 mt-0.5">ডিফল্ট এডমিন এজেন্ট এর ইউজারনেম পরিবর্তনযোগ্য নয়।</p>
+                )}
+              </div>
 
-            <div className="space-y-2">
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">নতুন পাসওয়ার্ড</label>
-              <input
-                type="text"
-                value={editPassword}
-                onChange={(e) => setEditPassword(e.target.value)}
-                className="w-full px-4 py-2 bg-slate-950 border border-slate-850 rounded-xl text-white font-mono text-sm focus:outline-hidden"
-              />
+              <div>
+                <label className="block text-[10px] font-bold text-slate-450 uppercase tracking-wider mb-1">এজেন্ট নাম (Display Name / Name)</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full px-4 py-2 bg-slate-950 border border-slate-850 rounded-xl text-white text-sm focus:outline-hidden"
+                  placeholder="যেমন: আবির হাসান"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-450 uppercase tracking-wider mb-1">পাসওয়ার্ড (Password)</label>
+                <input
+                  type="text"
+                  value={editPassword}
+                  onChange={(e) => setEditPassword(e.target.value)}
+                  className="w-full px-4 py-2 bg-slate-950 border border-slate-850 rounded-xl text-white font-mono text-sm focus:outline-hidden"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-450 uppercase tracking-wider mb-1.5">অ্যাক্সেস সক্রিয়তা (Access Link)</label>
+                <button
+                  type="button"
+                  onClick={() => setEditActive(!editActive)}
+                  className={`w-full py-2.5 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border transition active:scale-95 cursor-pointer ${
+                    editActive
+                      ? 'bg-emerald-500/10 hover:bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                      : 'bg-rose-500/10 hover:bg-rose-500/15 text-rose-455 border-rose-500/30'
+                  }`}
+                >
+                  <span className={`w-2.5 h-2.5 rounded-full ${editActive ? 'bg-emerald-400 animate-pulse' : 'bg-rose-550'}`}></span>
+                  <span>অ্যাক্সেস অবস্থা: {editActive ? 'অন (Active - Logged In)' : 'অফ (Blocked - Access Denied)'}</span>
+                </button>
+              </div>
             </div>
 
             <div className="flex gap-2.5 pt-2">
               <button
+                type="button"
                 onClick={() => setEditingAgent(null)}
-                className="flex-1 py-2 bg-slate-800 hover:bg-slate-755 text-slate-350 rounded-lg text-xs font-bold shrink-0 cursor-pointer"
+                className="flex-1 py-2 bg-slate-800 hover:bg-slate-750 text-slate-350 rounded-lg text-xs font-bold shrink-0 cursor-pointer"
               >
                 বাতিল
               </button>
               <button
-                onClick={handleUpdatePassword}
+                type="button"
+                onClick={handleUpdateAgent}
                 className="flex-1 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg text-xs font-bold cursor-pointer"
               >
                 আপডেট করুন

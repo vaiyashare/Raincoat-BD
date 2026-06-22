@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, ShieldCheck, Sparkles, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { getMediaFromFirestore } from '../lib/firebase';
@@ -20,6 +20,46 @@ interface CarouselItem {
 export default function ProductCarousel() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
+
+  // Performance-optimized swipe refs to track drag-distance
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const touchEndRef = useRef<{ x: number; y: number } | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    touchEndRef.current = { x: touch.clientX, y: touch.clientY };
+  };
+
+  const handleTouchEnd = () => {
+    const start = touchStartRef.current;
+    const end = touchEndRef.current;
+    if (!start || !end) return;
+
+    const distanceX = start.x - end.x;
+    const distanceY = start.y - end.y;
+    const minSwipeDistance = 50; // in pixels
+
+    // Ensure the motion is horizontal and exceeds threshold to prevent vertical scrolls causing accidental swiping
+    const isHorizontalSwipe = Math.abs(distanceX) > Math.abs(distanceY);
+
+    if (isHorizontalSwipe && Math.abs(distanceX) > minSwipeDistance) {
+      if (distanceX > 0) {
+        // Swiped Left -> trigger next slide
+        setCurrentIndex((prevIndex) => (prevIndex + 1) % (carouselItems.length || defaultItems.length));
+      } else {
+        // Swiped Right -> trigger previous slide
+        setCurrentIndex((prevIndex) => (prevIndex - 1 + (carouselItems.length || defaultItems.length)) % (carouselItems.length || defaultItems.length));
+      }
+    }
+
+    touchStartRef.current = null;
+    touchEndRef.current = null;
+  };
 
   const defaultItems: CarouselItem[] = [
     {
@@ -88,8 +128,12 @@ export default function ProductCarousel() {
   });
 
   const fetchFirebaseMedia = async () => {
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000));
     try {
-      const dbMedia = await getMediaFromFirestore();
+      const dbMedia = await Promise.race([
+        getMediaFromFirestore(),
+        timeoutPromise
+      ]);
       if (dbMedia && dbMedia.length > 0) {
         const filtered = dbMedia.filter(item => item.id !== 'bundle-offer-image' && !String(item.id).startsWith('live-video-'));
         if (filtered.length > 0) {
@@ -100,16 +144,34 @@ export default function ProductCarousel() {
         localStorage.setItem('raincoat_media_gallery', JSON.stringify(dbMedia));
       } else {
         const cached = localStorage.getItem('raincoat_media_gallery_fallback') || localStorage.getItem('raincoat_media_gallery');
-        if (!cached) {
-          setCarouselItems(defaultItems);
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            const filtered = parsed.filter((item: any) => item.id !== 'bundle-offer-image' && !String(item.id).startsWith('live-video-'));
+            if (filtered.length > 0) {
+              setCarouselItems(filtered);
+              setIsLoading(false);
+              return;
+            }
+          } catch (e) {}
         }
+        setCarouselItems(defaultItems);
       }
     } catch (err) {
       console.warn("Could not load dynamic carousel from Firestore:", err);
       const cached = localStorage.getItem('raincoat_media_gallery_fallback') || localStorage.getItem('raincoat_media_gallery');
-      if (!cached) {
-        setCarouselItems(defaultItems);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          const filtered = parsed.filter((item: any) => item.id !== 'bundle-offer-image' && !String(item.id).startsWith('live-video-'));
+          if (filtered.length > 0) {
+            setCarouselItems(filtered);
+            setIsLoading(false);
+            return;
+          }
+        } catch (e) {}
       }
+      setCarouselItems(defaultItems);
     } finally {
       setIsLoading(false);
     }
@@ -180,9 +242,12 @@ export default function ProductCarousel() {
 
   return (
     <div 
-      className="relative w-full max-w-sm sm:max-w-md md:max-w-lg aspect-[4/5] sm:aspect-square bg-slate-950/40 border border-slate-700/60 rounded-3xl shadow-2xl overflow-hidden group select-none"
+      className="relative w-full max-w-sm sm:max-w-md md:max-w-lg aspect-[4/5] sm:aspect-square bg-slate-950/40 border border-slate-700/60 rounded-3xl shadow-2xl overflow-hidden group select-none touch-pan-y"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
       id="product-gallery-carousel"
     >
       {/* Background Ambience or Custom Background Image */}

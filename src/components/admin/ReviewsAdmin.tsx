@@ -20,6 +20,7 @@ import {
   saveReviewToFirestore 
 } from '../../lib/firebase';
 import { CustomerReview } from '../../types';
+import { compressImage } from '../../lib/imageCompressor';
 
 interface ReviewsAdminProps {
   userRole?: string;
@@ -89,18 +90,22 @@ export default function ReviewsAdmin({ userRole }: ReviewsAdminProps) {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 1.5 * 1024 * 1024) {
-      alert('ফাইলের সাইজ ১.৫ এমবি এর কম হতে হবে!');
-      return;
-    }
-
     const reader = new FileReader();
-    reader.onloadend = () => {
+    reader.onloadend = async () => {
       if (typeof reader.result === 'string') {
-        if (target === 'product') {
-          setNewPhotoBase64(reader.result);
-        } else {
-          setNewAvatarBase64(reader.result);
+        try {
+          const compressed = await compressImage(reader.result, 800, 0.55);
+          if (target === 'product') {
+            setNewPhotoBase64(compressed);
+          } else {
+            setNewAvatarBase64(compressed);
+          }
+        } catch (err) {
+          if (target === 'product') {
+            setNewPhotoBase64(reader.result);
+          } else {
+            setNewAvatarBase64(reader.result);
+          }
         }
       }
     };

@@ -367,11 +367,7 @@ export default function DailyOrdersChart({ orders, incompleteOrders }: DailyOrde
         </div>
       </div>
 
-      {/* Demand Warning Message Banner */}
-      <div className={`p-2.5 rounded-xl border flex gap-2 items-start text-xs font-semibold leading-relaxed shadow-3xs ${insights.demandColor}`}>
-        <Umbrella className="h-4.5 w-4.5 shrink-0 text-indigo-500 mt-0.5" />
-        <div>{insights.demandAssessment}</div>
-      </div>
+
 
       {/* 🔎 কাস্টম ডেট এবং মান্থলি ফিল্টারিং এনালাইজার (Date-wise & Monthly Counter) */}
       <div className="bg-slate-100/50 rounded-2xl p-4 border border-slate-200/60 shadow-3xs space-y-4 text-slate-805">
