@@ -976,6 +976,91 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
         </div>
       )}
 
+      {/* 🟢 QUICK CHANNELS CONTROLLER: EASY VIDEO & PERSISTENT LINK MANAGER */}
+      <div id="quick-links-and-videos-helper-widget" className="bg-gradient-to-r from-indigo-950 via-slate-900 to-zinc-950 text-white rounded-2xl p-5 shadow-lg border border-slate-950 flex flex-col gap-4 relative overflow-hidden">
+        <div className="absolute right-0 top-0 opacity-10 pointer-events-none transform translate-x-8 -translate-y-8">
+          <Tv className="h-64 w-64" />
+        </div>
+        <div className="flex items-start gap-3">
+          <div className="p-2.5 bg-indigo-500/10 rounded-xl border border-indigo-500/20 text-indigo-400 shrink-0">
+            <Tv className="h-5 w-5" />
+          </div>
+          <div className="space-y-0.5">
+            <h3 className="text-xs font-black uppercase tracking-wider text-indigo-300">🎥 কুইক ভিডিও ও ইউটিউব লিংক ম্যানেজার (Video Settings)</h3>
+            <p className="text-[11px] text-slate-300 leading-relaxed font-semibold">
+              যেকোনো লাইভ ভিডিও, প্লেয়ার লিংক বা ইউটিউব ডেমো সরাসরি পেজে পরিবর্তনের সবচেয়ে সহজ পদ্ধতি। নিচের ঘরগুলোতে লিংক বসিয়ে দিয়ে উপরের বা নিচের সবুজ <b>"ডিজাইল পাবলিশ করুন"</b> বোতামে ক্লিক করলেই রিয়েল-টাইম কাস্টমার পেজগুলোতে সেভ হয়ে যাবে।
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 pt-1.5 z-10 select-none">
+          {/* 1. Raincoat Live Video */}
+          <div className="bg-slate-800/60 border border-slate-750 p-3.5 rounded-xl space-y-2.5">
+            <span className="text-[10px] font-black text-amber-400 uppercase tracking-widest block">🧥 রেইনকোট পেজ ভিডিও (Raincoat Video)</span>
+            <div className="space-y-1">
+              <label className="text-[9px] text-slate-300 block font-bold">ইউটিউব / ফেসবুক ভিডিও লিংক:</label>
+              <input 
+                type="text" 
+                value={settings?.section_customizations?.['raincoat_live_video']?.video_url || ''}
+                onChange={(e) => handleUpdateValue('raincoat_live_video', 'video_url', e.target.value)}
+                placeholder="যেমন: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+                className="w-full text-[10px] p-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+            <div className="text-[9px] text-slate-400 flex items-center gap-1 pt-1 border-t border-slate-800/40">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+              <span>রিয়েল-টাইম রেইনকোট ওয়াটারপ্রুফ টেস্ট ভিডিও</span>
+            </div>
+          </div>
+
+          {/* 2. Combo Premium Videos */}
+          <div className="bg-slate-800/60 border border-slate-750 p-3.5 rounded-xl space-y-2.5">
+            <span className="text-[10px] font-black text-amber-400 uppercase tracking-widest block">📦 কম্বো পেজ ভিডিও ১ ও ২ (Combo Videos)</span>
+            <div className="space-y-1.5">
+              <div>
+                <label className="text-[9px] text-slate-300 block font-bold">ভিডিও ১ (রেইনকোট টেস্ট):</label>
+                <input 
+                  type="text" 
+                  value={settings?.section_customizations?.['combo_video']?.video_url || ''}
+                  onChange={(e) => handleUpdateValue('combo_video', 'video_url', e.target.value)}
+                  placeholder="যেমন: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+                  className="w-full text-[10px] p-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="text-[9px] text-slate-300 block font-bold">ভিডিও ২ (বাইক কভার টেস্ট):</label>
+                <input 
+                  type="text" 
+                  value={settings?.section_customizations?.['combo_video']?.video_url_2 || ''}
+                  onChange={(e) => handleUpdateValue('combo_video', 'video_url_2', e.target.value)}
+                  placeholder="যেমন: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+                  className="w-full text-[10px] p-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Boxer Premium Video */}
+          <div className="bg-slate-800/60 border border-slate-750 p-3.5 rounded-xl space-y-2.5">
+            <span className="text-[10px] font-black text-amber-400 uppercase tracking-widest block">🩲 বক্সার পেজ ভিডিও (Boxer Video)</span>
+            <div className="space-y-1">
+              <label className="text-[9px] text-slate-300 block font-bold">ভিডিও টেস্ট লিংক:</label>
+              <input 
+                type="text" 
+                value={settings?.section_customizations?.['boxer_video']?.video_url || ''}
+                onChange={(e) => handleUpdateValue('boxer_video', 'video_url', e.target.value)}
+                placeholder="যেমন: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+                className="w-full text-[10px] p-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+            <div className="text-[9px] text-slate-400 flex items-center gap-1 pt-1 border-t border-slate-800/40">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+              <span>বক্সার কাপড়ের কোয়ালিটি ডেমোস্ট্রেশন ও টেস্ট ভিডিও</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Editor Options Mode Bar with responsive visual layouts */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200">
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
@@ -1452,352 +1537,46 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
                     />
                   </div>
 
-                  {activeSection === 'combo_video' && (
-                    <div className="space-y-4 border-t border-slate-150 pt-3">
-                      <span className="text-amber-600 font-extrabold text-[10px] uppercase block">🎥 কম্বো ভিডিও সেটিংস</span>
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">पहলা ভিডিও লিংক (Video 1 (Raincoat))</label>
-                        <input 
-                          type="text" 
-                          value={currentSectionData.video_url || ''}
-                          onChange={(e) => handleUpdateValue(activeSection, 'video_url', e.target.value)}
-                          placeholder="যেমন: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-                          className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">দ্বিতীয় ভিডিও লিংক (Video 2 (Bike Cover))</label>
-                        <input 
-                          type="text" 
-                          value={currentSectionData.video_url_2 || ''}
-                          onChange={(e) => handleUpdateValue(activeSection, 'video_url_2', e.target.value)}
-                          placeholder="যেমন: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-                          className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {activeSection === 'boxer_video' && (
-                    <div className="space-y-4 border-t border-slate-150 pt-3">
-                      <span className="text-amber-600 font-extrabold text-[10px] uppercase block">🎥 বক্সার কোয়ালিটি ভিডিও সেটিংস</span>
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">ইউটিউব / ফেসবুক ভিডিও লিংক (YouTube URL / iframe URL)</label>
-                        <input 
-                          type="text" 
-                          value={currentSectionData.video_url || ''}
-                          onChange={(e) => handleUpdateValue(activeSection, 'video_url', e.target.value)}
-                          placeholder="যেমন: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-                          className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {(activeSection === 'combo_gallery' || activeSection === 'boxer_gallery') && (
-                    <div className="space-y-4 border-t border-slate-150 pt-3">
-                      <span className="text-amber-600 font-extrabold text-[10px] uppercase block">🖼️ গ্যালারি ও ক্যারাসেল ৬-ইमेज ম্যানেজার</span>
-                      <p className="text-[10px] text-slate-400">এই ল্যান্ডিং পেজে প্রদর্শন করার জন্য ৫-৬টি ছবির লিংক বা ফাইল আপলোড করুন:</p>
-                      {[0, 1, 2, 3, 4, 5].map((idx) => {
-                        const imgs = currentSectionData.gallery_images || [];
-                        const currentVal = imgs[idx] || '';
-                        return (
-                          <div key={idx} className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
-                            <div className="flex justify-between items-center text-[10px] font-bold text-slate-700">
-                              <span>ছবি নং {idx + 1} (Image {idx + 1})</span>
-                              {currentVal && <span className="text-emerald-600">✓ লিঙ্কড</span>}
-                            </div>
-                            
-                            {/* Short preview of thumbnail */}
-                            {currentVal && (
-                              <div className="h-14 w-full rounded-md overflow-hidden bg-white border border-slate-200 flex items-center justify-center">
-                                <img src={currentVal} alt={`Thumb ${idx + 1}`} className="h-full object-contain" referrerPolicy="no-referrer" />
-                              </div>
-                            )}
-
-                            {/* Upload feature */}
-                            <label className="block cursor-pointer bg-white border border-slate-350 bg-slate-50 border border-slate-300 hover:bg-slate-100 text-slate-700 text-[10px] font-black py-1 px-2 text-center rounded-lg shadow-3xs transition">
-                              📤 আপলোড করুন ({idx + 1})
-                              <input 
-                                type="file" 
-                                accept="image/*"
-                                onChange={async (e) => {
-                                  const f = e.target.files?.[0];
-                                  if (f) {
-                                    const base64 = await compressImage(f);
-                                    const newImgs = [...imgs];
-                                    newImgs[idx] = base64;
-                                    handleUpdateValue(activeSection, 'gallery_images', newImgs);
-                                  }
-                                }}
-                                className="hidden" 
-                              />
-                            </label>
-
-                            <input 
-                              type="text"
-                              value={currentVal}
-                              onChange={(e) => {
-                                const newImgs = [...imgs];
-                                newImgs[idx] = e.target.value;
-                                handleUpdateValue(activeSection, 'gallery_images', newImgs);
-                              }}
-                              placeholder="অথবা লিখুন https://example.com/photo.jpg"
-                              className="w-full text-[10px] px-2 py-1.5 bg-white border border-slate-200 rounded text-slate-850 focus:outline-none"
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                  {/* Vertical Padding Spacing height modifier */}
+                  <div className="pt-1.5">
+                    <label className="block text-xs font-bold text-slate-700 mb-1">প্যাডিং স্পেসিং (Section Height / Padding)</label>
+                    <select
+                      value={currentSectionData.padding_vertical || 'normal'}
+                      onChange={(e) => handleUpdateValue(activeSection, 'padding_vertical', e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none text-xs text-slate-750 font-bold cursor-pointer"
+                    >
+                      <option value="compact">কম দূরত্ব (Compact - py-6)</option>
+                      <option value="normal">স্ট্যান্ডার্ড (Normal - py-10)</option>
+                      <option value="generous">বিশাল এবং উচু স্পেস (Generous - py-16)</option>
+                    </select>
+                  </div>
                 </div>
               </div>
             </div>
-              
-              {/* Visibility Options */}
-              <div className="flex items-center gap-3">
-                <label className="flex items-center gap-1.5 text-[11px] font-extrabold text-slate-600 cursor-pointer select-none">
-                  <Smartphone className="h-3.5 w-3.5 text-slate-400" />
-                  মোবাইলে দেখান:
-                  <input 
-                    type="checkbox"
-                    checked={currentSectionData.visible_mobile}
-                    onChange={(e) => handleUpdateValue(activeSection, 'visible_mobile', e.target.checked)}
-                    className="rounded border-slate-300 text-indigo-600 h-3.5 w-3.5"
-                  />
-                </label>
 
-                <label className="flex items-center gap-1.5 text-[11px] font-extrabold text-slate-600 cursor-pointer select-none">
-                  <Tablet className="h-3.5 w-3.5 text-slate-400" />
-                  ডেস্কটপে দেখান:
-                  <input 
-                    type="checkbox"
-                    checked={currentSectionData.visible_desktop}
-                    onChange={(e) => handleUpdateValue(activeSection, 'visible_desktop', e.target.checked)}
-                    className="rounded border-slate-300 text-indigo-600 h-3.5 w-3.5"
-                  />
-                </label>
-              </div>
-
-            {activeSection === 'homepage_products_customizer' ? (
-              <div className="space-y-6">
-                <div className="bg-indigo-50 border border-indigo-200 p-4.5 rounded-2xl flex items-start gap-3">
-                  <span className="p-2 bg-indigo-100 text-indigo-700 rounded-xl text-lg font-bold shrink-0">🏠</span>
-                  <div className="text-xs">
-                    <strong className="text-indigo-950 font-extrabold block text-[13px]">হোমপেজ ক্যাটাগরি প্রোডাক্ট কাস্টমাইজার (Manual Selection)</strong>
-                    <p className="text-indigo-800 mt-1.5 leading-relaxed font-semibold">
-                      এখানে আপনি হোমপেজের প্রতিটি ক্যাটাগরিতে কোন কোন প্রোডাক্ট লাইভ থাকবে তা ম্যানуয়ালি সিলেক্ট করতে পারবেন। নিচের সুইচটি অন করে আপনার কাঙ্খিত প্রোডাক্টগুলো টিক দিন এবং সেভ করুন।
-                    </p>
-                  </div>
-                </div>
-
-                {/* Toggle to enable/disable manual selection */}
-                <div className="bg-white border border-slate-200/85 rounded-2xl p-4.5 shadow-xs space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-xs font-black text-slate-800 block">ম্যানুয়াল প্রোডাক্ট সিলেকশন ব্যবহার করুন</span>
-                      <span className="text-[10px] text-slate-450 mt-0.5 block leading-normal">সচল করলে শুধুমাত্র সিলেক্টেড প্রডাক্টগুলো হোমপেজে দৃশ্যমান থাকবে। নিষ্ক্রিয় করলে সব দেখাবে।</span>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer select-none">
-                      <input 
-                        type="checkbox" 
-                        checked={!!settings?.homepage_manual_selection_enabled}
-                        onChange={(e) => {
-                          if (!settings) return;
-                          setSettings({
-                            ...settings,
-                            homepage_manual_selection_enabled: e.target.checked
-                          });
-                        }}
-                        className="sr-only peer" 
-                      />
-                      <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-350 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                    </label>
-                  </div>
-                </div>
-
-                {/* Grouping by categories available in products */}
-                {Array.from(new Set(products.map(p => p.category).filter(Boolean))).map((cat: any) => {
-                  const catProducts = products.filter(p => p.category === cat);
-                  const selectedIds = settings?.homepage_category_products?.[cat] || [];
-                  
-                  return (
-                    <div key={cat} className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-4">
-                      <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
-                        <span className="font-extrabold text-indigo-950 text-xs flex items-center gap-1.5">
-                          📂 <span className="bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-md font-black">{cat}</span>
-                        </span>
-                        <span className="text-[9px] bg-slate-200 text-slate-700 px-2.5 py-1 rounded-full font-bold">
-                          মোট: {catProducts.length} টি | সিলেক্টেড: {selectedIds.length} টি
-                        </span>
-                      </div>
-
-                      <div className="space-y-2">
-                        {catProducts.map((p) => {
-                          const isChecked = selectedIds.includes(p.id);
-                          return (
-                            <label 
-                              key={p.id} 
-                              className={`flex items-center justify-between p-2.5 rounded-xl border transition cursor-pointer select-none w-full ${
-                                isChecked 
-                                ? 'bg-white border-indigo-300 shadow-xs' 
-                                : 'bg-white/60 border-slate-150 hover:bg-white'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2.5 min-w-0">
-                                <input 
-                                  type="checkbox" 
-                                  checked={isChecked}
-                                  onChange={(e) => {
-                                    if (!settings) return;
-                                    const categoryMap = settings.homepage_category_products || {};
-                                    let list = categoryMap[cat] || [];
-                                    if (e.target.checked) {
-                                      if (!list.includes(p.id)) {
-                                        list = [...list, p.id];
-                                      }
-                                    } else {
-                                      list = list.filter(id => id !== p.id);
-                                    }
-                                    setSettings({
-                                      ...settings,
-                                      homepage_category_products: {
-                                        ...categoryMap,
-                                        [cat]: list
-                                      }
-                                    });
-                                  }}
-                                  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4 shrink-0"
-                                />
-                                {p.image ? (
-                                  <img 
-                                    src={p.image} 
-                                    alt="" 
-                                    className="w-10 h-10 object-cover rounded-lg border border-slate-100 shrink-0" 
-                                    referrerPolicy="no-referrer"
-                                  />
-                                ) : (
-                                  <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center text-xs text-slate-400 shrink-0">📷</div>
-                                )}
-                                <div className="text-left leading-tight min-w-0">
-                                  <span className="text-xs font-bold text-slate-800 block truncate">{p.title}</span>
-                                  <span className="text-[10px] font-mono text-slate-500">{p.price} Tk</span>
-                                </div>
-                              </div>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : activeSection === 'bike_triple_cards' ? (
-              <div className="space-y-6">
-                <div className="bg-amber-50 border border-amber-200 p-4.5 rounded-2xl flex items-center gap-3">
-                  <span className="p-2.5 bg-amber-100 text-amber-700 rounded-xl text-lg font-bold">🖼️</span>
-                  <div className="text-xs">
-                    <strong className="text-amber-850 font-extrabold block">৩-ইমেজ অল্টারনেティブ কার্ড সেকশন (Highlights Manager)</strong>
-                    <p className="text-amber-700 mt-0.5 leading-normal">
-                      এখানে আপনি বাইক কভার ল্যান্ডিং পেজের কার্ডগুলোর ছবি, শিরোনাম এবং সংক্ষিপ্ত বিবরণ কাস্টমাইজ করতে পারেন। সরাসরি ছবি আপলোড করতে পারেন অথবা যেকোনো অনলাইন হোস্ট করা ইমেজ লিঙ্কও ব্যবহার করতে পারেন।
-                    </p>
-                  </div>
-                </div>
-
-                <div className={`grid gap-6 ${editorMode === 'visual' ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-3'}`}>
-                  {[0, 1, 2].map((idx) => {
-                    const cardsArray = settings.bike_triple_cards || defaultTripleCards;
-                    const card = cardsArray[idx] || { title: '', imageUrl: '', description: '' };
-                    return (
-                      <div key={idx} className="bg-slate-50 border border-slate-250 rounded-2xl p-4 space-y-4">
-                        <div className="flex items-center justify-between border-b pb-2">
-                          <span className="font-bold text-slate-800 text-xs">কার্ড নম্বর {idx + 1} (Card {idx + 1})</span>
-                          <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-bold">অ্যাক্টিভ</span>
-                        </div>
-
-                        {/* Image Preview / Selection Box */}
-                        <div className="space-y-1.5">
-                          <label className="block text-xs font-bold text-slate-700">ছবি (Image View)</label>
-                          <div className="w-full h-32 bg-slate-200 rounded-xl overflow-hidden relative flex items-center justify-center border border-dashed border-slate-300">
-                            {card.imageUrl ? (
-                              <img 
-                                src={card.imageUrl} 
-                                alt={`Preview ${idx + 1}`} 
-                                className="w-full h-full object-cover"
-                                referrerPolicy="no-referrer"
-                              />
-                            ) : (
-                              <span className="text-[10px] text-slate-400 font-bold">কোনো ছবি সিলেক্ট করা নেই</span>
-                            )}
-                          </div>
-
-                          {/* File Upload Selector */}
-                          <div className="pt-1 select-none">
-                            <label className="block cursor-pointer bg-white border border-slate-300 hover:border-slate-400 active:scale-98 text-slate-700 text-[11px] font-bold py-2 py-1.5 text-center rounded-xl shadow-2xs transition">
-                              📤 ছবি আপলোড করুন
-                              <input 
-                                type="file" 
-                                accept="image/*"
-                                onChange={(e) => {
-                                  const f = e.target.files?.[0];
-                                  if (f) handleCardImageUpload(idx, f);
-                                }}
-                                className="hidden" 
-                              />
-                            </label>
-                          </div>
-
-                          {/* Image URL text field */}
-                          <div className="space-y-1 pt-1">
-                            <span className="text-[10px] text-slate-400 font-semibold block">অথবা সরাসরি ইমেজ লিঙ্ক বসান:</span>
-                            <input 
-                              type="text"
-                              value={card.imageUrl}
-                              onChange={(e) => handleUpdateCardValue(idx, 'imageUrl', e.target.value)}
-                              placeholder="https://example.com/photo.jpg"
-                              className="w-full text-[10px] px-2.5 py-1.8 bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-none"
-                            />
-                          </div>
-
-                        </div>
-
-                        {/* Card Title */}
-                        <div className="space-y-1">
-                          <label className="block text-xs font-bold text-slate-700">কার্ড শিরোনাম (Title):</label>
-                          <input 
-                            type="text"
-                            value={card.title}
-                            onChange={(e) => handleUpdateCardValue(idx, 'title', e.target.value)}
-                            placeholder="যেমন: ১০০% প্রিমিয়াম ফিটিংস"
-                            className="w-full text-xs px-2.5 py-2 bg-white border border-slate-200 rounded-lg text-slate-850 font-bold focus:outline-none focus:ring-1 focus:ring-blue-500"
-                          />
-                        </div>
-
-                        {/* Card Description */}
-                        <div className="space-y-1">
-                          <label className="block text-xs font-bold text-slate-700">সংক্ষিপ্ত বিবরণ (Description):</label>
-                          <textarea
-                            rows={3}
-                            value={card.description || ''}
-                            onChange={(e) => handleUpdateCardValue(idx, 'description', e.target.value)}
-                            placeholder="সংক্ষিপ্ত বর্ণনা..."
-                            className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-none"
-                          />
-                        </div>
-
-                      </div>
-                    );
-                  })}
+            {editorMode === 'visual' ? (
+              <div className="bg-indigo-50 border border-indigo-100 p-4.5 rounded-2xl flex items-start gap-3 select-none">
+                <Sparkles className="h-5 w-5 text-indigo-650 shrink-0 mt-0.5 animate-pulse" />
+                <div className="text-xs">
+                  <strong className="text-indigo-950 font-extrabold block">লাইভ ভিজ্যুয়াল মোড সক্রিয় (Live Visual Sandbox)</strong>
+                  <span className="text-indigo-700/95 mt-0.5 block leading-relaxed font-semibold">
+                    ডানদিকের লাইভ সিমুলেটরে যেকোনো লেখার উপর সরাসরি ক্লিক বা টাইপ করে কন্টেন্ট ইনস্ট্যান্ট পরিবর্তন করতে পারবেন। টেক্সট বা ব্যাকগ্রাউন্ড কালার ও প্যাডিং সাইজ সূক্ষ্মভাবে বদলাতে উপরে "ফর্ম সেটিংস" মোড নির্বাচন করে কাস্টমাইজ করুন।
+                  </span>
                 </div>
               </div>
             ) : (
-              <div className={`grid gap-5 pt-1 ${editorMode === 'visual' ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'}`}>
-                
-                {/* COLUMN 1: VISUALS (Bg, Color, Alignment, Image) */}
-                <div className="space-y-4">
-                  <div className="flex items-center gap-1 border-b border-slate-100 pb-1.5">
-                    <Palette className="h-4 w-4 text-slate-400" />
-                    <h5 className="text-[11px] font-black text-slate-800 uppercase tracking-wider">রঙ, আকৃতি ও এলাইনমেন্ট</h5>
+              <div className="space-y-6 pt-1">
+
+                {/* CARD 1: ডিজাইন ও কালার স্টাইল (Styles, Colors & Appearance) */}
+                <div id="card-design-styles-customizer" className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-2xs space-y-4">
+                  <div className="flex items-center gap-2 border-b border-rose-100 pb-2.5">
+                    <div className="p-1.5 bg-rose-50 text-rose-600 rounded-lg shrink-0">
+                      <Palette className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h5 className="text-[11px] font-black text-slate-800 uppercase tracking-wider">১. ডিজাইন ও কালার স্টাইল (Design & Style Settings)</h5>
+                      <p className="text-[9px] text-slate-400 font-medium">... ... </p>
+                    </div>
                   </div>
 
                   {/* Background Color Customization */}
@@ -1808,44 +1587,44 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
                         type="color" 
                         value={currentSectionData.bgColor}
                         onChange={(e) => handleUpdateValue(activeSection, 'bgColor', e.target.value)}
-                        className="w-10 h-10 border border-slate-200 rounded-xl cursor-pointer p-0"
+                        className="w-10 h-10 border border-slate-200 rounded-xl cursor-pointer p-0 shrink-0"
                       />
                       <input 
                         type="text" 
                         value={currentSectionData.bgColor}
                         onChange={(e) => handleUpdateValue(activeSection, 'bgColor', e.target.value)}
                         placeholder="#ffffff"
-                        className="flex-1 text-xs px-3 bg-slate-550 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none font-mono text-slate-800"
+                        className="flex-1 text-xs px-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none font-mono text-slate-800"
                       />
                     </div>
                     
                     {/* Predefined Color Presets */}
-                    <div className="flex flex-wrap gap-1 pt-1.5">
+                    <div className="flex flex-wrap gap-1 pt-1">
                       {predefinedBgColors.map((color) => (
                         <button
                           key={color.hex}
                           type="button"
                           onClick={() => handleUpdateValue(activeSection, 'bgColor', color.hex)}
-                          className="px-2 py-1 text-[9px] font-semibold border rounded-lg hover:border-slate-400 transition cursor-pointer bg-white"
+                          className="px-2 py-0.8 text-[8px] font-extrabold border border-slate-150 rounded-lg hover:border-slate-400 hover:bg-slate-50 transition cursor-pointer bg-white text-slate-600"
                           title={color.name}
                         >
-                          <span className="inline-block w-2 bg-slate-200 h-2 rounded-full mr-1.5" style={{ backgroundColor: color.hex }}></span>
+                          <span className="inline-block w-1.5 h-1.5 rounded-full mr-1" style={{ backgroundColor: color.hex }}></span>
                           {color.name}
                         </button>
                       ))}
                     </div>
                   </div>
 
-                  {/* Text Alignments */}
-                  <div className="grid grid-cols-2 gap-3.5 pt-2">
+                  {/* Text Alignments & Fonts Scale */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1.5">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1.5">টেক্সট এলাইনমেন্ট (Text Align)</label>
-                      <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl w-fit border border-slate-200/60">
+                      <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl w-fit border border-slate-200/60">
                         <button
                           type="button"
                           onClick={() => handleUpdateValue(activeSection, 'textAlign', 'left')}
                           className={`p-2 rounded-lg transition ${
-                            currentSectionData.textAlign === 'left' ? 'bg-indigo-600 text-white shadow-2xs' : 'text-slate-500 hover:bg-slate-200/70'
+                            currentSectionData.textAlign === 'left' ? 'bg-indigo-650 text-white shadow-xs' : 'text-slate-500 hover:bg-slate-200/70'
                           }`}
                           title="Left"
                         >
@@ -1855,7 +1634,7 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
                           type="button"
                           onClick={() => handleUpdateValue(activeSection, 'textAlign', 'center')}
                           className={`p-2 rounded-lg transition ${
-                            currentSectionData.textAlign === 'center' ? 'bg-indigo-600 text-white shadow-2xs' : 'text-slate-500 hover:bg-slate-200/70'
+                            currentSectionData.textAlign === 'center' ? 'bg-indigo-650 text-white shadow-xs' : 'text-slate-500 hover:bg-slate-200/70'
                           }`}
                           title="Center"
                         >
@@ -1865,7 +1644,7 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
                           type="button"
                           onClick={() => handleUpdateValue(activeSection, 'textAlign', 'right')}
                           className={`p-2 rounded-lg transition ${
-                            currentSectionData.textAlign === 'right' ? 'bg-indigo-600 text-white shadow-2xs' : 'text-slate-500 hover:bg-slate-200/70'
+                            currentSectionData.textAlign === 'right' ? 'bg-indigo-650 text-white shadow-xs' : 'text-slate-500 hover:bg-slate-200/70'
                           }`}
                           title="Right"
                         >
@@ -1879,7 +1658,7 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
                       <select
                         value={currentSectionData.fontSize}
                         onChange={(e) => handleUpdateValue(activeSection, 'fontSize', e.target.value)}
-                        className="w-full px-3 py-1.8 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none text-xs text-slate-700 font-bold cursor-pointer"
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none text-xs text-slate-750 font-bold cursor-pointer"
                       >
                         <option value="default">ডিফল্ট রেসপন্সিভ (Default)</option>
                         <option value="sm">কমপ্যাক্ট ক্রিস্টাল (Small)</option>
@@ -1897,24 +1676,34 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
                     <select
                       value={currentSectionData.padding_vertical || 'normal'}
                       onChange={(e) => handleUpdateValue(activeSection, 'padding_vertical', e.target.value)}
-                      className="w-full px-3 py-1.8 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none text-xs text-slate-700 font-bold cursor-pointer"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none text-xs text-slate-755 font-bold cursor-pointer"
                     >
                       <option value="compact">কম দূরত্ব (Compact - py-6)</option>
                       <option value="normal">স্ট্যান্ডার্ড (Normal - py-10)</option>
                       <option value="generous">বিশাল এবং উচু স্পেস (Generous - py-16)</option>
                     </select>
                   </div>
+                </div>
+
+                {/* CARD 2: মিডিয়া ও ইমেজ সেটিংস (Media Files & Image Host) */}
+                <div id="card-media-images-customizer" className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-2xs space-y-4">
+                  <div className="flex items-center gap-2 border-b border-blue-100 pb-2.5">
+                    <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg shrink-0">
+                      <ImageIcon className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h5 className="text-[11px] font-black text-slate-800 uppercase tracking-wider">২. মিডিয়া ফাইল ও ইমেজ হোস্ট (Media & Image Settings)</h5>
+                      <p className="text-[9px] text-slate-400 font-medium">ল্যান্ডিং পেজের প্রধান ছবি, ব্যানার ও স্লাইডার সাজান</p>
+                    </div>
+                  </div>
 
                   {/* Custom Image URL background / section illustration */}
-                  <div className="pt-1.5 space-y-2">
-                    <label className="block text-xs font-bold text-slate-700 flex items-center justify-between">
-                      <span>সেকশন ইমেজ লিংক বা ব্যানার হোস্ট URL (Image Input)</span>
-                      <ImageIcon className="h-4 w-4 text-indigo-500" />
-                    </label>
+                  <div className="space-y-3">
+                    <label className="block text-xs font-bold text-slate-700">সেকশন ইমেজ বা ব্যানার (Section Image URL)</label>
 
                     {/* Image Preview Box */}
                     {currentSectionData.image_url && (
-                      <div className="w-full h-36 bg-slate-150 rounded-xl overflow-hidden relative flex items-center justify-center border border-dashed border-slate-300">
+                      <div className="w-full h-32 bg-slate-50 rounded-xl overflow-hidden relative flex items-center justify-center border border-dashed border-slate-250">
                         <img 
                           src={currentSectionData.image_url} 
                           alt="Section Preview" 
@@ -1926,7 +1715,7 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
 
                     {/* Direct File Upload button */}
                     <div className="select-none">
-                      <label className="block cursor-pointer bg-slate-900 border border-slate-800 hover:bg-slate-800 active:scale-98 text-white text-[11px] font-extrabold py-2 text-center rounded-xl shadow-xs transition mb-2">
+                      <label className="block cursor-pointer bg-slate-900 border border-slate-850 hover:bg-slate-800 active:scale-98 text-white text-[11px] font-extrabold py-2 text-center rounded-xl shadow-xs transition-all">
                         📥 নতুন ছবি সরাসরি আপলোড করুন
                         <input 
                           type="file" 
@@ -1945,9 +1734,9 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
                       value={currentSectionData.image_url || ''}
                       onChange={(e) => handleUpdateValue(activeSection, 'image_url', e.target.value)}
                       placeholder="যেমন: https://example.com/banner-raincoat.png"
-                      className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-850 focus:ring-1 focus:ring-blue-500 outline-none"
+                      className="w-full text-xs p-2.5 bg-slate-555 bg-slate-50 border border-slate-200 rounded-lg text-slate-850 focus:ring-1 focus:ring-blue-500 outline-none"
                     />
-                    <span className="text-[10px] text-slate-400 mt-1 block leading-normal font-medium">
+                    <span className="text-[9px] text-slate-400 mt-1 block leading-relaxed font-semibold">
                       {activeSection === 'raincoat_comparison' 
                         ? 'বাজারের সাধারণ রেইনকোট বনাম আমাদের প্রিমিয়াম রেইনকোট সেকশনের প্রধান তুলনা কার্টুন/ছবি কাস্টমাইজ করুন। ফাঁকা রাখলে এটি প্রদর্শিত হবে না।'
                         : 'যেসব সেকশনে স্লাইডার বা ব্যানার রয়েছে, সেখানে ছবির লিংক দিলে তা প্রদর্শন হবে। ফাঁকা রাখলে বাই-ডিফল্ট প্রোডাক্ট ড্রপ কন্টেন্ট ব্যবহার হবে।'
@@ -1955,13 +1744,134 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
                     </span>
                   </div>
 
+                  {/* Combo/Boxer 6-Image Gallery Manager */}
+                  {(activeSection === 'combo_gallery' || activeSection === 'boxer_gallery') && (
+                    <div className="space-y-3.5 border-t border-slate-100 pt-3.5">
+                      <span className="text-amber-600 font-extrabold text-[10px] uppercase block tracking-wider">🖼️ গ্যালারি ৬-ইमेज कैटलॉग সেটিংস</span>
+                      <p className="text-[9px] text-slate-400 font-bold leading-normal">গ্যালারির ৫-৬টি ছবির সরাসরি প্রাকদর্শন ও আপলোড লিঙ্ক:</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                        {[0, 1, 2, 3, 4, 5].map((idx) => {
+                          const imgs = currentSectionData.gallery_images || [];
+                          const currentVal = imgs[idx] || '';
+                          return (
+                            <div key={idx} className="bg-slate-50 p-3 rounded-xl border border-slate-250/70 space-y-2">
+                              <div className="flex justify-between items-center text-[9px] font-black text-slate-600 uppercase">
+                                <span>ছবি নং: {idx + 1}</span>
+                                {currentVal && <span className="text-emerald-600">✓ সংযুক্ত</span>}
+                              </div>
+                              
+                              {currentVal && (
+                                <div className="h-12 w-full rounded-md overflow-hidden bg-white border border-slate-200 flex items-center justify-center">
+                                  <img src={currentVal} alt={`Thumb ${idx + 1}`} className="h-full object-contain" referrerPolicy="no-referrer" />
+                                </div>
+                              )}
+
+                              <label className="block cursor-pointer bg-white border border-slate-350 hover:bg-slate-50 text-slate-700 text-[9px] font-black py-1 text-center rounded-lg shadow-3xs transition-all">
+                                📤 আপলোড ({idx + 1})
+                                <input 
+                                  type="file" 
+                                  accept="image/*"
+                                  onChange={async (e) => {
+                                    const f = e.target.files?.[0];
+                                    if (f) {
+                                      const base64 = await compressImage(f);
+                                      const newImgs = [...imgs];
+                                      newImgs[idx] = base64;
+                                      handleUpdateValue(activeSection, 'gallery_images', newImgs);
+                                    }
+                                  }}
+                                  className="hidden" 
+                                />
+                              </label>
+
+                              <input 
+                                type="text"
+                                value={currentVal}
+                                onChange={(e) => {
+                                  const newImgs = [...imgs];
+                                  newImgs[idx] = e.target.value;
+                                  handleUpdateValue(activeSection, 'gallery_images', newImgs);
+                                }}
+                                placeholder="অথবা https://example.com/photo.jpg"
+                                className="w-full text-[9px] px-2 py-1.5 bg-white border border-slate-200 rounded text-slate-800 focus:outline-none"
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {/* COLUMN 2: COPY-TEXTS & INFO (Title, slogan, paragraphs) */}
-                <div className="space-y-4">
-                  <div className="flex items-center gap-1 border-b border-slate-100 pb-1.5">
-                    <Type className="h-4 w-4 text-slate-400" />
-                    <h5 className="text-[11px] font-black text-slate-800 uppercase tracking-wider">কপিরাইটিং টেক্সটস ও স্লোগান</h5>
+                {/* CARD 3: ভিডিও ও অ্যাকশন বোতাম সেটিংস (Links, Videos & Playback) */}
+                <div id="card-links-videos-customizer" className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-2xs space-y-4">
+                  <div className="flex items-center gap-2 border-b border-amber-100 pb-2.5">
+                    <div className="p-1.5 bg-amber-50 text-amber-600 rounded-lg shrink-0">
+                      <Tv className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h5 className="text-[11px] font-black text-slate-800 uppercase tracking-wider">৩. লিংক, ভিডিও ও অ্যাকশন বাটন সেটিংস (Links & Video Player)</h5>
+                      <p className="text-[9px] text-slate-400 font-medium">ভিডিও রিভিও ক্লিপ প্লেয়ার ও বাটন রিডাইরেক্ট সেটিংস</p>
+                    </div>
+                  </div>
+
+                  {/* Videos block for different sections */}
+                  {(activeSection === 'raincoat_live_video' || activeSection === 'boxer_video') && (
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-slate-700 mb-1">ইউটিউব / ফেসবুক ভিডিও লিংক (YouTube / Video URL)</label>
+                      <input 
+                        type="text" 
+                        value={currentSectionData.video_url || ''}
+                        onChange={(e) => handleUpdateValue(activeSection, 'video_url', e.target.value)}
+                        placeholder="যেমন: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+                        className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-855 focus:outline-none"
+                      />
+                    </div>
+                  )}
+
+                  {activeSection === 'combo_video' && (
+                    <div className="space-y-4 pt-1">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">முதல் ভিডিও লিংক (Raincoat Review Video 1)</label>
+                        <input 
+                          type="text" 
+                          value={currentSectionData.video_url || ''}
+                          onChange={(e) => handleUpdateValue(activeSection, 'video_url', e.target.value)}
+                          placeholder="যেমন: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+                          className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-850 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">দ্বিতীয় ভিডিও লিংক (Bike Cover Review Video 2)</label>
+                        <input 
+                          type="text" 
+                          value={currentSectionData.video_url_2 || ''}
+                          onChange={(e) => handleUpdateValue(activeSection, 'video_url_2', e.target.value)}
+                          placeholder="যেমন: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+                          className="w-full text-xs p-2.5 bg-slate-550 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {activeSection !== 'raincoat_live_video' && activeSection !== 'boxer_video' && activeSection !== 'combo_video' && (
+                    <div className="bg-slate-50 p-4 border border-slate-200 rounded-xl space-y-1 text-center select-none">
+                      <span className="text-[11px] font-bold text-slate-600 block">কোনো অ্যাক্টিভ সেকশন ভিডিও উপলব্ধ নয়</span>
+                      <p className="text-[9px] text-slate-400">এই সেকশনে সরাসরি ভিডিও লিঙ্কের সুযোগ নেই। ভিডিও বদলাতে চাইলে বামে "ভিডিও সেকশন" বা কুইক চ্যানেলে যান।</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* CARD 4: কন্টেন্ট ও কপিরাইটিং সেটিংস (Copywriting Content) */}
+                <div id="card-content-texts-customizer" className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-2xs space-y-4">
+                  <div className="flex items-center gap-2 border-b border-indigo-100 pb-2.5">
+                    <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg shrink-0">
+                      <Type className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h5 className="text-[11px] font-black text-slate-800 uppercase tracking-wider">৪. টেক্সট কন্টেন্ট ও কপিরাইটিং (Content & Titles)</h5>
+                      <p className="text-[9px] text-slate-400 font-medium pb-0.5">শিরোনাম, স্লোগান, সাব-হেডার ও প্যারাগ্রাফের বিবরণী</p>
+                    </div>
                   </div>
 
                   {/* Sub-header / Badge promo text */}
@@ -1996,7 +1906,7 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
                       value={currentSectionData.title_2}
                       onChange={(e) => handleUpdateValue(activeSection, 'title_2', e.target.value)}
                       placeholder="যেমন: বাইরে বের হতে আর কোনো ভয় নেই!"
-                      className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-850 focus:outline-none"
+                      className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-850 focus:outline-none font-bold"
                     />
                   </div>
 
@@ -2011,105 +1921,6 @@ export default function SectionCustomizerAdmin({ userRole }: SectionCustomizerAd
                       className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-850 focus:outline-none leading-relaxed"
                     />
                   </div>
-
-                  {activeSection === 'combo_video' && (
-                    <div className="space-y-4 border-t border-slate-150 pt-3">
-                      <span className="text-amber-600 font-extrabold text-[10px] uppercase block">🎥 কম্বো ভিডিও সেটিংস</span>
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">पहলা ভিডিও লিংক (Video 1 (Raincoat))</label>
-                        <input 
-                          type="text" 
-                          value={currentSectionData.video_url || ''}
-                          onChange={(e) => handleUpdateValue(activeSection, 'video_url', e.target.value)}
-                          placeholder="যেমন: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-                          className="w-full text-xs p-2.5 bg-slate-550 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">দ্বিতীয় ভিডিও লিংক (Video 2 (Bike Cover))</label>
-                        <input 
-                          type="text" 
-                          value={currentSectionData.video_url_2 || ''}
-                          onChange={(e) => handleUpdateValue(activeSection, 'video_url_2', e.target.value)}
-                          placeholder="যেমন: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-                          className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {activeSection === 'combo_gallery' && (
-                    <div className="space-y-4 border-t border-slate-150 pt-3">
-                      <span className="text-amber-600 font-extrabold text-[10px] uppercase block">🖼️ গ্যালারি ৬-ইমেজ ম্যানেজার</span>
-                      <p className="text-[10px] text-slate-400">এই কম্বো ল্যান্ডিং পেজে প্রদর্শন করার জন্য ৫-৬টি ছবির লিংক কাস্টমাইজ করুন:</p>
-                      {[0, 1, 2, 3, 4, 5].map((idx) => {
-                        const imgs = currentSectionData.gallery_images || [];
-                        const currentVal = imgs[idx] || '';
-                        return (
-                          <div key={idx} className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
-                            <div className="flex justify-between items-center text-[10px] font-bold text-slate-700">
-                              <span>ছবি নং {idx + 1} (Image {idx + 1})</span>
-                              {currentVal && <span className="text-emerald-600">✓ লিঙ্কড</span>}
-                            </div>
-                            
-                            {/* Short preview of thumbnail */}
-                            {currentVal && (
-                              <div className="h-14 w-full rounded-md overflow-hidden bg-white border border-slate-200 flex items-center justify-center">
-                                <img src={currentVal} alt={`Thumb ${idx + 1}`} className="h-full object-contain" referrerPolicy="no-referrer" />
-                              </div>
-                            )}
-
-                            {/* Upload feature */}
-                            <label className="block cursor-pointer bg-white border border-slate-300 hover:bg-slate-50 text-slate-755 text-[10px] font-black py-1 px-2 text-center rounded-lg shadow-3xs transition">
-                              📤 আপলোড করুন ({idx + 1})
-                              <input 
-                                type="file" 
-                                accept="image/*"
-                                onChange={async (e) => {
-                                  const f = e.target.files?.[0];
-                                  if (f) {
-                                    const base64 = await compressImage(f);
-                                    const newImgs = [...imgs];
-                                    newImgs[idx] = base64;
-                                    handleUpdateValue(activeSection, 'gallery_images', newImgs);
-                                  }
-                                }}
-                                className="hidden" 
-                              />
-                            </label>
-
-                            <input 
-                              type="text"
-                              value={currentVal}
-                              onChange={(e) => {
-                                const newImgs = [...imgs];
-                                newImgs[idx] = e.target.value;
-                                handleUpdateValue(activeSection, 'gallery_images', newImgs);
-                              }}
-                              placeholder="অথবা লিখুন https://example.com/photo.jpg"
-                              className="w-full text-[10px] px-2 py-1.5 bg-white border border-slate-200 rounded text-slate-800 focus:outline-none"
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {/* Dynamic Video Embed URL (for live video section only) */}
-                  {activeSection === 'raincoat_live_video' && (
-                    <div>
-                      <span className="text-amber-600 font-extrabold text-[10px] uppercase block mb-1">🎥 অতিরিক্ত ভিডিও সেটিং</span>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">ইউটিউব / ফেসবুক ভিডিও লিংক (Video URL)</label>
-                      <input 
-                        type="text" 
-                        value={currentSectionData.video_url || ''}
-                        onChange={(e) => handleUpdateValue(activeSection, 'video_url', e.target.value)}
-                        placeholder="যেমন: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-                        className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none"
-                      />
-                    </div>
-                  )}
-
                 </div>
 
               </div>

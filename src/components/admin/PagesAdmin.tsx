@@ -93,7 +93,7 @@ export default function PagesAdmin({ onRefreshPages, userRole }: PagesAdminProps
     setPages(newList);
     try {
       await savePagesToFirestore(newList);
-      window.dispatchEvent(new Event('raincoat_pages_updated'));
+      window.dispatchEvent(new CustomEvent('raincoat_pages_updated', { detail: { pages: newList } }));
     } catch (err) {
       console.warn("Could not save pages to Firestore, fallback local only:", err);
     }
@@ -187,7 +187,7 @@ export default function PagesAdmin({ onRefreshPages, userRole }: PagesAdminProps
     const defaultContents = {
       headline: 'নতুন আকর্ষণীয় হেডিং যোগ করুন',
       text: 'এখানে আপনার চমৎকার প্যারাগ্রাফ বা আকর্ষণীয় বিবরণ লিখুন। এলিমেন্টরের মত কালার ও মেজারমেন্ট পরিবর্তন করতে পারবেন।',
-      image: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=600',
+      image: '',
       video: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
       button: '#checkout-form',
       form: 'ঝুঁকিমুক্ত উপায়ে ঘরে বসেই রেইনকোটটি বুঝে নিন!',
@@ -209,11 +209,7 @@ export default function PagesAdmin({ onRefreshPages, userRole }: PagesAdminProps
         padding: 'normal',
         textAlign: 'left'
       },
-      carouselImages: type === 'carousel' ? [
-        'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=600',
-        'https://images.unsplash.com/photo-1622434641406-a158123450f9?auto=format&fit=crop&q=80&w=600',
-        'https://images.unsplash.com/photo-1510200378107-1601ee036683?auto=format&fit=crop&q=80&w=600'
-      ] : undefined,
+      carouselImages: type === 'carousel' ? [] : undefined,
       items: type === 'icons' ? [
         { id: 'i-1', icon: '🛡️', title: '১০০% ওয়াটারপ্রুফ গ্যারান্টি', text: 'আমাদের রেনকোটে ডাবল থার্মাল-সিল কোটিং রয়েছে।' },
         { id: 'i-2', icon: '🚚', title: 'সারাদেশে ক্যাশ অন ডেলিভারি', text: 'কোনো অগ্রিম পেমেন্ট ছাড়া হাতে পেয়ে টাকা পরিশোধ করুন।' },
@@ -496,7 +492,7 @@ export default function PagesAdmin({ onRefreshPages, userRole }: PagesAdminProps
         <div className="w-full lg:w-1/3 bg-slate-50 border border-slate-200/80 p-5 rounded-2xl space-y-4 shrink-0">
           <div className="flex items-center gap-1.5 pb-2.5 border-b border-slate-200">
             <Layout className="h-4 w-4 text-indigo-600" />
-            <h3 className="font-extrabold text-slate-900 text-sm">সকল ল্যান্ডিং পেজেস</h3>
+            <h3 className="font-extrabold text-slate-900 text-sm">সকল ল্যান্ডিং পেইজ</h3>
           </div>
 
           {pages.length === 0 ? (
@@ -820,7 +816,7 @@ export default function PagesAdmin({ onRefreshPages, userRole }: PagesAdminProps
                               ))}
                             </div>
                             <button
-                              onClick={() => addCarouselImage(block.id, 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=600')}
+                              onClick={() => addCarouselImage(block.id, '')}
                               className="px-2 py-1 text-[10px] bg-white border border-slate-300 text-slate-700 font-bold rounded-md hover:bg-slate-100 cursor-pointer flex items-center gap-1"
                               disabled={userRole === 'ReadOnly'}
                             >

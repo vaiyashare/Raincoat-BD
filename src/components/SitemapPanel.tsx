@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Globe, 
   Sparkles, 
@@ -13,6 +13,8 @@ import {
   Search,
   ArrowLeft
 } from 'lucide-react';
+import { getPagesFromFirestore } from '../lib/firebase';
+import { CustomPage } from '../types';
 
 interface SitemapItem {
   url: string;
@@ -28,6 +30,37 @@ export default function SitemapPanel() {
   const [copiedXml, setCopiedXml] = useState(false);
   const [activeTab, setActiveTab] = useState<'visual' | 'xml'>('visual');
   const [searchQuery, setSearchQuery] = useState('');
+  const [customPages, setCustomPages] = useState<CustomPage[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    const fetchPages = async () => {
+      try {
+        const pages = await getPagesFromFirestore();
+        if (active && pages && pages.length > 0) {
+          setCustomPages(pages);
+        }
+      } catch (err) {
+        console.error("Failed to load and sync custom pages for sitemap:", err);
+      }
+    };
+    fetchPages();
+
+    const handlePagesUpdate = (e: any) => {
+      if (active && e.detail && e.detail.pages) {
+        setCustomPages(e.detail.pages);
+      } else if (active) {
+        fetchPages();
+      }
+    };
+
+    window.addEventListener('raincoat_pages_updated', handlePagesUpdate);
+
+    return () => { 
+      active = false; 
+      window.removeEventListener('raincoat_pages_updated', handlePagesUpdate);
+    };
+  }, []);
 
   const sitemapItems: SitemapItem[] = [
     // Core pages
@@ -229,7 +262,22 @@ export default function SitemapPanel() {
     }
   ];
 
-  const filteredItems = sitemapItems.filter(item => {
+  const dynamicCustomItems: SitemapItem[] = customPages.map(page => ({
+    url: `/${page.slug}`,
+    label: page.title,
+    type: 'landing',
+    priority: 0.9,
+    changefreq: 'weekly',
+    description: `অ্যাডমিন প্যানেল দিয়ে ওয়ান-ক্লিক এডিটর মোডে তৈরি আকর্ষণীয় গতিশীল ল্যান্ডিং পেইজ।`
+  }));
+
+  const filteredStaticItems = sitemapItems.filter(
+    item => !customPages.some(cp => `/${cp.slug}` === item.url || `/#${cp.slug}` === item.url)
+  );
+
+  const allSitemapItems = [...filteredStaticItems, ...dynamicCustomItems];
+
+  const filteredItems = allSitemapItems.filter(item => {
     const searchableText = `${item.url} ${item.label} ${item.description}`.toLowerCase();
     return searchableText.includes(searchQuery.toLowerCase());
   });
@@ -243,7 +291,7 @@ export default function SitemapPanel() {
 
   const dynamicXmlSnippet = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${sitemapItems.map(item => `  <url>
+${allSitemapItems.map(item => `  <url>
     <loc>${window.location.origin}${item.url}</loc>
     <lastmod>${new Date().toISOString().substring(0, 10)}</lastmod>
     <changefreq>${item.changefreq}</changefreq>
@@ -355,7 +403,7 @@ ${sitemapItems.map(item => `  <url>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {coreItems.map((item, idx) => {
-                    const globalIdx = sitemapItems.findIndex(i => i.url === item.url);
+                    const globalIdx = allSitemapItems.findIndex(i => i.url === item.url);
                     return renderListItem(item, globalIdx);
                   })}
                 </div>
@@ -371,7 +419,7 @@ ${sitemapItems.map(item => `  <url>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {landingItems.map((item, idx) => {
-                    const globalIdx = sitemapItems.findIndex(i => i.url === item.url);
+                    const globalIdx = allSitemapItems.findIndex(i => i.url === item.url);
                     return renderListItem(item, globalIdx);
                   })}
                 </div>
@@ -387,7 +435,7 @@ ${sitemapItems.map(item => `  <url>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {productItems.map((item, idx) => {
-                    const globalIdx = sitemapItems.findIndex(i => i.url === item.url);
+                    const globalIdx = allSitemapItems.findIndex(i => i.url === item.url);
                     return renderListItem(item, globalIdx);
                   })}
                 </div>

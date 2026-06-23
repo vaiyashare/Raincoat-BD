@@ -9,7 +9,8 @@ import {
   CreditCard, 
   Check, 
   RefreshCw, 
-  AlertCircle
+  AlertCircle,
+  Image as ImageIcon
 } from 'lucide-react';
 import { 
   getCart, 
@@ -41,6 +42,7 @@ export default function CartPage({ onOrderSuccess }: CartPageProps) {
   const [district, setDistrict] = useState('ঢাকা');
   const [village, setVillage] = useState('');
   const [orderNotes, setOrderNotes] = useState('');
+  const [formErrors, setFormErrors] = useState<{ name?: boolean; phone?: boolean; village?: boolean; billingSender?: boolean; billingTxn?: boolean }>({});
   
   // Partial Payments
   const [partialPaymentSender, setPartialPaymentSender] = useState('');
@@ -191,24 +193,56 @@ export default function CartPage({ onOrderSuccess }: CartPageProps) {
       return;
     }
 
-    if (!name.trim()) {
-      setErrorMessage("দয়া করে আপনার নাম লিখুন।");
-      return;
-    }
+    const newErrors: { name?: boolean; phone?: boolean; village?: boolean; billingSender?: boolean; billingTxn?: boolean } = {};
+
+    if (!name.trim()) newErrors.name = true;
 
     const cleanPhone = phone.trim().replace(/\s+/g, '');
     const phoneRegex = /^(?:\+88|88)?(01[3-9]\d{8})$/;
     if (!phoneRegex.test(cleanPhone)) {
-      setErrorMessage("অনুগ্রহ করে একটি সঠিক ১১ ডিজিটের বাংলাদেশী মোবাইল নাম্বার দিন (যেমন: 017XXXXXXXX)।");
+      newErrors.phone = true;
+    }
+
+    if (!village.trim()) newErrors.village = true;
+
+    if (addons?.partial_payment_enabled) {
+      if (!partialPaymentSender.trim()) newErrors.billingSender = true;
+      if (!partialPaymentTxnId.trim()) newErrors.billingTxn = true;
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setFormErrors(newErrors);
+
+      if (newErrors.name) {
+        setErrorMessage("দয়া করে আপনার নাম লিখুন।");
+        const el = document.getElementById('cart-name-input');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus();
+      } else if (newErrors.phone) {
+        setErrorMessage("অনুগ্রহ করে একটি সঠিক ১১ ডিজিটের বাংলাদেশী মোবাইল নাম্বার দিন (যেমন: 017XXXXXXXX)।");
+        const el = document.getElementById('cart-phone-input');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus();
+      } else if (newErrors.village) {
+        setErrorMessage("অনুগ্রহ করে সাকিন/পূর্ণাঙ্গ ঠিকানা দিন।");
+        const el = document.getElementById('cart-village-input');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus();
+      } else if (newErrors.billingSender) {
+        setErrorMessage("অনুগ্রহ করে পেমেন্ট প্রেরক নম্বরটি লিখুন।");
+        const el = document.getElementById('cart-payment-sender-input');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus();
+      } else if (newErrors.billingTxn) {
+        setErrorMessage("অনুগ্রহ করে পেমেন্ট ট্রানজেকশন আইডিটি প্রবেশ করান।");
+        const el = document.getElementById('cart-payment-txn-input');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus();
+      }
       return;
     }
 
-    if (!village.trim()) {
-      setErrorMessage("অনুগ্রহ করে সাকিন/পূর্ণাঙ্গ ঠিকানা দিন।");
-      return;
-    }
-
-    // Block double submissions on same session/id
+    setFormErrors({});
     setIsSubmitting(true);
 
     try {
@@ -333,12 +367,16 @@ export default function CartPage({ onOrderSuccess }: CartPageProps) {
                   {cartItems.map((item, idx) => (
                     <div key={idx} className="flex gap-4 py-4 first:pt-1 last:pb-1">
                       {/* Thumbnail */}
-                      <div className="w-20 h-20 bg-slate-50 border border-slate-150 rounded-xl overflow-hidden flex-shrink-0 relative">
-                        <img 
-                          src={item.product.image} 
-                          alt={item.product.title} 
-                          className="w-full h-full object-cover" 
-                        />
+                      <div className="w-20 h-20 bg-slate-50 border border-slate-150 rounded-xl overflow-hidden flex-shrink-0 relative flex items-center justify-center text-slate-400">
+                        {item.product.image ? (
+                          <img 
+                            src={item.product.image} 
+                            alt={item.product.title} 
+                            className="w-full h-full object-cover" 
+                          />
+                        ) : (
+                          <ImageIcon className="h-6 w-6 stroke-[1.5]" />
+                        )}
                       </div>
 
                       {/* Info & Config */}
@@ -394,36 +432,28 @@ export default function CartPage({ onOrderSuccess }: CartPageProps) {
                 <h4 className="text-xs font-black text-slate-800 mb-2 uppercase tracking-wide flex items-center gap-1.5">
                   <Tag className="h-4 w-4 text-rose-500" /> ছাড়ে প্রমো কোড / কুপন (Coupon Discount)
                 </h4>
-                <p className="text-[10px] text-slate-400 mb-3 leading-relaxed">ছাড়ে সুবিধা পেতে কুপন কোড লিখে প্রয়োগ করুন (যেমন: MONSOON200, WINTER15)।</p>
-                
-                <form onSubmit={handleApplyCoupon} className="flex gap-2.5">
+                <p className="text-[10px] text-slate-400 mb-3 leading-relaxed">ছাড়ে সুবিধা পেতে কুপন কোড লিখে প্রয়োগ করুন।</p>
+                <form onSubmit={handleApplyCoupon} className="flex gap-2.5 font-sans">
                   <input 
-                    type="text"
+                    type="text" 
+                    placeholder="কুপন কোড (যেমন: SAVE50)" 
                     value={couponCodeInput}
-                    onChange={(e) => setCouponCodeInput(e.target.value.toUpperCase().replace(/\s+/g, ''))}
-                    placeholder="কুপন কোড প্রবেশ করুন"
-                    className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 font-bold focus:outline-none uppercase font-mono"
-                    disabled={isApplyingCoupon}
+                    onChange={(e) => setCouponCodeInput(e.target.value)}
+                    className="flex-1 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold uppercase placeholder:normal-case focus:outline-none focus:ring-1 focus:ring-rose-500 font-mono"
                   />
                   <button 
                     type="submit"
-                    className="px-5 py-2.5 bg-slate-900 hover:bg-rose-600 text-white text-xs font-black rounded-xl transition cursor-pointer tracking-wider"
                     disabled={isApplyingCoupon}
+                    className="px-3 py-1.5 bg-slate-900 hover:bg-rose-600 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-50"
                   >
-                    {isApplyingCoupon ? 'সিঙ্ক হচ্ছে...' : 'প্রয়োগ করুন'}
+                    {isApplyingCoupon ? 'হচ্ছে...' : 'প্রয়োগ'}
                   </button>
                 </form>
-
                 {couponError && (
-                  <div className="p-3 bg-red-50 text-red-650 border border-red-100 rounded-xl mt-3 text-xs flex items-center gap-2 font-bold animate-fadeIn">
-                    <AlertCircle className="h-4 w-4" /> {couponError}
-                  </div>
+                  <p className="text-[10px] font-bold text-rose-600 mt-1 font-sans animate-fadeIn">* {couponError}</p>
                 )}
-                
                 {couponSuccess && (
-                  <div className="p-3 bg-emerald-50 text-emerald-800 border border-emerald-100 rounded-xl mt-3 text-xs flex items-center gap-2 font-bold animate-fadeIn">
-                    <Check className="h-4 w-4 text-emerald-600" /> {couponSuccess}
-                  </div>
+                  <p className="text-[10px] font-bold text-emerald-600 mt-1 font-sans animate-fadeIn">* {couponSuccess}</p>
                 )}
               </div>
             </div>
@@ -481,27 +511,59 @@ export default function CartPage({ onOrderSuccess }: CartPageProps) {
 
                 <div className="space-y-3.5">
                   <div>
-                    <label className="block text-[10px] font-extrabold text-slate-500 mb-1 uppercase tracking-wide">আপনার নাম (Full Name)</label>
+                    <label className="block text-[10px] font-extrabold text-slate-500 mb-1 uppercase tracking-wide">
+                      আপনার নাম (Full Name) <span className="text-rose-500">*</span>
+                    </label>
                     <input 
                       type="text"
+                      id="cart-name-input"
                       placeholder="যেমন: মোঃ সাকিব হাসান"
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 font-bold focus:outline-none focus:ring-1 focus:ring-rose-500"
+                      className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-xl text-xs text-slate-800 font-bold focus:outline-none focus:ring-1 transition-all ${
+                        formErrors.name 
+                          ? 'border-rose-500 ring-2 ring-rose-500/10 focus:ring-rose-500 animate-pulse' 
+                          : 'border-slate-200 focus:ring-rose-500'
+                      }`}
                       value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      required
+                      onChange={(e) => {
+                        setName(e.target.value);
+                        if (e.target.value.trim()) {
+                          setFormErrors(prev => ({ ...prev, name: false }));
+                        }
+                      }}
                     />
+                    {formErrors.name && (
+                      <span className="text-[11px] font-bold text-rose-600 block mt-1 font-sans animate-pulse">
+                        * অনুগ্রহ করে আপনার নাম লিখুন।
+                      </span>
+                    )}
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-extrabold text-slate-500 mb-1 uppercase tracking-wide">মোবাইল নাম্বার (11 Digit Mobile)</label>
+                    <label className="block text-[10px] font-extrabold text-slate-500 mb-1 uppercase tracking-wide">
+                      মোবাইল নাম্বার (11 Digit Mobile) <span className="text-rose-500">*</span>
+                    </label>
                     <input 
                       type="tel"
+                      id="cart-phone-input"
                       placeholder="১১ ডিজিটের সচল মোবাইল নাম্বার"
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 font-bold focus:outline-none focus:ring-1 focus:ring-rose-500"
+                      className={`w-full px-3.5 py-2.5 bg-slate-55 border rounded-xl text-xs text-slate-800 font-bold focus:outline-none focus:ring-1 transition-all ${
+                        formErrors.phone 
+                          ? 'border-rose-500 ring-2 ring-rose-500/10 focus:ring-rose-500 animate-pulse' 
+                          : 'border-slate-200 focus:ring-rose-500'
+                      }`}
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      required
+                      onChange={(e) => {
+                        setPhone(e.target.value);
+                        if (e.target.value.trim().length >= 11) {
+                          setFormErrors(prev => ({ ...prev, phone: false }));
+                        }
+                      }}
                     />
+                    {formErrors.phone && (
+                      <span className="text-[11px] font-bold text-rose-600 block mt-1 font-sans animate-pulse">
+                        * অনুগ্রহ করে একটি সঠিক ১১ ডিজিটের বাংলাদেশী মোবাইল নাম্বার দিন।
+                      </span>
+                    )}
                   </div>
 
                   <div>
@@ -509,7 +571,7 @@ export default function CartPage({ onOrderSuccess }: CartPageProps) {
                     <select 
                       value={district}
                       onChange={(e) => setDistrict(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-xl font-bold focus:outline-none"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-xl font-bold focus:outline-none focus:ring-1 focus:ring-rose-500"
                     >
                       <option value="ঢাকা">ঢাকার মধ্যে (ডেলিভারি চার্জ {courierInside} TK)</option>
                       <option value="ঢাকার বাহিরে">ঢাকার বাইরে (ডেলিভারি চার্জ {courierOutside} TK)</option>
@@ -517,15 +579,31 @@ export default function CartPage({ onOrderSuccess }: CartPageProps) {
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-extrabold text-slate-500 mb-1 uppercase tracking-wide">পূর্ণাঙ্গ ঠিকানা (Full Address)</label>
+                    <label className="block text-[10px] font-extrabold text-slate-500 mb-1 uppercase tracking-wide">
+                      পূর্ণাঙ্গ ঠিকানা (Full Address) <span className="text-rose-500">*</span>
+                    </label>
                     <textarea 
                       rows={2.5}
+                      id="cart-village-input"
                       placeholder="গ্রাম/বাজার/পাড়া, পোস্ট অফিস ও থানা"
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 font-bold focus:outline-none focus:ring-1 focus:ring-rose-500"
+                      className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-xl text-xs text-slate-800 font-bold focus:outline-none focus:ring-1 transition-all resize-none ${
+                        formErrors.village 
+                          ? 'border-rose-500 ring-2 ring-rose-500/10 focus:ring-rose-500 animate-pulse' 
+                          : 'border-slate-200 focus:ring-rose-500'
+                      }`}
                       value={village}
-                      onChange={(e) => setVillage(e.target.value)}
-                      required
+                      onChange={(e) => {
+                        setVillage(e.target.value);
+                        if (e.target.value.trim()) {
+                          setFormErrors(prev => ({ ...prev, village: false }));
+                        }
+                      }}
                     />
+                    {formErrors.village && (
+                      <span className="text-[11px] font-bold text-rose-600 block mt-1 font-sans animate-pulse">
+                        * অনুগ্রহ করে সাকিন/পূর্ণাঙ্গ ঠিকানা দিন।
+                      </span>
+                    )}
                   </div>
 
                   <div>
@@ -533,7 +611,7 @@ export default function CartPage({ onOrderSuccess }: CartPageProps) {
                     <textarea 
                       rows={1.5}
                       placeholder="ল্যান্ডমার্ক বা বাড়ির পাশে কোনো মসজিদ বা স্কুল থাকলে লিখে দিতে পারেন।"
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 font-bold focus:outline-none focus:ring-1 focus:ring-rose-500"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 font-bold focus:outline-none focus:ring-1 focus:ring-rose-500 resize-none"
                       value={orderNotes}
                       onChange={(e) => setOrderNotes(e.target.value)}
                     />
@@ -565,26 +643,54 @@ export default function CartPage({ onOrderSuccess }: CartPageProps) {
 
                       <div className="grid grid-cols-2 gap-2.5 pt-2 border-t border-slate-200">
                         <div>
-                          <label className="block text-[8.5px] font-black text-slate-500 mb-0.5 uppercase">সেন্ডিং নম্বর</label>
+                          <label className="block text-[8.5px] font-black text-slate-500 mb-0.5 uppercase">সেন্ডিং নম্বর <span className="text-rose-500">*</span></label>
                           <input 
                             type="text" 
+                            id="cart-payment-sender-input"
                             placeholder="01XXXXXXXXX"
                             value={partialPaymentSender}
-                            onChange={(e) => setPartialPaymentSender(e.target.value)}
-                            required
-                            className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold" 
+                            onChange={(e) => {
+                              setPartialPaymentSender(e.target.value);
+                              if (e.target.value.trim()) {
+                                setFormErrors(prev => ({ ...prev, billingSender: false }));
+                              }
+                            }}
+                            className={`w-full px-2.5 py-1.5 bg-white border rounded-xl text-xs font-bold focus:outline-none transition-all ${
+                              formErrors.billingSender 
+                                ? 'border-rose-500 ring-2 ring-rose-500/10 focus:ring-rose-500 animate-pulse' 
+                                : 'border-slate-200'
+                            }`} 
                           />
+                          {formErrors.billingSender && (
+                            <span className="text-[10px] font-bold text-rose-600 block mt-1 font-sans animate-pulse">
+                              * সেন্ডিং নম্বর দিন
+                            </span>
+                          )}
                         </div>
                         <div>
-                          <label className="block text-[8.5px] font-black text-slate-500 mb-0.5 uppercase">ট্রানজেকশন আইডি (TxnID)</label>
+                          <label className="block text-[8.5px] font-black text-slate-500 mb-0.5 uppercase">ট্রানজেকশন আইডি (TxnID) <span className="text-rose-500">*</span></label>
                           <input 
                             type="text" 
+                            id="cart-payment-txn-input"
                             placeholder="যেমন: B8X4K2P"
                             value={partialPaymentTxnId}
-                            onChange={(e) => setPartialPaymentTxnId(e.target.value)}
-                            required
-                            className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold" 
+                            onChange={(e) => {
+                              setPartialPaymentTxnId(e.target.value);
+                              if (e.target.value.trim()) {
+                                setFormErrors(prev => ({ ...prev, billingTxn: false }));
+                              }
+                            }}
+                            className={`w-full px-2.5 py-1.5 bg-white border rounded-xl text-xs font-bold focus:outline-none transition-all ${
+                              formErrors.billingTxn 
+                                ? 'border-rose-500 ring-2 ring-rose-500/10 focus:ring-rose-500 animate-pulse' 
+                                : 'border-slate-200'
+                            }`} 
                           />
+                          {formErrors.billingTxn && (
+                            <span className="text-[10px] font-bold text-rose-600 block mt-1 font-sans animate-pulse">
+                              * TxnID প্রবেশ করুন
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>

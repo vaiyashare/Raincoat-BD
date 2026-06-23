@@ -17,7 +17,8 @@ import {
   PhoneCall, 
   MessageCircle, 
   Award,
-  RefreshCw
+  RefreshCw,
+  Image as ImageIcon
 } from 'lucide-react';
 
 interface ProductDetailsViewProps {
@@ -237,12 +238,19 @@ export default function ProductDetailsView({ productSlug }: ProductDetailsViewPr
           <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
             {/* Left side column: Product visual presentations */}
             <div className="md:col-span-6 space-y-4">
-              <div className="rounded-2xl border border-slate-150 overflow-hidden bg-slate-50 aspect-square relative select-none">
-                <img 
-                  src={activeImage} 
-                  alt={product.title} 
-                  className="w-full h-full object-cover transition-all"
-                />
+              <div className="rounded-2xl border border-slate-150 overflow-hidden bg-slate-50 aspect-square relative select-none flex items-center justify-center">
+                {activeImage ? (
+                  <img 
+                    src={activeImage} 
+                    alt={product.title} 
+                    className="w-full h-full object-cover transition-all"
+                  />
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 bg-slate-50 gap-1">
+                    <ImageIcon className="h-10 w-10 stroke-[1.2]" />
+                    <span className="text-[10px] font-semibold">কোনো ছবি সেট করা নেই</span>
+                  </div>
+                )}
                 
                 {/* Visual badge highlight */}
                 <div className="absolute top-4 left-4 bg-rose-600 text-white text-[10px] uppercase font-black px-3 py-1 rounded-full shadow-md">
@@ -255,17 +263,25 @@ export default function ProductDetailsView({ productSlug }: ProductDetailsViewPr
                 <div className="grid grid-cols-5 gap-2 select-none">
                   <button
                     onClick={() => setActiveImage(product.image)}
-                    className={`border aspect-square rounded-xl overflow-hidden cursor-pointer transition ${activeImage === product.image ? 'border-rose-500 scale-95 ring-2 ring-rose-500/10' : 'border-slate-200 hover:border-slate-300'}`}
+                    className={`border aspect-square rounded-xl overflow-hidden cursor-pointer transition flex items-center justify-center text-slate-400 ${activeImage === product.image ? 'border-rose-500 scale-95 ring-2 ring-rose-500/10' : 'border-slate-200 hover:border-slate-300'}`}
                   >
-                    <img src={product.image} className="w-full h-full object-cover" />
+                    {product.image ? (
+                      <img src={product.image} className="w-full h-full object-cover" />
+                    ) : (
+                      <ImageIcon className="h-4 w-4 stroke-[1.5]" />
+                    )}
                   </button>
                   {product.images.map((img, i) => (
                     <button
                       key={i}
                       onClick={() => setActiveImage(img)}
-                      className={`border aspect-square rounded-xl overflow-hidden cursor-pointer transition ${activeImage === img ? 'border-rose-500 scale-95 ring-2 ring-rose-500/10' : 'border-slate-200 hover:border-slate-300'}`}
+                      className={`border aspect-square rounded-xl overflow-hidden cursor-pointer transition flex items-center justify-center text-slate-400 ${activeImage === img ? 'border-rose-500 scale-95 ring-2 ring-rose-500/10' : 'border-slate-200 hover:border-slate-300'}`}
                     >
-                      <img src={img} className="w-full h-full object-cover" />
+                      {img ? (
+                        <img src={img} className="w-full h-full object-cover" />
+                      ) : (
+                        <ImageIcon className="h-4 w-4 stroke-[1.5]" />
+                      )}
                     </button>
                   ))}
                 </div>

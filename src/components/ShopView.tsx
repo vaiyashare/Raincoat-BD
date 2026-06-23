@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   ShoppingBag, CheckCircle, Smartphone, MapPin, Sparkles, Check, CreditCard,
-  Trash2, Plus, Minus, ShieldCheck, Heart, Star, Phone, MessageSquare
+  Trash2, Plus, Minus, ShieldCheck, Heart, Star, Phone, MessageSquare, Image as ImageIcon
 } from 'lucide-react';
 import { RaincoatOrder } from '../types';
 import { 
@@ -175,19 +175,27 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
       }
     ];
 
+    const cleanImg = (url: string) => (url && url.includes('unsplash.com') ? '' : url);
+    const sanitizeList = (plist: any[]) => plist.map(p => ({
+      ...p,
+      image: cleanImg(p.image),
+      images: (p.images || []).map(cleanImg).filter(Boolean)
+    }));
+
     const list = localStorage.getItem('raincoat_shop_products');
     if (list) {
       try {
         const parsed = JSON.parse(list);
         if (parsed && parsed.length > 0) {
-          return parsed;
+          return sanitizeList(parsed);
         }
       } catch (e) {}
     }
     
     // Save to local storage for persistence across admin views
-    localStorage.setItem('raincoat_shop_products', JSON.stringify(fullDefaults));
-    return fullDefaults;
+    const sanitizedDefaults = sanitizeList(fullDefaults);
+    localStorage.setItem('raincoat_shop_products', JSON.stringify(sanitizedDefaults));
+    return sanitizedDefaults;
   });
 
   // Keep products dynamically in sync with Firestore
@@ -215,6 +223,7 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
   const [district, setDistrict] = useState('ঢাকা');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [formErrors, setFormErrors] = useState<{ name?: boolean; phone?: boolean; village?: boolean; billingSender?: boolean; billingTxn?: boolean }>({});
   const [successOrder, setSuccessOrder] = useState<RaincoatOrder | null>(null);
 
   // Advanced plugins and tracking states
@@ -312,9 +321,11 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
       setErrorMessage('অনুগ্রহ করে কড়া করে অন্তত একটি পণ্য কার্টে যোগ করুন!');
       return;
     }
-    if (!name.trim()) return setErrorMessage('আপনার নাম লিখুন অনুগ্রহ করে।');
-    if (!village.trim()) return setErrorMessage('আপনার সাকিন, থানা ও সঠিক ঠিকানা লিখুন!');
-    
+
+    const newErrors: { name?: boolean; phone?: boolean; village?: boolean; billingSender?: boolean; billingTxn?: boolean } = {};
+
+    if (!name.trim()) newErrors.name = true;
+
     let cleanPhone = phone.replace(/[^0-9]/g, '');
     if (cleanPhone.startsWith('88')) {
       cleanPhone = cleanPhone.substring(2);
@@ -325,8 +336,49 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
       }
     }
     if (!cleanPhone.startsWith('01') || cleanPhone.length !== 11) {
-      return setErrorMessage('অনুগ্রহ করে একটি সঠিক ১১ ডিজিটের বাংলাদেশী মোবাইল নাম্বার দিন (যেমন: 017XXXXXXXX)।');
+      newErrors.phone = true;
     }
+
+    if (!village.trim()) newErrors.village = true;
+
+    if (addons?.partial_payment_enabled) {
+      if (!partialPaymentSender.trim()) newErrors.billingSender = true;
+      if (!partialPaymentTxnId.trim()) newErrors.billingTxn = true;
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setFormErrors(newErrors);
+
+      if (newErrors.name) {
+        setErrorMessage('আপনার নাম লিখুন অনুগ্রহ করে।');
+        const el = document.getElementById('shop-name-input');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus();
+      } else if (newErrors.phone) {
+        setErrorMessage('অনুগ্রহ করে একটি সঠিক ১১ ডিজিটের বাংলাদেশী মোবাইল নাম্বার দিন (যেমন: 017XXXXXXXX)।');
+        const el = document.getElementById('shop-phone-input');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus();
+      } else if (newErrors.village) {
+        setErrorMessage('আপনার সাকিন, থানা ও সঠিক ঠিকানা লিখুন!');
+        const el = document.getElementById('shop-village-input');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus();
+      } else if (newErrors.billingSender) {
+        setErrorMessage('অনুগ্রহ করে পেমেন্ট প্রেরক নম্বরটি লিখুন!');
+        const el = document.getElementById('shop-payment-sender-input');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus();
+      } else if (newErrors.billingTxn) {
+        setErrorMessage('অনুগ্রহ করে পেমেন্ট ট্রানজেকশন আইডিটি প্রবেশ করান!');
+        const el = document.getElementById('shop-payment-txn-input');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus();
+      }
+      return;
+    }
+
+    setFormErrors({});
 
     // 2-hour ANTI-SPAM BLOCKING verification
     const isAntiSpamEnabled = localStorage.getItem('raincoat_antispam_enabled') !== 'false';
@@ -357,13 +409,6 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
         }
       } catch (err) {
         console.error(err);
-      }
-    }
-
-    if (addons?.partial_payment_enabled) {
-      if (!partialPaymentSender.trim() || !partialPaymentTxnId.trim()) {
-        setErrorMessage('অনুগ্রহ করে আমাদের কুরিয়ার ভেরিফিকেশন সম্পন্ন করতে আপনার বিকাশ/নগদ নম্বর এবং ট্রানজেকশন আইডি দিন!');
-        return;
       }
     }
 
@@ -453,18 +498,18 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
         </div>
 
         {successOrder ? (
-          <div className="max-w-xl mx-auto bg-white border border-emerald-250 p-8 rounded-3xl text-center shadow-lg space-y-4">
+          <div className="max-w-xl mx-auto bg-white border border-emerald-250 p-8 rounded-3xl text-center shadow-lg space-y-4 font-sans">
             <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-600 mx-auto">
               <CheckCircle className="h-10 w-10" />
             </div>
             <h2 className="text-2xl font-black text-emerald-800">অর্ডার সফলভাবে সম্পন্ন হয়েছে!</h2>
-            <p className="text-sm text-slate-600 leading-relaxed">
-              আপনার অডার আইডি: <strong className="font-mono text-slate-800 bg-slate-100 px-2 py-1 rounded">{successOrder.id}</strong>. 
+            <p className="text-sm text-slate-600 leading-relaxed font-sans">
+              আপনার অর্ডারের আইডি: <strong className="font-mono text-slate-800 bg-slate-100 px-2 py-1 rounded">{successOrder.id}</strong>. 
               আমাদের কাস্টমার রিপ্রেজেন্টেটিভ খুব শীঘ্রই আপনাকে কল করে অর্ডারটি কনফার্ম করবেন। Monsoon Gear এর সাথে থাকার জন্য ধন্যবাদ!
             </p>
             <button
               onClick={() => setSuccessOrder(null)}
-              className="py-2.5 px-6 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-extrabold transition cursor-pointer"
+              className="py-2.5 px-6 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-extrabold transition cursor-pointer font-sans"
             >
               আরও শপিং করুন
             </button>
@@ -483,14 +528,21 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
                   <div key={product.id} className="bg-white rounded-2xl overflow-hidden border border-slate-205 shadow-sm transform hover:scale-[1.01] transition duration-200 flex flex-col justify-between">
                     <div>
                       {/* Image header */}
-                      <div className="h-48 overflow-hidden relative bg-slate-200">
-                        <img 
-                          src={product.image} 
-                          alt={product.title} 
-                          className="w-full h-full object-cover"
-                          referrerPolicy="no-referrer"
-                          loading="lazy"
-                        />
+                      <div className="h-48 overflow-hidden relative bg-slate-100 flex items-center justify-center text-slate-400">
+                        {product.image ? (
+                          <img 
+                            src={product.image} 
+                            alt={product.title} 
+                            className="w-full h-full object-cover"
+                            referrerPolicy="no-referrer"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center text-center p-4">
+                            <ImageIcon className="h-8 w-8 stroke-[1.5]" />
+                            <span className="text-[10px] font-medium mt-1 text-slate-500">কোনো ছবি যুক্ত করা হয়নি</span>
+                          </div>
+                        )}
                         <span className="absolute top-3 left-3 bg-slate-900/80 text-white text-[10px] font-black px-2.5 py-1 rounded-full uppercase">
                           {product.category}
                         </span>
@@ -638,27 +690,59 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
 
                   <div className="space-y-3.5">
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">আপনার নাম (Full Name)</label>
+                      <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">
+                        আপনার নাম (Full Name) <span className="text-rose-500">*</span>
+                      </label>
                       <input 
                         type="text"
+                        id="shop-name-input"
                         placeholder="যেমন: মোঃ সাকিব হাসান"
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none"
+                        className={`w-full px-3 py-2 bg-slate-50 border rounded-xl text-xs text-slate-800 focus:outline-none transition-all ${
+                          formErrors.name 
+                            ? 'border-rose-500 ring-2 ring-rose-500/10 focus:ring-rose-500 animate-pulse' 
+                            : 'border-slate-200 focus:ring-rose-500'
+                        }`}
                         value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        required
+                        onChange={(e) => {
+                          setName(e.target.value);
+                          if (e.target.value.trim()) {
+                            setFormErrors(prev => ({ ...prev, name: false }));
+                          }
+                        }}
                       />
+                      {formErrors.name && (
+                        <span className="text-[11px] font-bold text-rose-600 block mt-1 font-sans animate-pulse">
+                          * অনুগ্রহ করে আপনার নাম লিখুন।
+                        </span>
+                      )}
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">মোবাইল নাম্বার (11 Digit Mobile)</label>
+                      <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">
+                        মোবাইল নাম্বার (11 Digit Mobile) <span className="text-rose-500">*</span>
+                      </label>
                       <input 
                         type="tel"
+                        id="shop-phone-input"
                         placeholder="১১ ডিজিটের সচল মোবাইল নাম্বার"
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none"
+                        className={`w-full px-3 py-2 bg-slate-50 border rounded-xl text-xs text-slate-800 focus:outline-none transition-all ${
+                          formErrors.phone 
+                            ? 'border-rose-500 ring-2 ring-rose-500/10 focus:ring-rose-500 animate-pulse' 
+                            : 'border-slate-200 focus:ring-rose-500'
+                        }`}
                         value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        required
+                        onChange={(e) => {
+                          setPhone(e.target.value);
+                          if (e.target.value.trim().length >= 11) {
+                            setFormErrors(prev => ({ ...prev, phone: false }));
+                          }
+                        }}
                       />
+                      {formErrors.phone && (
+                        <span className="text-[11px] font-bold text-rose-600 block mt-1 font-sans animate-pulse">
+                          * অনুগ্রহ করে একটি সঠিক ১১ ডিজিটের বাংলাদেশী মোবাইল নাম্বার দিন।
+                        </span>
+                      )}
                     </div>
 
                     <div>
@@ -674,19 +758,35 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">পূর্ণাঙ্গ সাকিন/ঠিকানা (Address Details)</label>
+                      <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">
+                        পূর্ণাঙ্গ সাকিন/ঠিকানা (Address Details) <span className="text-rose-500">*</span>
+                      </label>
                       <textarea 
                         rows={2.5}
+                        id="shop-village-input"
                         placeholder="গ্রাম/বাজার/পাড়া, পোস্ট অফিস ও সংশ্লিষ্ট থানা"
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none"
+                        className={`w-full px-3 py-2 bg-slate-50 border rounded-xl text-xs text-slate-800 focus:outline-none transition-all ${
+                          formErrors.village 
+                            ? 'border-rose-500 ring-2 ring-rose-500/10 focus:ring-rose-500 animate-pulse' 
+                            : 'border-slate-200 focus:ring-rose-500'
+                        }`}
                         value={village}
-                        onChange={(e) => setVillage(e.target.value)}
-                        required
+                        onChange={(e) => {
+                          setVillage(e.target.value);
+                          if (e.target.value.trim()) {
+                            setFormErrors(prev => ({ ...prev, village: false }));
+                          }
+                        }}
                       />
+                      {formErrors.village && (
+                        <span className="text-[11px] font-bold text-rose-600 block mt-1 font-sans animate-pulse">
+                          * অনুগ্রহ করে সাকিন/পূর্ণাঙ্গ ঠিকানা দিন।
+                        </span>
+                      )}
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">অর্ডার নোট / ডেলিভারি নির্দেশনা (যেমন: ল্যান্ডমার্ক বা প্রিয় সময় - Optional)</label>
+                      <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">অর্ডার নোট / ডেলিভারি নির্দেশনা - ঐচ্ছিক</label>
                       <textarea 
                         rows={1.5}
                         placeholder="যেমন: বাড়ির পাশে বায়তুল মামুর মসজিদ, বা বিকাল ৪ টার পর ডেলিভারি দিন।"
@@ -721,32 +821,59 @@ export default function ShopView({ onOrderSuccess }: ShopViewProps) {
 
                         <div className="grid grid-cols-2 gap-2.5 pt-2 border-t border-slate-200/50">
                           <div>
-                            <label className="block text-[9px] font-black text-slate-550 mb-0.5 uppercase">আপনার সেন্ডিং নম্বর</label>
+                            <label className="block text-[9px] font-black text-slate-550 mb-0.5 uppercase">আপনার সেন্ডিং নম্বর <span className="text-rose-500">*</span></label>
                             <input 
                               type="text" 
+                              id="shop-payment-sender-input"
                               placeholder="01XXXXXXXXX"
                               value={partialPaymentSender}
-                              onChange={(e) => setPartialPaymentSender(e.target.value)}
-                              required
-                              className="w-full px-2.5 py-1.5 bg-white border border-slate-205 rounded-xl text-xs" 
+                              onChange={(e) => {
+                                setPartialPaymentSender(e.target.value);
+                                if (e.target.value.trim()) {
+                                  setFormErrors(prev => ({ ...prev, billingSender: false }));
+                                }
+                              }}
+                              className={`w-full px-2.5 py-1.5 bg-white border rounded-xl text-xs transition-all ${
+                                formErrors.billingSender 
+                                  ? 'border-rose-500 ring-2 ring-rose-500/10 focus:ring-rose-500 animate-pulse' 
+                                  : 'border-slate-200'
+                              }`} 
                             />
+                            {formErrors.billingSender && (
+                              <span className="text-[10px] font-bold text-rose-600 block mt-1 font-sans animate-pulse">
+                                * সেন্ডিং নম্বর দিন
+                              </span>
+                            )}
                           </div>
                           <div>
-                            <label className="block text-[9px] font-black text-slate-550 mb-0.5 uppercase">ট্রানজেকশন আইডি (TxnID)</label>
+                            <label className="block text-[9px] font-black text-slate-550 mb-0.5 uppercase">ট্রানজেকশন আইডি (TxnID) <span className="text-rose-500">*</span></label>
                             <input 
                               type="text" 
+                              id="shop-payment-txn-input"
                               placeholder="যেমন: A9B4F83X"
                               value={partialPaymentTxnId}
-                              onChange={(e) => setPartialPaymentTxnId(e.target.value)}
-                              required
-                              className="w-full px-2.5 py-1.5 bg-white border border-slate-205 rounded-xl text-xs uppercase font-mono" 
+                              onChange={(e) => {
+                                setPartialPaymentTxnId(e.target.value);
+                                if (e.target.value.trim()) {
+                                  setFormErrors(prev => ({ ...prev, billingTxn: false }));
+                                }
+                              }}
+                              className={`w-full px-2.5 py-1.5 bg-white border rounded-xl text-xs uppercase font-mono transition-all ${
+                                formErrors.billingTxn 
+                                  ? 'border-rose-500 ring-2 ring-rose-500/10 focus:ring-rose-500 animate-pulse' 
+                                  : 'border-slate-200'
+                              }`} 
                             />
+                            {formErrors.billingTxn && (
+                              <span className="text-[10px] font-bold text-rose-600 block mt-1 font-sans animate-pulse">
+                                * TxnID প্রবেশ করুন
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
                     )}
                   </div>
-
                   {/* Summary bill calculations for products cart */}
                   <div className="p-3.5 bg-slate-50/70 border border-slate-100 rounded-xl space-y-1.5 text-xs text-slate-650">
                     <div className="flex justify-between">

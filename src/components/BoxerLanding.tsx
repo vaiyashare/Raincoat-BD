@@ -16,7 +16,8 @@ import {
   Info,
   Layers,
   Heart,
-  Grid
+  Grid,
+  Image as ImageIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -46,6 +47,7 @@ export default function BoxerLanding({ onOrderSuccess }: BoxerLandingProps) {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [formErrors, setFormErrors] = useState<{ name?: boolean; phone?: boolean; village?: boolean }>({});
   const [submittedOrder, setSubmittedOrder] = useState<RaincoatOrder | null>(null);
 
   // Carousel current index state
@@ -244,11 +246,11 @@ export default function BoxerLanding({ onOrderSuccess }: BoxerLandingProps) {
   const handleOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
+    const newErrors: { name?: boolean; phone?: boolean; village?: boolean } = {};
 
-    if (!name.trim()) return setErrorMessage('অনুগ্রহ করে আপনার নামটি লিখুন।');
-    if (!phone.trim()) return setErrorMessage('অনুগ্রহ করে আপনার সচল মোবাইল নম্বরটি লিখুন।');
-    if (!village.trim()) return setErrorMessage('অনুগ্রহ করে আপনার ডেলিভারির সম্পূর্ণ ঠিকানাটি প্রদান করুন।');
-
+    if (!name.trim()) newErrors.name = true;
+    
+    // Bangladesh mobile number pattern: 11 digits starting with 01
     let cleanPhone = phone.replace(/[^0-9]/g, '');
     if (cleanPhone.startsWith('88')) {
       cleanPhone = cleanPhone.substring(2);
@@ -259,9 +261,35 @@ export default function BoxerLanding({ onOrderSuccess }: BoxerLandingProps) {
       }
     }
     if (!cleanPhone.startsWith('01') || cleanPhone.length !== 11) {
-      return setErrorMessage('অনুগ্রহ করে একটি সঠিক ১১ ডিজিটের বাংলাদেশী মোবাইল নাম্বার দিন (যেমন: 01XXXXXXXXX)।');
+      newErrors.phone = true;
     }
 
+    if (!village.trim()) newErrors.village = true;
+
+    if (Object.keys(newErrors).length > 0) {
+      setFormErrors(newErrors);
+      
+      // Select first failing field to scroll and focus
+      if (newErrors.name) {
+        setErrorMessage('অনুগ্রহ করে আপনার নামটি লিখুন।');
+        const el = document.getElementById('boxer-name-input');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus();
+      } else if (newErrors.phone) {
+        setErrorMessage('অনুগ্রহ করে একটি সঠিক ১১ ডিজিটের বাংলাদেশী মোবাইল নাম্বার দিন (যেমন: 01XXXXXXXXX)।');
+        const el = document.getElementById('boxer-phone-input');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus();
+      } else if (newErrors.village) {
+        setErrorMessage('অনুগ্রহ করে আপনার সম্পূর্ণ ঠিকানা (গ্রাম, ডাকঘর, থানা ও জেলা) লিখুন।');
+        const el = document.getElementById('boxer-village-input');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus();
+      }
+      return;
+    }
+
+    setFormErrors({});
     setIsSubmitting(true);
 
     const generatedOrderId = 'ord-boxer-' + Math.floor(Math.random() * 100000);
@@ -438,12 +466,19 @@ export default function BoxerLanding({ onOrderSuccess }: BoxerLandingProps) {
               <div className="lg:col-span-5 relative w-full flex flex-col items-center justify-center">
                 <div className="relative group w-full max-w-sm bg-slate-900/40 p-4 border border-slate-850 rounded-3xl shadow-2xl overflow-hidden aspect-square flex items-center justify-center">
                   <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 to-transparent pointer-events-none"></div>
-                  <img 
-                    src={heroData.image_url || 'https://images.unsplash.com/photo-1582966772680-860e372bb558?auto=format&fit=crop&q=80&w=600'} 
-                    alt="Boys Boxer brief comfort wear package" 
-                    className="w-full h-full object-cover rounded-2xl transition-transform duration-300 group-hover:scale-[1.02]"
-                    referrerPolicy="no-referrer"
-                  />
+                  {heroData.image_url && !heroData.image_url.includes('unsplash.com') ? (
+                    <img 
+                      src={heroData.image_url} 
+                      alt="Boys Boxer brief comfort wear package" 
+                      className="w-full h-full object-cover rounded-2xl transition-transform duration-300 group-hover:scale-[1.02]"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center text-center p-6 text-slate-500">
+                      <ImageIcon className="h-10 w-10 stroke-[1.2] mb-1.5 text-slate-400" />
+                      <span className="text-xs font-semibold text-slate-400">কোনো ছবি যুক্ত করা হয়নি</span>
+                    </div>
+                  )}
                   <div className="absolute bottom-5 right-5 bg-cyan-600 text-white text-xs font-black px-3.5 py-1.5 rounded-xl shadow-md select-none transform rotate-2">
                     চায়না ইমপোর্টেড ফেব্রিক 👑
                   </div>
@@ -686,13 +721,11 @@ export default function BoxerLanding({ onOrderSuccess }: BoxerLandingProps) {
           </div>
 
           <div className="bg-slate-950 p-4.5 sm:p-6 rounded-3xl border border-slate-850 shadow-xl overflow-x-auto">
-            <table className="w-full text-left border-collapse font-sans text-xs min-w-[500px]">
+            <table className="w-full text-left border-collapse font-sans text-xs">
               <thead>
                 <tr className="border-b border-slate-800 text-slate-400 uppercase font-black tracking-wider bg-slate-900/40">
                   <th className="py-3 px-4">সাইজ কোড (Size Code)</th>
-                  <th className="py-3 px-4 text-center">কোমর সাইজ (Waist Range)</th>
-                  <th className="py-3 px-4 text-center">উপযোগী ইলাস্টিক স্ট্রেচ</th>
-                  <th className="py-3 px-4 text-right">স্টক স্ট্যাটাস</th>
+                  <th className="py-3 px-4 text-right">কোমর সাইজ (Waist Range)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-850 font-bold">
@@ -708,14 +741,8 @@ export default function BoxerLanding({ onOrderSuccess }: BoxerLandingProps) {
                       <span className={`w-2.5 h-2.5 rounded-full ${selectedSize === sz.label ? 'bg-cyan-500 animate-pulse' : 'bg-slate-700'}`}></span>
                       {sz.label}
                     </td>
-                    <td className="py-3 px-4 text-center text-slate-200">
+                    <td className="py-3 px-4 text-right text-slate-200">
                       {sz.info} ইঞ্চি (Inch)
-                    </td>
-                    <td className="py-3 px-4 text-center text-slate-400">
-                      হাই স্থিতিস্থাপক (Flexible Stretch)
-                    </td>
-                    <td className="py-3 px-4 text-right text-emerald-400">
-                      স্টক এভেলেবেল (In Stock)
                     </td>
                   </tr>
                 ))}
@@ -771,12 +798,27 @@ export default function BoxerLanding({ onOrderSuccess }: BoxerLandingProps) {
                     </span>
                     <input 
                       type="text" 
+                      id="boxer-name-input"
                       value={name}
-                      onChange={(e) => setName(e.target.value)}
+                      onChange={(e) => {
+                        setName(e.target.value);
+                        if (e.target.value.trim()) {
+                          setFormErrors(prev => ({ ...prev, name: false }));
+                        }
+                      }}
                       placeholder="আপনার নাম লিখুন..."
-                      className="w-full text-xs pl-10.5 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-500/20 transition leading-snug"
+                      className={`w-full text-xs pl-10.5 pr-4 py-3 bg-slate-950 border rounded-xl text-white outline-none focus:ring-1 transition leading-snug ${
+                        formErrors.name 
+                          ? 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-500/5 focus:border-rose-500' 
+                          : 'border-slate-800 focus:border-cyan-400 focus:ring-cyan-500/20'
+                      }`}
                     />
                   </div>
+                  {formErrors.name && (
+                    <span className="text-[11px] font-bold text-rose-400 block mt-1 font-sans animate-pulse">
+                      * অনুগ্রহ করে আপনার নাম লিখুন।
+                    </span>
+                  )}
                 </div>
 
                 {/* 2. Customer Phone contact */}
@@ -790,12 +832,27 @@ export default function BoxerLanding({ onOrderSuccess }: BoxerLandingProps) {
                     </span>
                     <input 
                       type="tel" 
+                      id="boxer-phone-input"
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
+                      onChange={(e) => {
+                        setPhone(e.target.value);
+                        if (e.target.value.trim().length >= 11) {
+                          setFormErrors(prev => ({ ...prev, phone: false }));
+                        }
+                      }}
                       placeholder="যেমন: 01XXXXXXXXX"
-                      className="w-full text-xs pl-10.5 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-500/20 transition leading-snug"
+                      className={`w-full text-xs pl-10.5 pr-4 py-3 bg-slate-950 border rounded-xl text-white outline-none focus:ring-1 transition leading-snug ${
+                        formErrors.phone 
+                          ? 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-500/5 focus:border-rose-500' 
+                          : 'border-slate-800 focus:border-cyan-400 focus:ring-cyan-500/20'
+                      }`}
                     />
                   </div>
+                  {formErrors.phone && (
+                    <span className="text-[11px] font-bold text-rose-400 block mt-1 font-sans animate-pulse">
+                      * অনুগ্রহ করে একটি সঠিক ১১ ডিজিটের বাংলাদেশী মোবাইল নাম্বার দিন (যেমন: 01XXXXXXXXX)।
+                    </span>
+                  )}
                 </div>
 
                 {/* 3. Delivery address */}
@@ -809,12 +866,27 @@ export default function BoxerLanding({ onOrderSuccess }: BoxerLandingProps) {
                     </span>
                     <textarea 
                       rows={3}
+                      id="boxer-village-input"
                       value={village}
-                      onChange={(e) => setVillage(e.target.value)}
+                      onChange={(e) => {
+                        setVillage(e.target.value);
+                        if (e.target.value.trim()) {
+                          setFormErrors(prev => ({ ...prev, village: false }));
+                        }
+                      }}
                       placeholder="যেমন: গ্রাম, ডাকঘর, থানা ও জেলা সুন্দর করে লিখুন..."
-                      className="w-full text-xs pl-10.5 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-500/20 transition leading-snug resize-none"
+                      className={`w-full text-xs pl-10.5 pr-4 py-3 bg-slate-950 border rounded-xl text-white outline-none focus:ring-1 transition leading-snug resize-none ${
+                        formErrors.village 
+                          ? 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-500/5 focus:border-rose-500' 
+                          : 'border-slate-800 focus:border-cyan-400 focus:ring-cyan-500/20'
+                      }`}
                     />
                   </div>
+                  {formErrors.village && (
+                    <span className="text-[11px] font-bold text-rose-400 block mt-1 font-sans animate-pulse">
+                      * অনুগ্রহ করে আপনার সম্পূর্ণ ঠিকানা প্রদান করুন।
+                    </span>
+                  )}
                 </div>
 
                 {/* 4. Package/Set Selection */}
@@ -854,28 +926,51 @@ export default function BoxerLanding({ onOrderSuccess }: BoxerLandingProps) {
                 </div>
 
                 {/* 5. Size Selection buttons (Waist Range labeled correctly) */}
-                <div className="space-y-2">
-                  <span className="block text-xs font-bold text-slate-300 font-sans">
+                <div className="space-y-2.5">
+                  <span className="block text-xs font-black text-slate-300 font-sans tracking-wide">
                     ৫. আপনার সাইজ কোড নির্বাচন করুন (কোমর ইঞ্চি অনুযায়ী) <span className="text-rose-500 font-mono">*</span>
                   </span>
-                  <div className="grid grid-cols-6 gap-1.5ClassName">
-                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 w-full">
-                      {sizes.map((sz) => (
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2.5 w-full">
+                    {sizes.map((sz) => {
+                      const isSelected = selectedSize === sz.label;
+                      return (
                         <button
                           key={sz.label}
                           type="button"
                           onClick={() => setSelectedSize(sz.label as any)}
-                          className={`py-3.5 rounded-xl border text-center font-black transition cursor-pointer ${
-                            selectedSize === sz.label 
-                              ? 'bg-cyan-500 border-cyan-500 text-slate-950 font-sans shadow-md scale-102' 
-                              : 'bg-slate-950 border-slate-800 hover:border-slate-700 text-slate-300 font-sans'
+                          className={`relative py-3.5 px-2 rounded-2xl border text-center transition-all duration-300 cursor-pointer overflow-hidden group ${
+                            isSelected 
+                              ? 'bg-gradient-to-br from-cyan-400 to-cyan-600 border-cyan-400 text-slate-950 font-sans shadow-[0_4px_16px_rgba(34,211,238,0.3)] ring-2 ring-cyan-500/20 scale-102 font-extrabold' 
+                              : 'bg-slate-900/90 border-slate-800 hover:border-slate-600 text-slate-300 font-sans hover:-translate-y-0.5 shadow-sm'
                           }`}
                         >
-                          <span className="block text-xs">{sz.label}</span>
-                          <span className="block text-[8px] font-bold opacity-80 mt-0.5">({sz.info}")</span>
+                          {/* Subtle inner hover highlight for unselected buttons */}
+                          {!isSelected && (
+                            <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                          )}
+                          
+                          <div className="relative z-10 flex flex-col items-center justify-center">
+                            <span className={`block text-sm font-black tracking-wider transition-colors duration-200 ${
+                              isSelected ? 'text-slate-950' : 'text-white group-hover:text-cyan-400'
+                            }`}>
+                              {sz.label}
+                            </span>
+                            <span className={`block text-[9.5px] font-extrabold mt-0.5 tracking-tight transition-colors duration-200 ${
+                              isSelected ? 'text-slate-900/90' : 'text-slate-400 group-hover:text-slate-200'
+                            }`}>
+                              {sz.info}"
+                            </span>
+                          </div>
+
+                          {/* Top right indicator dot for active size selection */}
+                          {isSelected && (
+                            <div className="absolute top-1.5 right-1.5 flex h-1.5 w-1.5">
+                              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-slate-950/80"></span>
+                            </div>
+                          )}
                         </button>
-                      ))}
-                    </div>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -950,25 +1045,6 @@ export default function BoxerLanding({ onOrderSuccess }: BoxerLandingProps) {
               {/* Right Sidebar Checklist on checkout info */}
               <div className="md:col-span-5 bg-slate-950/65 p-4.5 rounded-2xl border border-slate-850 flex flex-col justify-between space-y-6">
                 
-                <div className="space-y-4">
-                  <h4 className="text-xs font-extrabold text-cyan-400 tracking-wider uppercase font-sans">📌 অর্ডার প্রক্রিয়াকরণ গাইডলাইন</h4>
-                  
-                  <div className="space-y-3.5 text-xs font-medium font-sans text-slate-300">
-                    <div className="flex gap-2.5 items-start">
-                      <span className="text-cyan-400 text-xs mt-0.5">১.</span>
-                      <p className="leading-relaxed">চেকআউট ফর্মের তথ্য সঠিকভাবে পূরণ করে সাবমিট বাটনে চাপ দিন। অগ্রিম কোনো টাকা দিতে হবে না।</p>
-                    </div>
-                    <div className="flex gap-2.5 items-start">
-                      <span className="text-cyan-400 text-xs mt-0.5">২.</span>
-                      <p className="leading-relaxed">অর্ডার সফলভাবে পাওয়ার পর ৪ ঘণ্টার মধ্যেই আমাদের কোয়ালিটি কনফার্মেশন টিম থেকে কল দেওয়া হবে।</p>
-                    </div>
-                    <div className="flex gap-2.5 items-start">
-                      <span className="text-cyan-400 text-xs mt-0.5">৩.</span>
-                      <p className="leading-relaxed">সরাসরি ক্যাশ অন ডেলিভারিতে পণ্য ডেলিভারি করা হবে। আপনি পণ্য পেয়ে চেক করে পছন্দ হলে তবেই পেমেন্ট করবেন।</p>
-                    </div>
-                  </div>
-                </div>
-
                 {/* Set/Price detailed calculation description */}
                 <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-2">
                   <div className="flex justify-between text-xs font-bold text-slate-400">
@@ -980,7 +1056,7 @@ export default function BoxerLanding({ onOrderSuccess }: BoxerLandingProps) {
                     <span className="text-emerald-400">ফ্রী (৳০/-)</span>
                   </div>
                   <div className="border-t border-slate-850 my-2 pt-2 flex justify-between text-sm font-black text-white">
-                    <span>সর্বমোট টাকা:</span>
+                     <span>সর্বমোট টাকা:</span>
                     <span className="text-amber-400 font-mono">৳{currentPrice}/- BDT</span>
                   </div>
                 </div>

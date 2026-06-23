@@ -5,6 +5,7 @@ import {
 } from 'firebase/auth';
 import { 
   initializeFirestore, 
+  getFirestore,
   doc, 
   setDoc, 
   updateDoc, 
@@ -82,8 +83,8 @@ export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true
 }, dbId);
 
-// Disconnected old default database. Both db and defaultDb now point directly to the single primary database instance.
-export const defaultDb = db;
+// Enable secondary/fallback database support using the standard project default database instance to prevent data loss if custom DB isn't ready
+export const defaultDb = getFirestore(app);
 
 // Basic connection validation
 async function testConnection() {
@@ -343,13 +344,16 @@ export async function updateOrderInFirestore(orderId: string, updates: Partial<R
 
 export async function deleteOrderFromFirestore(orderId: string): Promise<void> {
   const path = `orders/${orderId}`;
+  
+  // Always clean up fallback localStorage cache regardless of quota state to prevent deleted elements from returning
+  const cachedStr = localStorage.getItem('raincoat_orders_fallback') || '[]';
+  try {
+    const list = JSON.parse(cachedStr) as RaincoatOrder[];
+    const filtered = list.filter(o => o.id !== orderId);
+    localStorage.setItem('raincoat_orders_fallback', JSON.stringify(filtered));
+  } catch (_) {}
+
   if (isQuotaTripped) {
-    const cachedStr = localStorage.getItem('raincoat_orders_fallback') || '[]';
-    try {
-      const list = JSON.parse(cachedStr) as RaincoatOrder[];
-      const filtered = list.filter(o => o.id !== orderId);
-      localStorage.setItem('raincoat_orders_fallback', JSON.stringify(filtered));
-    } catch (_) {}
     return;
   }
 
@@ -375,6 +379,8 @@ export async function getOrdersFromFirestore(): Promise<RaincoatOrder[]> {
 
   const results: RaincoatOrder[] = [];
   const orderIdsFetched = new Set<string>();
+  let successCustom = false;
+  let successDefault = false;
 
   try {
     const q = query(collection(db, 'orders'));
@@ -386,6 +392,7 @@ export async function getOrdersFromFirestore(): Promise<RaincoatOrder[]> {
         orderIdsFetched.add(data.id);
       }
     });
+    successCustom = true;
   } catch (error) {
     console.warn("Could not query orders from custom database, trying default fallback:", error);
   }
@@ -400,8 +407,20 @@ export async function getOrdersFromFirestore(): Promise<RaincoatOrder[]> {
         orderIdsFetched.add(data.id);
       }
     });
+    successDefault = true;
   } catch (error) {
     console.warn("Could not query orders from default database:", error);
+  }
+
+  if (!successCustom && !successDefault) {
+    // Both failed! Return any cached fallback orders so data doesn't disappear in-app
+    const cached = localStorage.getItem('raincoat_orders_fallback') || localStorage.getItem('raincoat_orders');
+    if (cached) {
+      try {
+        return JSON.parse(cached) as RaincoatOrder[];
+      } catch (_) {}
+    }
+    return [];
   }
 
   try {
@@ -515,6 +534,8 @@ export async function getIncompleteOrdersFromFirestore(): Promise<IncompleteOrde
 
   const results: IncompleteOrder[] = [];
   const idsFetched = new Set<string>();
+  let successCustom = false;
+  let successDefault = false;
 
   try {
     const q = query(collection(db, 'incompleteOrders'));
@@ -526,6 +547,7 @@ export async function getIncompleteOrdersFromFirestore(): Promise<IncompleteOrde
         idsFetched.add(data.id);
       }
     });
+    successCustom = true;
   } catch (error) {
     console.warn("Could not read incomplete orders from custom database:", error);
   }
@@ -540,8 +562,20 @@ export async function getIncompleteOrdersFromFirestore(): Promise<IncompleteOrde
         idsFetched.add(data.id);
       }
     });
+    successDefault = true;
   } catch (error) {
     console.warn("Could not read incomplete orders from default database:", error);
+  }
+
+  if (!successCustom && !successDefault) {
+    // Both failed! Return any cached fallback incomplete orders so they don't disappear
+    const cached = localStorage.getItem('raincoat_incomplete_orders_fallback');
+    if (cached) {
+      try {
+        return JSON.parse(cached) as IncompleteOrder[];
+      } catch (_) {}
+    }
+    return [];
   }
 
   try {
@@ -1058,6 +1092,19 @@ export async function deleteSessionFromFirestore(sessionId: string): Promise<voi
   } catch (_) {}
 }
 
+function sanitizeProductImage(product: Product): Product {
+  const cleanImg = (url: string) => {
+    if (!url) return '';
+    if (url.includes('unsplash.com')) return '';
+    return url;
+  };
+  return {
+    ...product,
+    image: cleanImg(product.image),
+    images: (product.images || []).map(cleanImg).filter(Boolean)
+  };
+}
+
 // Product Persistence API methods (Firestore with fallback to raincoat_shop_products)
 export async function getProductsFromFirestore(): Promise<Product[]> {
   const cachedMem = getMemoryCached<Product[]>('products');
@@ -1069,8 +1116,9 @@ export async function getProductsFromFirestore(): Promise<Product[]> {
     if (cached) {
       try {
         const parsed = JSON.parse(cached) as Product[];
-        setMemoryCached('products', parsed);
-        return parsed;
+        const sanitized = parsed.map(sanitizeProductImage);
+        setMemoryCached('products', sanitized);
+        return sanitized;
       } catch (_) {}
     }
     return [];
@@ -1085,7 +1133,7 @@ export async function getProductsFromFirestore(): Promise<Product[]> {
     snapshot.forEach((doc) => {
       const data = doc.data() as Product;
       if (data && data.id && data.title && data.price && !fetchedIds.has(data.id)) {
-        results.push(data);
+        results.push(sanitizeProductImage(data));
         fetchedIds.add(data.id);
       }
     });
@@ -1099,7 +1147,7 @@ export async function getProductsFromFirestore(): Promise<Product[]> {
     snapshotDefault.forEach((doc) => {
       const data = doc.data() as Product;
       if (data && data.id && data.title && data.price && !fetchedIds.has(data.id)) {
-        results.push(data);
+        results.push(sanitizeProductImage(data));
         fetchedIds.add(data.id);
       }
     });
@@ -1118,8 +1166,9 @@ export async function getProductsFromFirestore(): Promise<Product[]> {
   const cached = localStorage.getItem('raincoat_shop_products');
   if (cached) {
     const parsed = JSON.parse(cached) as Product[];
-    setMemoryCached('products', parsed);
-    return parsed;
+    const sanitized = parsed.map(sanitizeProductImage);
+    setMemoryCached('products', sanitized);
+    return sanitized;
   }
   return [];
 }

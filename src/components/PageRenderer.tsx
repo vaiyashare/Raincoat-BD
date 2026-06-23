@@ -113,6 +113,9 @@ export default function PageRenderer({ page, onOrderSuccess }: PageRendererProps
                 );
 
               case 'image':
+                if (!block.content || block.content.includes('unsplash.com')) {
+                  return null;
+                }
                 return (
                   <div key={block.id} style={bgStyle} className={`${paddingClass}`}>
                     <div className="container mx-auto max-w-4xl">
@@ -120,7 +123,7 @@ export default function PageRenderer({ page, onOrderSuccess }: PageRendererProps
                         block.styles?.textAlign === 'center' ? 'justify-center' : block.styles?.textAlign === 'right' ? 'justify-end' : 'justify-start'
                       }`}>
                         <img 
-                          src={block.content || 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=800'} 
+                          src={block.content} 
                           alt="custom landing design block" 
                           className="max-h-[500px] object-cover rounded-2xl shadow-md border border-slate-200"
                           referrerPolicy="no-referrer"

@@ -107,7 +107,9 @@ export default function OrderForm({
   const [heightInches, setHeightInches] = useState<number>(6);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hasSubmitted, setHasSubmitted] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [formErrors, setFormErrors] = useState<{ name?: boolean; village?: boolean; phone?: boolean; color?: boolean; size?: boolean }>({});
   const [agreedTerms, setAgreedTerms] = useState(true);
   const [whatsappConsent, setWhatsappConsent] = useState(true);
 
@@ -185,6 +187,9 @@ export default function OrderForm({
 
   // Save draft details when any field changes
   useEffect(() => {
+    if (hasSubmitted || isSubmitting) {
+      return;
+    }
     if (!name.trim() && !phone.trim() && !village.trim() && !orderNotes.trim()) {
       return;
     }
@@ -217,15 +222,15 @@ export default function OrderForm({
     addIncompleteOrderToFirestore(draftOrder).catch((err) => {
       console.warn("Failed to sync incomplete draft to Cloud Firestore:", err);
     });
-  }, [name, phone, village, initialSize, selectedColor, weight, heightFeet, heightInches, price, sessionId, orderNotes, whatsappConsent]);
+  }, [name, phone, village, initialSize, selectedColor, weight, heightFeet, heightInches, price, sessionId, orderNotes, whatsappConsent, hasSubmitted, isSubmitting]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
+    const newErrors: { name?: boolean; village?: boolean; phone?: boolean; color?: boolean; size?: boolean } = {};
 
-    // Strict validation
-    if (!name.trim()) return setErrorMessage('অনুগ্রহ করে আপনার নাম লিখুন।');
-    if (!village.trim()) return setErrorMessage('অনুগ্রহ করে আপনার গ্রাম/বাজার/পাড়া ও সঠিক ঠিকানা লিখুন।');
+    if (!name.trim()) newErrors.name = true;
+    if (!village.trim()) newErrors.village = true;
     
     // Bangladesh mobile number pattern: 11 digits starting with 01
     let cleanPhone = phone.replace(/[^0-9]/g, '');
@@ -238,16 +243,43 @@ export default function OrderForm({
       }
     }
     if (!cleanPhone.startsWith('01') || cleanPhone.length !== 11) {
-      return setErrorMessage('অনুগ্রহ করে একটি সঠিক ১১ ডিজিটের বাংলাদেশী মোবাইল নাম্বার দিন (যেমন: 017XXXXXXXX)।');
+      newErrors.phone = true;
     }
 
-    if (!selectedColor) {
-      return setErrorMessage('অনুগ্রহ করে রেইনকোটের কালার পছন্দ করুন।');
+    if (!selectedColor) newErrors.color = true;
+    if (!initialSize) newErrors.size = true;
+
+    if (Object.keys(newErrors).length > 0) {
+      setFormErrors(newErrors);
+
+      if (newErrors.name) {
+        setErrorMessage('অনুগ্রহ করে আপনার নাম লিখুন।');
+        const el = document.getElementById('full-name');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus();
+      } else if (newErrors.village) {
+        setErrorMessage('অনুগ্রহ করে আপনার গ্রাম/বাজার/পাড়া ও সঠিক ঠিকানা লিখুন।');
+        const el = document.getElementById('address-detail');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus();
+      } else if (newErrors.phone) {
+        setErrorMessage('অনুগ্রহ করে একটি সঠিক ১১ ডিজিটের বাংলাদেশী মোবাইল নাম্বার দিন (যেমন: 017XXXXXXXX)।');
+        const el = document.getElementById('phone-number');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus();
+      } else if (newErrors.color) {
+        setErrorMessage('অনুগ্রহ করে রেইনকোটের কালার পছন্দ করুন।');
+        const el = document.getElementById('color-selection-container');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else if (newErrors.size) {
+        setErrorMessage('অনুগ্রহ করে রেইনকোটের সাইজ পছন্দ করুন।');
+        const el = document.getElementById('size-selection-container');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      return;
     }
 
-    if (!initialSize) {
-      return setErrorMessage('অনুগ্রহ করে রেইনকোটের সাইজ পছন্দ করুন।');
-    }
+    setFormErrors({});
 
     // Stock inventory check
     const variantId = `${selectedColor}-${initialSize}`;
@@ -257,6 +289,7 @@ export default function OrderForm({
     }
 
     setIsSubmitting(true);
+    setHasSubmitted(true);
 
     // Save final order to database
     const newId = 'ord-' + Math.floor(Math.random() * 100000);
@@ -366,11 +399,24 @@ export default function OrderForm({
               id="full-name"
               placeholder="যেমন: এম.ডি শফিকুল"
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white text-slate-800 transition-all font-sans"
-              required
+              onChange={(e) => {
+                setName(e.target.value);
+                if (e.target.value.trim()) {
+                  setFormErrors(prev => ({ ...prev, name: false }));
+                }
+              }}
+              className={`w-full pl-10 pr-4 py-2.5 bg-slate-50 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:bg-white text-slate-800 transition-all font-sans ${
+                formErrors.name 
+                  ? 'border-red-500 ring-2 ring-red-500/20 focus:ring-red-500' 
+                  : 'border-slate-200 focus:ring-blue-600'
+              }`}
             />
           </div>
+          {formErrors.name && (
+            <span className="text-[11px] font-bold text-rose-600 block mt-1 font-sans animate-pulse">
+              * অনুগ্রহ করে আপনার নাম লিখুন।
+            </span>
+          )}
         </div>
 
         {/* Details Address Input */}
@@ -385,11 +431,24 @@ export default function OrderForm({
               id="address-detail"
               placeholder="যেমন: কলেজ রোড, পূর্ব পাড়া, হাউজ নং ৪৭"
               value={village}
-              onChange={(e) => setVillage(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white text-slate-800 transition-all font-sans"
-              required
+              onChange={(e) => {
+                setVillage(e.target.value);
+                if (e.target.value.trim()) {
+                  setFormErrors(prev => ({ ...prev, village: false }));
+                }
+              }}
+              className={`w-full pl-10 pr-4 py-2.5 bg-slate-50 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:bg-white text-slate-800 transition-all font-sans ${
+                formErrors.village 
+                  ? 'border-red-500 ring-2 ring-red-500/20 focus:ring-red-500' 
+                  : 'border-slate-200 focus:ring-blue-600'
+              }`}
             />
           </div>
+          {formErrors.village && (
+            <span className="text-[11px] font-bold text-rose-600 block mt-1 font-sans animate-pulse">
+              * অনুগ্রহ করে আপনার গ্রাম/বাজার/পাড়া ও সঠিক ঠিকানা লিখুন।
+            </span>
+          )}
         </div>
 
         {/* Mobile number */}
@@ -404,11 +463,24 @@ export default function OrderForm({
               id="phone-number"
               placeholder="যেমন: 01712345678"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white text-slate-800 transition-all font-sans font-mono"
-              required
+              onChange={(e) => {
+                setPhone(e.target.value);
+                if (e.target.value.trim().length >= 11) {
+                  setFormErrors(prev => ({ ...prev, phone: false }));
+                }
+              }}
+              className={`w-full pl-10 pr-4 py-2.5 bg-slate-50 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:bg-white text-slate-800 transition-all font-sans font-mono ${
+                formErrors.phone 
+                  ? 'border-red-500 ring-2 ring-red-500/20 focus:ring-red-500' 
+                  : 'border-slate-200 focus:ring-blue-600'
+              }`}
             />
           </div>
+          {formErrors.phone && (
+            <span className="text-[11px] font-bold text-rose-600 block mt-1 font-sans animate-pulse">
+              * অনুগ্রহ করে একটি সঠিক ১১ ডিজিটের বাংলাদেশী মোবাইল নাম্বার দিন।
+            </span>
+          )}
           {hasRecentOrder && (
             <div className="mt-2 p-3 bg-amber-55 text-amber-950 border border-amber-300 rounded-xl text-xs font-semibold leading-relaxed flex items-start gap-2 shadow-xs animate-pulse">
               <span className="text-base">⚠️</span>
@@ -483,9 +555,9 @@ export default function OrderForm({
         )}
 
         {/* Color Choice */}
-        <div>
+        <div id="color-selection-container" className={`p-1.5 rounded-2xl ${formErrors.color ? 'ring-2 ring-red-500/30 bg-rose-50/20' : ''}`}>
           <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans">
-            ৫. রেইনকোটের আকর্ষণীয় রং নির্বাচন করুন (২টি কালার):
+            ৫. রেইনকোটের আকর্ষণীয় রং নির্বাচন করুন (২টি কালার): <span className="text-red-500">*</span>
           </label>
           <div className="flex gap-3">
             {[
@@ -499,7 +571,10 @@ export default function OrderForm({
                 <button
                   key={col.name}
                   type="button"
-                  onClick={() => onChangeColor(col.name as ProductColor)}
+                  onClick={() => {
+                    onChangeColor(col.name as ProductColor);
+                    setFormErrors(prev => ({ ...prev, color: false }));
+                  }}
                   className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 border rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
                     isOut ? 'opacity-55 border-dashed hover:bg-slate-50' : ''
                   } ${
@@ -515,12 +590,17 @@ export default function OrderForm({
               );
             })}
           </div>
+          {formErrors.color && (
+            <span className="text-[11px] font-bold text-rose-600 block mt-1 font-sans animate-pulse">
+              * অনুগ্রহ করে রেইনকোটের কালার পছন্দ করুন।
+            </span>
+          )}
         </div>
 
         {/* Size Selection */}
-        <div>
+        <div id="size-selection-container" className={`p-1.5 rounded-2xl ${formErrors.size ? 'ring-2 ring-red-500/30 bg-rose-50/20' : ''}`}>
           <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans">
-            ৬. আপনার পছন্দসই রেইনকোট সাইজ (Size Chart):
+            ৬. আপনার পছন্দসই রেইনকোট সাইজ (Size Chart): <span className="text-red-500">*</span>
           </label>
           <div className="grid grid-cols-4 gap-2">
             {(['XL', 'XXL', '3XL', '4XL'] as Size[]).map((sz) => {
@@ -531,7 +611,10 @@ export default function OrderForm({
                 <button
                   key={sz}
                   type="button"
-                  onClick={() => onChangeSize(sz)}
+                  onClick={() => {
+                    onChangeSize(sz);
+                    setFormErrors(prev => ({ ...prev, size: false }));
+                  }}
                   className={`py-2 px-1 text-center rounded-xl text-xs font-bold border transition-all cursor-pointer ${
                     isOut ? 'opacity-60 border-dashed bg-rose-50/20' : ''
                   } ${
@@ -553,6 +636,11 @@ export default function OrderForm({
               );
             })}
           </div>
+          {formErrors.size && (
+            <span className="text-[11px] font-bold text-rose-600 block mt-1 font-sans animate-pulse">
+              * অনুগ্রহ করে রেইনকোটের সাইজ পছন্দ করুন।
+            </span>
+          )}
         </div>
 
         {/* Order Notes (Optional Delivery Instructions) */}

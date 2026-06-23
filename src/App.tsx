@@ -700,6 +700,40 @@ export default function App() {
       getPagesFromFirestore().then((fbPages) => {
         if (fbPages && fbPages.length > 0) {
           setCustomPages(fbPages);
+        } else {
+          try {
+            const cached = localStorage.getItem('raincoat_pages');
+            if (cached) {
+              setCustomPages(JSON.parse(cached));
+            } else {
+              const sample = [{
+                id: 'page-1',
+                title: 'বিশেষ বর্ষাকালীন অফার (Exclusive Monsoon Offers)',
+                slug: 'monsoon-offers',
+                blocks: [
+                  {
+                    id: 'b-1',
+                    type: 'headline',
+                    content: 'খাঁটি বর্ষার সেরা কাঁপানো থার্মাল-সিলড রেইনকোট!',
+                    styles: { color: '#ffffff', bgColor: '#1e3a8a', fontSize: 'lg', padding: 'tall', textAlign: 'center' }
+                  },
+                  {
+                    id: 'b-2',
+                    type: 'text',
+                    content: 'আমাদের এই বিশেষ ল্যান্ডিং পেজে পাচ্ছেন অত্যন্ত প্রিমিয়াম জ্যাকেট ও প্যান্টের এক অনন্য কম্বো প্যাক। সম্পূর্ণ ফ্রি কুরিয়ার ডেলিভারি চার্জে আজই নিজের কালার পছন্দ করুন।',
+                    styles: { color: '#334155', bgColor: '#f8fafc', fontSize: 'md', padding: 'normal', textAlign: 'center' }
+                  },
+                  {
+                    id: 'b-3',
+                    type: 'form',
+                    content: '',
+                    styles: { padding: 'tall' }
+                  }
+                ]
+              }];
+              setCustomPages(sample);
+            }
+          } catch (_) {}
         }
       }).catch((err) => {
         console.warn("Could not sync custom pages on startup:", err);
@@ -730,6 +764,14 @@ export default function App() {
     const handlePagesUpdate = (e: any) => {
       if (e.detail && e.detail.pages) {
         setCustomPages(e.detail.pages);
+      } else {
+        import('./lib/firebase').then(({ getPagesFromFirestore }) => {
+          getPagesFromFirestore().then((fbPages) => {
+            if (fbPages) {
+              setCustomPages(fbPages);
+            }
+          }).catch(() => {});
+        }).catch(() => {});
       }
     };
     const handleLiveVideosUpdate = (e: any) => {
@@ -1018,12 +1060,24 @@ export default function App() {
   }
   productSlug = productSlug.split('?')[0];
 
-  // Check if hash matches a custom page slug from custom landing pages collection
+  // Check if hash or path matches a custom page slug from custom landing pages collection
   let activeCustomPage = null;
   try {
-    const cleanHash = currentHash.replace(/^#\//, '').replace(/^#/, '');
-    if (cleanHash && cleanHash !== 'home' && cleanHash !== 'features' && cleanHash !== 'live-video' && cleanHash !== 'comparison' && cleanHash !== 'bundle-offer' && cleanHash !== 'delivery-timeline' && cleanHash !== 'size-chart' && cleanHash !== 'checkout-form' && cleanHash !== 'track-order' && cleanHash !== 'order-history' && cleanHash !== 'write-review' && cleanHash !== 'agtele') {
+    const cleanHash = currentHash.replace(/^#\//, '').replace(/^#/, '').split('?')[0];
+    const cleanPath = currentPath.replace(/^\//, '').split('?')[0];
+    const reservedSlugs = [
+      'admin', 'agtele', 'track-order', 'order-history', 'shop', 
+      'write-review', 'raincoat', 'bikecover', 'rancoatcovercombo', 
+      'boxer', 'cart', 'product', 'sitemap', 'sitemap.xml',
+      'home', 'features', 'live-video', 'comparison', 'bundle-offer', 
+      'delivery-timeline', 'size-chart', 'checkout-form'
+    ];
+
+    if (cleanHash && !reservedSlugs.includes(cleanHash)) {
       activeCustomPage = customPages.find((p: any) => p.slug === cleanHash);
+    }
+    if (!activeCustomPage && cleanPath && !reservedSlugs.includes(cleanPath) && !cleanPath.startsWith('product/') && !cleanPath.startsWith('thankyou-')) {
+      activeCustomPage = customPages.find((p: any) => p.slug === cleanPath);
     }
   } catch (e) {
     console.error(e);
@@ -1066,7 +1120,7 @@ export default function App() {
   if (isThankYouRoute) {
     return (
       <div className="min-h-screen bg-slate-50 relative selection:bg-blue-600 selection:text-white py-12 px-4 flex flex-col items-center justify-center font-sans animate-fadeIn">
-        <div className="w-full max-w-4xl">
+        <div className="w-full max-w-4xl flex flex-col gap-8">
           {thankYouLoading ? (
             <div className="bg-white rounded-2xl p-12 text-center shadow-xl border border-slate-100 max-w-lg mx-auto flex flex-col items-center justify-center gap-4">
               <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
@@ -1086,7 +1140,12 @@ export default function App() {
               </button>
             </div>
           ) : thankYouOrder ? (
-            <Receipt order={thankYouOrder} onClose={() => { window.location.pathname = '/'; }} />
+            <>
+              <Receipt order={thankYouOrder} onClose={() => { window.location.pathname = '/'; }} />
+              <div className="rounded-2xl overflow-hidden shadow-lg border border-slate-200">
+                <SubscriptionForm />
+              </div>
+            </>
           ) : null}
         </div>
       </div>
@@ -1096,9 +1155,12 @@ export default function App() {
   // Handle global Customer Order Confirmation Receipt View
   if (submittedOrder) {
     return (
-      <div className="min-h-screen bg-slate-50 relative selection:bg-blue-600 selection:text-white py-12 px-4 flex items-center justify-center font-sans">
-        <div className="w-full max-w-4xl">
+      <div className="min-h-screen bg-slate-50 relative selection:bg-blue-600 selection:text-white py-12 px-4 flex flex-col items-center justify-center font-sans">
+        <div className="w-full max-w-4xl flex flex-col gap-8">
           <Receipt order={submittedOrder} onClose={handleBackToShopping} />
+          <div className="rounded-2xl overflow-hidden shadow-lg border border-slate-200">
+            <SubscriptionForm />
+          </div>
         </div>
       </div>
     );
@@ -2291,7 +2353,7 @@ export default function App() {
                 {/* Soft gradient aura behind raincoat in white card */}
                 <div className="absolute inset-x-0 bottom-0 h-40 bg-radial from-slate-100 to-transparent pointer-events-none" />
                 <img
-                  src={bundleOfferImage}
+                  src={bundleOfferImage || null}
                   alt="Premium Raincoat Complete Bundle"
                   referrerPolicy="no-referrer"
                   loading="lazy"

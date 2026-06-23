@@ -15,7 +15,8 @@ import {
   Eye,
   Info,
   Gift,
-  Bike
+  Bike,
+  Image as ImageIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -45,6 +46,7 @@ export default function RaincoatBikeCoverComboLanding({ onOrderSuccess }: Rainco
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [formErrors, setFormErrors] = useState<{ name?: boolean; phone?: boolean; village?: boolean; bikeModel?: boolean }>({});
   const [submittedOrder, setSubmittedOrder] = useState<RaincoatOrder | null>(null);
 
   // Gallery current index state
@@ -244,12 +246,10 @@ export default function RaincoatBikeCoverComboLanding({ onOrderSuccess }: Rainco
   const handleOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
+    const newErrors: { name?: boolean; phone?: boolean; village?: boolean; bikeModel?: boolean } = {};
 
-    if (!name.trim()) return setErrorMessage('অনুগ্রহ করে আপনার নামটি লিখুন।');
-    if (!phone.trim()) return setErrorMessage('অনুগ্রহ করে আপনার সচল মোবাইল নম্বরটি লিখুন।');
-    if (!village.trim()) return setErrorMessage('অনুগ্রহ করে আপনার ডেলিভারির সম্পূর্ণ ঠিকানাটি প্রদান করুন।');
-    if (!bikeModel) return setErrorMessage('অনুগ্রহ করে আপনার বাইকের মডেলটি নির্বাচন বা উল্লেখ করুন।');
-
+    if (!name.trim()) newErrors.name = true;
+    
     let cleanPhone = phone.replace(/[^0-9]/g, '');
     if (cleanPhone.startsWith('88')) {
       cleanPhone = cleanPhone.substring(2);
@@ -260,9 +260,40 @@ export default function RaincoatBikeCoverComboLanding({ onOrderSuccess }: Rainco
       }
     }
     if (!cleanPhone.startsWith('01') || cleanPhone.length !== 11) {
-      return setErrorMessage('অনুগ্রহ করে একটি সঠিক ১১ ডিজিটের বাংলাদেশী মোবাইল নাম্বার দিন (যেমন: 01XXXXXXXXX)।');
+      newErrors.phone = true;
     }
 
+    if (!village.trim()) newErrors.village = true;
+    if (!bikeModel.trim()) newErrors.bikeModel = true;
+
+    if (Object.keys(newErrors).length > 0) {
+      setFormErrors(newErrors);
+
+      if (newErrors.name) {
+        setErrorMessage('অনুগ্রহ করে আপনার নামটি লিখুন।');
+        const el = document.getElementById('combo-name-input');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus();
+      } else if (newErrors.phone) {
+        setErrorMessage('অনুগ্রহ করে একটি সঠিক ১১ ডিজিটের বাংলাদেশী মোবাইল নাম্বার দিন (যেমন: 01XXXXXXXXX)।');
+        const el = document.getElementById('combo-phone-input');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus();
+      } else if (newErrors.village) {
+        setErrorMessage('অনুগ্রহ করে আপনার ডেলিভারির সম্পূর্ণ ঠিকানাটি প্রদান করুন।');
+        const el = document.getElementById('combo-village-input');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus();
+      } else if (newErrors.bikeModel) {
+        setErrorMessage('অনুগ্রহ করে আপনার বাইকের মডেলটি নির্বাচন বা উল্লেখ করুন।');
+        const el = document.getElementById('combo-bike-model-input');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus();
+      }
+      return;
+    }
+
+    setFormErrors({});
     setIsSubmitting(true);
 
     const generatedOrderId = 'ord-combo-' + Math.floor(Math.random() * 100000);
@@ -426,13 +457,20 @@ export default function RaincoatBikeCoverComboLanding({ onOrderSuccess }: Rainco
               <div className="lg:col-span-5 relative w-full flex flex-col items-center justify-center">
                 <div className="relative group w-full max-w-md bg-slate-900/40 p-4 border border-slate-850 rounded-3xl shadow-2xl overflow-hidden aspect-square flex items-center justify-center">
                   <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 to-transparent"></div>
-                  <img 
-                    src={heroData.image_url || 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=600'} 
-                    alt="Raincoat & Bike Cover Combo Deluxe Package" 
-                    className="w-full h-full object-contain rounded-2xl"
-                    referrerPolicy="no-referrer"
-                    loading="lazy"
-                  />
+                  {heroData.image_url && !heroData.image_url.includes('unsplash.com') ? (
+                    <img 
+                      src={heroData.image_url} 
+                      alt="Raincoat & Bike Cover Combo Deluxe Package" 
+                      className="w-full h-full object-contain rounded-2xl"
+                      referrerPolicy="no-referrer"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center text-center p-6 text-slate-500">
+                      <ImageIcon className="h-10 w-10 stroke-[1.2] mb-1.5 text-slate-400" />
+                      <span className="text-xs font-semibold text-slate-400">কোনো ছবি যুক্ত করা হয়নি</span>
+                    </div>
+                  )}
                   <div className="absolute bottom-5 right-5 bg-amber-500 text-slate-900 text-xs font-black px-3.5 py-1.5 rounded-xl shadow-md select-none transform rotate-3">
                     সাশ্রয়ী কম্বো প্যাক 🎁
                   </div>
@@ -715,62 +753,107 @@ export default function RaincoatBikeCoverComboLanding({ onOrderSuccess }: Rainco
               {/* Left Form controls block */}
               <form onSubmit={handleOrderSubmit} className="md:col-span-7 space-y-5 flex flex-col justify-start">
                 
-                {/* Full delivery Customer's Name (নাম) */}
-                <div className="space-y-1">
-                  <label className="block text-xs font-bold text-slate-350 font-sans">
-                    ১. আপনার নাম (কাস্টমারের নাম) <span className="text-rose-500 font-mono">*</span>
-                  </label>
-                  <div className="relative">
-                    <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-500 pointer-events-none text-sm">
-                      <User className="h-4.5 w-4.5" />
-                    </span>
-                    <input 
-                      type="text" 
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="আপনার নাম লিখুন..."
-                      className="w-full text-xs pl-10.5 pr-4 py-3 bg-slate-950/80 border border-slate-800 rounded-xl text-white outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400/25 transition leading-snug"
-                    />
-                  </div>
-                </div>
+                 {/* Full delivery Customer's Name (নাম) */}
+                 <div className="space-y-1">
+                   <label className="block text-xs font-bold text-slate-350 font-sans">
+                     ১. আপনার নাম (কাস্টমারের নাম) <span className="text-rose-500 font-mono">*</span>
+                   </label>
+                   <div className="relative">
+                     <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-500 pointer-events-none text-sm">
+                       <User className="h-4.5 w-4.5" />
+                     </span>
+                     <input 
+                       type="text" 
+                       id="combo-name-input"
+                       value={name}
+                       onChange={(e) => {
+                         setName(e.target.value);
+                         if (e.target.value.trim()) {
+                           setFormErrors(prev => ({ ...prev, name: false }));
+                         }
+                       }}
+                       placeholder="আপনার নাম লিখুন..."
+                       className={`w-full text-xs pl-10.5 pr-4 py-3 bg-slate-950/80 border rounded-xl text-white outline-none focus:ring-1 transition leading-snug ${
+                         formErrors.name 
+                           ? 'border-rose-500 ring-1 ring-rose-500/25 focus:border-rose-500' 
+                           : 'border-slate-800 focus:border-amber-400 focus:ring-amber-400/25'
+                       }`}
+                     />
+                   </div>
+                   {formErrors.name && (
+                     <span className="text-[11px] font-bold text-rose-400 block mt-1 font-sans animate-pulse">
+                       * অনুগ্রহ করে আপনার নাম লিখুন।
+                     </span>
+                   )}
+                 </div>
 
-                {/* Customer's Mobile number (মোবাইল নম্বর) */}
-                <div className="space-y-1">
-                  <label className="block text-xs font-bold text-slate-350 font-sans">
-                    ২. সচল মোবাইল নম্বর (১১ ডিজিট) <span className="text-rose-500 font-mono">*</span>
-                  </label>
-                  <div className="relative">
-                    <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-500 pointer-events-none text-sm">
-                      <Smartphone className="h-4.5 w-4.5" />
-                    </span>
-                    <input 
-                      type="tel" 
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      placeholder="যেমন: 017XXXXXXXX"
-                      className="w-full text-xs pl-10.5 pr-4 py-3 bg-slate-950/80 border border-slate-800 rounded-xl text-white outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400/25 transition leading-snug"
-                    />
-                  </div>
-                </div>
+                 {/* Customer's Mobile number (মোবাইল নম্বর) */}
+                 <div className="space-y-1">
+                   <label className="block text-xs font-bold text-slate-350 font-sans">
+                     ২. সচল মোবাইল নম্বর (১১ ডিজিট) <span className="text-rose-500 font-mono">*</span>
+                   </label>
+                   <div className="relative">
+                     <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-500 pointer-events-none text-sm">
+                       <Smartphone className="h-4.5 w-4.5" />
+                     </span>
+                     <input 
+                       type="tel" 
+                       id="combo-phone-input"
+                       value={phone}
+                       onChange={(e) => {
+                         setPhone(e.target.value);
+                         if (e.target.value.trim().length >= 11) {
+                           setFormErrors(prev => ({ ...prev, phone: false }));
+                         }
+                       }}
+                       placeholder="যেমন: 017XXXXXXXX"
+                       className={`w-full text-xs pl-10.5 pr-4 py-3 bg-slate-950/80 border rounded-xl text-white outline-none focus:ring-1 transition leading-snug font-mono ${
+                         formErrors.phone 
+                           ? 'border-rose-500 ring-1 ring-rose-500/25 focus:border-rose-500' 
+                           : 'border-slate-800 focus:border-amber-400 focus:ring-amber-400/25'
+                       }`}
+                     />
+                   </div>
+                   {formErrors.phone && (
+                     <span className="text-[11px] font-bold text-rose-400 block mt-1 font-sans animate-pulse">
+                       * অনুগ্রহ করে একটি সঠিক ১১ ডিজিটের বাংলাদেশী মোবাইল নাম্বার দিন।
+                     </span>
+                   )}
+                 </div>
 
-                {/* Complete Delivery Address (ঠিকানা) */}
-                <div className="space-y-1">
-                  <label className="block text-xs font-bold text-slate-350 font-sans">
-                    ৩. আপনার সম্পূর্ণ ঠিকানা (গ্রাম/পাড়া/থানা/জেলা) <span className="text-rose-500 font-mono">*</span>
-                  </label>
-                  <div className="relative">
-                    <span className="absolute top-3 left-3.5 text-slate-500 pointer-events-none text-sm">
-                      <MapPin className="h-4.5 w-4.5" />
-                    </span>
-                    <textarea 
-                      rows={3}
-                      value={village}
-                      onChange={(e) => setVillage(e.target.value)}
-                      placeholder="যেমন: গ্রাম, ডাকঘর, থানা ও জেলা সুন্দর করে লিখুন..."
-                      className="w-full text-xs pl-10.5 pr-4 py-3 bg-slate-950/80 border border-slate-800 rounded-xl text-white outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400/25 transition leading-snug resize-none"
-                    />
-                  </div>
-                </div>
+                 {/* Complete Delivery Address (ঠিকানা) */}
+                 <div className="space-y-1">
+                   <label className="block text-xs font-bold text-slate-350 font-sans">
+                     ৩. আপনার সম্পূর্ণ ঠিকানা (গ্রাম/পাড়া/থানা/জেলা) <span className="text-rose-500 font-mono">*</span>
+                   </label>
+                   <div className="relative">
+                     <span className="absolute top-3 left-3.5 text-slate-500 pointer-events-none text-sm">
+                       <MapPin className="h-4.5 w-4.5" />
+                     </span>
+                     <textarea 
+                       rows={3}
+                       id="combo-village-input"
+                       value={village}
+                       onChange={(e) => {
+                         setVillage(e.target.value);
+                         if (e.target.value.trim()) {
+                           setFormErrors(prev => ({ ...prev, village: false }));
+                         }
+                       }}
+                       placeholder="যেমন: গ্রাম, ডাকঘর, থানা ও জেলা সুন্দর করে লিখুন..."
+                       className={`w-full text-xs pl-10.5 pr-4 py-3 bg-slate-950/80 border rounded-xl text-white outline-none focus:ring-1 transition leading-snug resize-none ${
+                         formErrors.village 
+                           ? 'border-rose-500 ring-1 ring-rose-500/25 focus:border-rose-500' 
+                           : 'border-slate-800 focus:border-amber-400 focus:ring-amber-400/25'
+                       }`}
+                     />
+                   </div>
+                   {formErrors.village && (
+                     <span className="text-[11px] font-bold text-rose-400 block mt-1 font-sans animate-pulse">
+                       * অনুগ্রহ করে আপনার সম্পূর্ণ ঠিকানা (গ্রাম/পাড়া/থানা) লিখুন।
+                     </span>
+                   )}
+                 </div>
 
                 {/* Sizing Selection buttons (Size select - English labels on sizes) */}
                 <div className="space-y-2 pt-1">
@@ -839,14 +922,24 @@ export default function RaincoatBikeCoverComboLanding({ onOrderSuccess }: Rainco
                   </div>
 
                   {/* 1. Which model of bike they ride */}
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 font-sans">
                     <label className="block text-xs font-bold text-slate-350 font-sans">
                       ৭. আপনি কোন বাইক মডেলটি চালান? <span className="text-rose-500 font-mono">*</span>
                     </label>
                     <select
+                      id="combo-bike-model-input"
                       value={bikeModel}
-                      onChange={(e) => setBikeModel(e.target.value)}
-                      className="w-full text-xs px-3.5 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white outline-none focus:border-amber-400 focus:ring-0 cursor-pointer font-bold font-sans"
+                      onChange={(e) => {
+                        setBikeModel(e.target.value);
+                        if (e.target.value) {
+                          setFormErrors(prev => ({ ...prev, bikeModel: false }));
+                        }
+                      }}
+                      className={`w-full text-xs px-3.5 py-3 bg-slate-950 border rounded-xl text-white outline-none focus:ring-1 cursor-pointer font-bold font-sans transition-all ${
+                        formErrors.bikeModel 
+                          ? 'border-rose-500 ring-1 ring-rose-500/25 focus:border-rose-500' 
+                          : 'border-slate-800 focus:border-amber-400'
+                      }`}
                     >
                       <option value="">বাইক মডেল সিলেক্ট করুন...</option>
                       <option value="Bajaj Pulsar 150">Bajaj Pulsar 150 / 125</option>
@@ -862,6 +955,11 @@ export default function RaincoatBikeCoverComboLanding({ onOrderSuccess }: Rainco
                       <option value="Vespa / Scooter">Vespa / Suzuki Access (Scooter)</option>
                       <option value="Others / অন্যান্য">Others / অন্যান্য বাইক মডেল</option>
                     </select>
+                    {formErrors.bikeModel && (
+                      <span className="text-[11px] font-bold text-rose-400 block mt-1 font-sans animate-pulse">
+                        * অনুগ্রহ করে আপনার বাইকের মডেলটি নির্বাচন করুন।
+                      </span>
+                    )}
                   </div>
 
                   {/* 2. Bike Preferred Color option - Dropdown option as requested */}
@@ -936,26 +1034,7 @@ export default function RaincoatBikeCoverComboLanding({ onOrderSuccess }: Rainco
                   </div>
                 </div>
 
-                <div className="space-y-4 bg-slate-900/30 p-4 border border-slate-850 rounded-xl font-sans text-xs">
-                  <h5 className="font-bold text-slate-300">📌 সুনিশ্চিত অর্ডার করার কিছু নিয়ম:</h5>
-                  <ul className="space-y-2.5 text-slate-400 text-[11px] leading-relaxed list-disc list-inside">
-                    <li>ডেলিভারি চার্জ সম্পূর্ণ ফ্রি, কুরিয়ারকে আগে কোনো টাকা দিতে হবে না।</li>
-                    <li>পণ্য বাসায় পৌছালে খুলে দেখে চেক করে তারপর পেমেন্ট করবেন।</li>
-                    <li>পণ্য ট্র্যাকিং করার লিংক এসএমএস (SMS) এ পেয়ে যাবেন।</li>
-                  </ul>
-                  
-                  {/* Sizing calculation help banner */}
-                  <div className="pt-2 mt-2 border-t border-slate-850/50 flex gap-2 text-[10px]">
-                    <span className="text-amber-400">💡</span>
-                    <span className="text-slate-400 leading-normal">রেইনকোট সাইজ নিয়ে কনফিউশন থাকলে আপনার উচ্চতা ও ওজন দিয়ে আমাদের সাথে হোয়াটসঅ্যাপে সরাসরি যোগাযোগ করতে পারেন।</span>
-                  </div>
-                </div>
 
-                {/* Secure trust verification logo block */}
-                <div className="flex items-center justify-center gap-2 py-2 border-t border-slate-850 select-none">
-                  <ShieldCheck className="h-4 w-4 text-emerald-400 shrink-0" />
-                  <span className="text-[10px] text-slate-400 font-bold">১০১% সিকিউরড মার্চেন্ট গেটওয়ে বাংলাদেশ</span>
-                </div>
 
               </div>
 

@@ -5,7 +5,8 @@ import {
   RefreshCw, X, ShieldCheck, CheckSquare, Globe, Database, Sparkles, 
   Check, ExternalLink, HelpCircle, ChevronDown, ChevronUp,
   Lock, Key, LogOut, Settings, ListTodo, AlertOctagon, Layers, Users, Calendar, Phone,
-  Edit, CheckCircle, Printer, Volume2, VolumeX, ShoppingBag, TrendingUp, Coins, Truck, Mail, Zap, Activity
+  Edit, CheckCircle, Printer, Volume2, VolumeX, ShoppingBag, TrendingUp, Coins, Truck, Mail, Zap, Activity,
+  Image, Package, Sliders
 } from 'lucide-react';
 import { RaincoatOrder, Size, ProductColor, IncompleteOrder, Coupon } from '../types';
 import { 
@@ -32,6 +33,7 @@ import {
   handleFirestoreError,
   OperationType,
   resetQuotaCircuitBreaker,
+  isQuotaTripped,
   getCouponsFromFirestore,
   saveCouponToFirestore,
   deleteCouponFromFirestore
@@ -64,6 +66,8 @@ import Barcode from './Barcode';
 import FirebaseConfigAdmin from './admin/FirebaseConfigAdmin';
 import SubscribersAdmin from './admin/SubscribersAdmin';
 import SEOAdmin from './admin/SEOAdmin';
+import BarcodeReaderAdmin from './admin/BarcodeReaderAdmin';
+import SitemapPanel from './SitemapPanel';
 
 const getEnglishDistrictName = (order: any): string => {
   const districtValue = order.district ? order.district.trim() : '';
@@ -363,7 +367,8 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
   const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
   const [deletingIncompleteId, setDeletingIncompleteId] = useState<string | null>(null);
   const [editingOrder, setEditingOrder] = useState<RaincoatOrder | null>(null);
-  const [activeTab, setActiveTab] = useState<'completed' | 'incomplete' | 'pages' | 'products' | 'banners' | 'inventory' | 'users' | 'blocking' | 'media' | 'live-visitors' | 'fraud' | 'advanced_addons' | 'courier_hub' | 'reviews_hub' | 'courier_connections' | 'courier_monitor' | 'section_customizer' | 'pixels' | 'menu_bar_settings' | 'calling_agents_management' | 'firebase_settings' | 'coupons' | 'subscribers' | 'seo'>('completed');
+  const [isSyncingLive, setIsSyncingLive] = useState(false);
+  const [activeTab, setActiveTab] = useState<'completed' | 'incomplete' | 'pages' | 'products' | 'banners' | 'inventory' | 'users' | 'blocking' | 'media' | 'live-visitors' | 'fraud' | 'advanced_addons' | 'courier_hub' | 'reviews_hub' | 'courier_connections' | 'courier_monitor' | 'section_customizer' | 'pixels' | 'menu_bar_settings' | 'calling_agents_management' | 'firebase_settings' | 'coupons' | 'subscribers' | 'seo' | 'sitemap'>('completed');
   
   // Coupon Management States
   const [coupons, setCoupons] = useState<Coupon[]>([]);
@@ -1197,6 +1202,13 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
     try {
       const fbIncompletes = await getIncompleteOrdersFromFirestore();
       
+      // Safety Guard: if the fetch returned nothing, but we already have loaded items in our UI,
+      // and isQuotaTripped is active, keep our healthy state instead of wiping it to zero
+      if ((!fbIncompletes || fbIncompletes.length === 0) && incompleteOrders.length > 0 && isQuotaTripped) {
+        console.warn("Firestore Quota is currently tripped / connection offline. Keeping active UI state for incomplete orders.");
+        return;
+      }
+
       let deletedIds: string[] = [];
       try {
         const stored = window.localStorage.getItem('raincoat_deleted_incomplete_ids');
@@ -1205,16 +1217,16 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
         }
       } catch (_) {}
 
-      let filteredIncompletes = fbIncompletes;
+      let filteredIncompletes = fbIncompletes || [];
       if (deletedIds.length > 0) {
-        filteredIncompletes = fbIncompletes.filter(o => !deletedIds.includes(o.id));
+        filteredIncompletes = filteredIncompletes.filter(o => !deletedIds.includes(o.id));
       }
 
       const sorted = [...filteredIncompletes].sort((a: any, b: any) => new Date(b.lastUpdatedAt || b.createdAt).getTime() - new Date(a.lastUpdatedAt || a.createdAt).getTime());
       
       // Initialize persistent cache map ref to keep real-time listings populated during transitions
       incompleteDefaultDbMapRef.current = {};
-      fbIncompletes.forEach(i => {
+      (fbIncompletes || []).forEach(i => {
         if (i && i.id) {
           incompleteDefaultDbMapRef.current[i.id] = i;
         }
@@ -1324,11 +1336,20 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
 
   const loadOrders = async () => {
     refreshOrdersCountRef.current();
+    setIsSyncingLive(true);
 
     // Fetch active e-commerce orders from Firestore database
     try {
       const fbOrders = await getOrdersFromFirestore();
       
+      // Safety Guard: if the fetch returned nothing, but we already have loaded items in our UI,
+      // and isQuotaTripped is active, keep our healthy state instead of wiping it to zero
+      if ((!fbOrders || fbOrders.length === 0) && orders.length > 0 && isQuotaTripped) {
+        console.warn("Firestore Quota is currently tripped / connection offline. Keeping active UI state for orders.");
+        await loadIncompleteOrders();
+        return;
+      }
+
       let deletedIds: string[] = [];
       try {
         const stored = window.localStorage.getItem('raincoat_deleted_order_ids');
@@ -1337,9 +1358,9 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
         }
       } catch (_) {}
 
-      let filteredOrders = fbOrders;
+      let filteredOrders = fbOrders || [];
       if (deletedIds.length > 0) {
-        filteredOrders = fbOrders.filter(o => !deletedIds.includes(o.id));
+        filteredOrders = filteredOrders.filter(o => !deletedIds.includes(o.id));
       }
 
       const sortedOrders = [...filteredOrders].sort((a, b) => {
@@ -1350,7 +1371,7 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
 
       // Initialize persistent cache map ref to keep real-time listings populated during transitions
       ordersDefaultDbMapRef.current = {};
-      fbOrders.forEach(o => {
+      (fbOrders || []).forEach(o => {
         if (o && o.id) {
           ordersDefaultDbMapRef.current[o.id] = o;
         }
@@ -1362,6 +1383,8 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       refreshOrdersCountRef.current();
     } catch (err) {
       console.warn("Could not connect database or read Firestore records:", err);
+    } finally {
+      setIsSyncingLive(false);
     }
   };
 
@@ -1425,88 +1448,161 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
       refreshOrdersCountRef.current();
     };
 
-    // Set up real-time listener for orders in Firestore (Primary Custom DB)
-    const qOrders = query(collection(db, 'orders'));
-    const unsubscribeOrders = onSnapshot(qOrders, (snapshot) => {
-      // Check for actually added documents after initial load
-      snapshot.docChanges().forEach((change) => {
-        if (change.type === 'added' && !isInitialLoadRef.current) {
-          const newOrder = change.doc.data() as RaincoatOrder;
-          triggerNewOrderAlert(newOrder);
+    let unsubscribeOrders: (() => void) | null = null;
+    let unsubscribeOrdersDefault: (() => void) | null = null;
+    let unsubscribeIncompletes: (() => void) | null = null;
+    let unsubscribeIncompletesDefault: (() => void) | null = null;
+
+    const stopRealtimeListeners = () => {
+      if (unsubscribeOrders) {
+        unsubscribeOrders();
+        unsubscribeOrders = null;
+      }
+      if (unsubscribeOrdersDefault) {
+        unsubscribeOrdersDefault();
+        unsubscribeOrdersDefault = null;
+      }
+      if (unsubscribeIncompletes) {
+        unsubscribeIncompletes();
+        unsubscribeIncompletes = null;
+      }
+      if (unsubscribeIncompletesDefault) {
+        unsubscribeIncompletesDefault();
+        unsubscribeIncompletesDefault = null;
+      }
+    };
+
+    const startRealtimeListeners = () => {
+      stopRealtimeListeners();
+
+      console.log("Admin Panel: Initializing robust real-time snapshot connection to Firestore databases.");
+
+      // Set up real-time listener for orders in Firestore (Primary Custom DB)
+      const qOrders = query(collection(db, 'orders'));
+      unsubscribeOrders = onSnapshot(qOrders, (snapshot) => {
+        // Guard empty snapshot: if snapshot reports empty, but we previously have orders in map,
+        // and is offline or loaded from cache, preserve existing state to prevent flickering or wipeouts
+        if (snapshot.empty && Object.keys(ordersDbMapRef.current).length > 0 && (snapshot.metadata.fromCache || !navigator.onLine)) {
+          console.warn("Received empty orders snapshot from cache/offline. Keeping cache map intact.");
+          return;
         }
+
+        // Check for actually added documents after initial load
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'added' && !isInitialLoadRef.current) {
+            const newOrder = change.doc.data() as RaincoatOrder;
+            triggerNewOrderAlert(newOrder);
+          }
+        });
+        isInitialLoadRef.current = false;
+
+        // Reset the memory map and populate from the active healthy snapshot
+        ordersDbMapRef.current = {};
+        snapshot.forEach((doc) => {
+          const orderData = doc.data() as RaincoatOrder;
+          if (orderData && orderData.id) {
+            ordersDbMapRef.current[orderData.id] = orderData;
+          }
+        });
+        updateMergedOrders();
+      }, (error) => {
+        console.warn("Real-time orders DB sync error:", error);
       });
-      isInitialLoadRef.current = false;
 
-      // Clear the map first so deleted records are removed
-      ordersDbMapRef.current = {};
-
-      snapshot.forEach((doc) => {
-        const orderData = doc.data() as RaincoatOrder;
-        if (orderData && orderData.id) {
-          ordersDbMapRef.current[orderData.id] = orderData;
+      // Set up real-time listener for orders in Firestore (Fallback Default DB)
+      const qOrdersDefault = query(collection(defaultDb, 'orders'));
+      unsubscribeOrdersDefault = onSnapshot(qOrdersDefault, (snapshot) => {
+        if (snapshot.empty && Object.keys(ordersDefaultDbMapRef.current).length > 0 && (snapshot.metadata.fromCache || !navigator.onLine)) {
+          console.warn("Received empty default orders snapshot from cache/offline. Keeping cache map intact.");
+          return;
         }
+
+        ordersDefaultDbMapRef.current = {};
+        snapshot.forEach((doc) => {
+           const orderData = doc.data() as RaincoatOrder;
+           if (orderData && orderData.id) {
+             ordersDefaultDbMapRef.current[orderData.id] = orderData;
+           }
+        });
+        updateMergedOrders();
+      }, (error) => {
+        console.warn("Real-time default DB orders sync error:", error);
       });
-      updateMergedOrders();
-    }, (error) => {
-      console.warn("Real-time orders DB sync error:", error);
-    });
 
-    // Set up real-time listener for orders in Firestore (Fallback Default DB)
-    const qOrdersDefault = query(collection(defaultDb, 'orders'));
-    const unsubscribeOrdersDefault = onSnapshot(qOrdersDefault, (snapshot) => {
-      // Clear the map first so deleted records are removed
-      ordersDefaultDbMapRef.current = {};
-
-      snapshot.forEach((doc) => {
-         const orderData = doc.data() as RaincoatOrder;
-         if (orderData && orderData.id) {
-           ordersDefaultDbMapRef.current[orderData.id] = orderData;
-         }
-      });
-      updateMergedOrders();
-    }, (error) => {
-      console.warn("Real-time default DB orders sync error:", error);
-    });
-
-    // Set up real-time listener for incomplete draft orders in Firestore (Primary Custom DB)
-    const qIncompletes = query(collection(db, 'incompleteOrders'));
-    const unsubscribeIncompletes = onSnapshot(qIncompletes, (snapshot) => {
-      // Clear the map first so deleted records are removed
-      incompleteDbMapRef.current = {};
-
-      snapshot.forEach((doc) => {
-        const draftData = doc.data() as IncompleteOrder;
-        if (draftData && draftData.id) {
-          incompleteDbMapRef.current[draftData.id] = draftData;
+      // Set up real-time listener for incomplete draft orders in Firestore (Primary Custom DB)
+      const qIncompletes = query(collection(db, 'incompleteOrders'));
+      unsubscribeIncompletes = onSnapshot(qIncompletes, (snapshot) => {
+        if (snapshot.empty && Object.keys(incompleteDbMapRef.current).length > 0 && (snapshot.metadata.fromCache || !navigator.onLine)) {
+          console.warn("Received empty incomplete orders snapshot from cache/offline. Keeping cache map intact.");
+          return;
         }
-      });
-      updateMergedIncompletes();
-    }, (error) => {
-      console.warn("Real-time incomplete orders DB sync error:", error);
-    });
 
-    // Set up real-time listener for incomplete draft orders in Firestore (Fallback Default DB)
-    const qIncompletesDefault = query(collection(defaultDb, 'incompleteOrders'));
-    const unsubscribeIncompletesDefault = onSnapshot(qIncompletesDefault, (snapshot) => {
-      // Clear the map first so deleted records are removed
-      incompleteDefaultDbMapRef.current = {};
-
-      snapshot.forEach((doc) => {
-         const draftData = doc.data() as IncompleteOrder;
-         if (draftData && draftData.id) {
-           incompleteDefaultDbMapRef.current[draftData.id] = draftData;
-         }
+        incompleteDbMapRef.current = {};
+        snapshot.forEach((doc) => {
+          const draftData = doc.data() as IncompleteOrder;
+          if (draftData && draftData.id) {
+            incompleteDbMapRef.current[draftData.id] = draftData;
+          }
+        });
+        updateMergedIncompletes();
+      }, (error) => {
+        console.warn("Real-time incomplete orders DB sync error:", error);
       });
-      updateMergedIncompletes();
-    }, (error) => {
-      console.warn("Real-time default DB incomplete orders sync error:", error);
-    });
+
+      // Set up real-time listener for incomplete draft orders in Firestore (Fallback Default DB)
+      const qIncompletesDefault = query(collection(defaultDb, 'incompleteOrders'));
+      unsubscribeIncompletesDefault = onSnapshot(qIncompletesDefault, (snapshot) => {
+        if (snapshot.empty && Object.keys(incompleteDefaultDbMapRef.current).length > 0 && (snapshot.metadata.fromCache || !navigator.onLine)) {
+          console.warn("Received empty default incomplete orders snapshot from cache/offline. Keeping cache map intact.");
+          return;
+        }
+
+        incompleteDefaultDbMapRef.current = {};
+        snapshot.forEach((doc) => {
+           const draftData = doc.data() as IncompleteOrder;
+           if (draftData && draftData.id) {
+             incompleteDefaultDbMapRef.current[draftData.id] = draftData;
+           }
+        });
+        updateMergedIncompletes();
+      }, (error) => {
+        console.warn("Real-time default DB incomplete orders sync error:", error);
+      });
+    };
+
+    // Initial setup of listeners
+    startRealtimeListeners();
+
+    // Recover subscriptions on focus, visibility change (e.g. computer waking from sleep or tab switching), or going back online
+    const handleReestablishOnResume = () => {
+      if (document.visibilityState === 'visible') {
+        console.log("Admin Panel active / tab visible: re-establishing real-time Firestore listeners and syncing values.");
+        loadOrders();
+        startRealtimeListeners();
+      }
+    };
+
+    const handleBackOnline = () => {
+      console.log("Network back online: synchronizing real-time listeners.");
+      loadOrders();
+      startRealtimeListeners();
+    };
+
+    window.addEventListener('visibilitychange', handleReestablishOnResume);
+    window.addEventListener('focus', handleReestablishOnResume);
+    window.addEventListener('online', handleBackOnline);
+
+    // Background polling fallback to ensure new orders are fetched even if standard WebSocket snapshot listeners suffer silent disconnects in browser iframes (60s to save database read quota)
+    const pollingInterval = setInterval(() => {
+      loadOrders();
+    }, 60000); // Poll every 60 seconds
 
     return () => {
-      unsubscribeOrders();
-      unsubscribeOrdersDefault();
-      unsubscribeIncompletes();
-      unsubscribeIncompletesDefault();
+      stopRealtimeListeners();
+      clearInterval(pollingInterval);
+      window.removeEventListener('visibilitychange', handleReestablishOnResume);
+      window.removeEventListener('focus', handleReestablishOnResume);
+      window.removeEventListener('online', handleBackOnline);
     };
   }, []);
 
@@ -2787,348 +2883,412 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
         <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0 bg-slate-50">
           
           {/* VERTICAL COLUMN SIDEBAR */}
-          <div className="w-full md:w-64 bg-slate-50 border-b md:border-b-0 md:border-r border-slate-200 p-4 shrink-0 flex flex-col min-h-0 overflow-y-auto">
-            <div className="hidden md:flex flex-col space-y-1 pb-4 mb-4 border-b border-slate-200">
+          <div className="w-full md:w-64 bg-slate-50 border-b md:border-b-0 md:border-r border-slate-200 p-4 shrink-0 flex flex-col min-h-0 overflow-y-auto select-none">
+            <div className="hidden md:flex flex-col space-y-1 pb-3 mb-2 border-b border-slate-200">
               <span className="text-[10px] text-slate-400 font-extrabold tracking-wider uppercase">প্যানেল মেনু ডিরেক্টরি</span>
-              <span className="text-[11px] text-slate-500 font-medium">ফিচার ও কার্যতালিকা</span>
+              <span className="text-[11px] text-slate-600 font-bold">ফিচার ও কার্যতালিকা</span>
             </div>
 
-            <div className="flex md:flex-col overflow-x-auto md:overflow-x-visible pb-2 md:pb-0 gap-1.5 scrollbar-thin shrink-0">
-              {/* 1. সফল অর্ডার */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('completed')}
-                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center justify-between gap-3 shrink-0 ${
-                  activeTab === 'completed'
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10 font-extrabold'
-                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <CheckSquare className="h-4 w-4 shrink-0" />
-                  <span>সফল অর্ডার</span>
-                </span>
-                <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
-                  activeTab === 'completed' ? 'bg-indigo-900 text-indigo-100' : 'bg-slate-200 text-slate-600'
-                }`}>
-                  {orders.length}
-                </span>
-              </button>
+            <div className="flex md:flex-col overflow-x-auto md:overflow-x-visible pb-2 md:pb-1 gap-4.5 scrollbar-thin shrink-0 font-sans">
+              {/* Category 1: অর্ডার ও ডেলিভারি */}
+              <div className="flex md:flex-col gap-1 shrink-0">
+                <span className="hidden md:block text-[9px] font-black text-indigo-700 uppercase tracking-widest px-1.5 mb-1.5 mt-1.5">📦 অর্ডার ও ডেলিভারি</span>
+                
+                {/* সফল অর্ডার */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('completed')}
+                  className={`py-2 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center justify-between gap-3 shrink-0 ${
+                    activeTab === 'completed'
+                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/15 font-extrabold'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <CheckSquare className="h-3.5 w-3.5 shrink-0" />
+                    <span>সফল অর্ডার</span>
+                  </span>
+                  <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded-full ${
+                    activeTab === 'completed' ? 'bg-indigo-900 text-indigo-150' : 'bg-slate-200 text-slate-650'
+                  }`}>
+                    {orders.length}
+                  </span>
+                </button>
 
-              {/* 2. ড্রাফটস (ইনকমপ্লিট) */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('incomplete')}
-                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center justify-between gap-3 shrink-0 ${
-                  activeTab === 'incomplete'
-                    ? 'bg-orange-600 text-white shadow-md shadow-orange-600/10 font-extrabold'
-                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <Layers className="h-4 w-4 shrink-0" />
-                  <span>অর্ডার ড্রাফটস</span>
-                </span>
-                <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
-                  activeTab === 'incomplete' ? 'bg-orange-850 bg-orange-900 text-orange-100' : 'bg-slate-200 text-slate-600'
-                }`}>
-                  {incompleteOrders.length}
-                </span>
-              </button>
+                {/* অর্ডার ড্রাফটস */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('incomplete')}
+                  className={`py-2 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center justify-between gap-3 shrink-0 ${
+                    activeTab === 'incomplete'
+                      ? 'bg-orange-600 text-white shadow-md shadow-orange-600/15 font-extrabold'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Layers className="h-3.5 w-3.5 shrink-0" />
+                    <span>অর্ডার ড্রাফটস</span>
+                  </span>
+                  <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded-full ${
+                    activeTab === 'incomplete' ? 'bg-orange-950 bg-orange-900 text-orange-100' : 'bg-slate-200 text-slate-600'
+                  }`}>
+                    {incompleteOrders.length}
+                  </span>
+                </button>
 
-              {/* 3. পেইজ মেকার */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('pages')}
-                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 ${
-                  activeTab === 'pages'
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10 font-extrabold'
-                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
-                }`}
-              >
-                📄 পেইজ মেকার
-              </button>
+                {/* বারকোড স্ক্যানার */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('barcode_reader')}
+                  className={`py-2 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                    activeTab === 'barcode_reader'
+                      ? 'bg-slate-900 text-white shadow-sm font-extrabold'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                  }`}
+                >
+                  <Printer className="h-3.5 w-3.5" />
+                  <span>বারকোড স্ক্যানার</span>
+                </button>
 
-              {/* 4. শপ প্রোডাক্টস */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('products')}
-                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 ${
-                  activeTab === 'products'
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10 font-extrabold'
-                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
-                }`}
-              >
-                🛒 শপ প্রোডাক্টস
-              </button>
+                {/* কুরিয়ার বুকিং */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('courier_hub')}
+                  className={`py-2 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                    activeTab === 'courier_hub'
+                      ? 'bg-indigo-650 bg-indigo-600 text-white shadow-sm font-extrabold'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                  }`}
+                >
+                  <Truck className="h-3.5 w-3.5" />
+                  <span>কুরিয়ার বুকিং</span>
+                </button>
 
-              {/* 5. মিডিয়া স্লাইডার */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('media')}
-                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 ${
-                  activeTab === 'media'
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10 font-extrabold'
-                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
-                }`}
-              >
-                🖼️ মিডিয়া স্লাইডার
-              </button>
+                {/* কুরিয়ার মনিটর */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('courier_monitor')}
+                  className={`py-2 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                    activeTab === 'courier_monitor'
+                      ? 'bg-indigo-750 bg-indigo-700 text-white shadow-sm font-extrabold'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                  }`}
+                >
+                  <Activity className="h-3.5 w-3.5" />
+                  <span>কুরিয়ার মনিটর</span>
+                </button>
 
-              {/* 5b. হোম স্লাইডার ব্যানার */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('banners')}
-                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 ${
-                  activeTab === 'banners'
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10 font-extrabold'
-                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
-                }`}
-              >
-                🌅 হোম স্লাইডার ব্যানার
-              </button>
+                {/* Steadfast লাইভ সিঙ্ক */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('courier_live_sync')}
+                  className={`py-2 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                    activeTab === 'courier_live_sync'
+                      ? 'bg-teal-600 text-white shadow-sm font-extrabold'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                  }`}
+                >
+                  <Zap className="h-3.5 w-3.5 text-yellow-400" />
+                  <span>Steadfast লাইভ সিঙ্ক</span>
+                </button>
 
-              {/* 6. স্টক ইনভেন্টরি */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('inventory')}
-                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 ${
-                  activeTab === 'inventory'
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10 font-extrabold'
-                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
-                }`}
-              >
-                📦 স্টক ইনভেন্টরি
-              </button>
+                {/* সেলস কলিং এজেন্টস */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('calling_agents_management')}
+                  className={`py-2 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                    activeTab === 'calling_agents_management'
+                      ? 'bg-emerald-600 text-white shadow-sm font-extrabold'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                  }`}
+                >
+                  <Phone className="h-3.5 w-3.5" />
+                  <span>সেলস কলিং এজেন্টস</span>
+                </button>
+              </div>
 
-              {/* 7. পিক্সেল ও ইন্টিগ্রেশন ম্যানেজার */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('pixels')}
-                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 ${
-                  activeTab === 'pixels'
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10 font-extrabold'
-                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
-                }`}
-              >
-                ⚡ পিক্সেল ও ইন্টিগ্রেশন ম্যানেজার
-              </button>
+              {/* Category 2: ডিজাইন ও পেজ মেকার */}
+              <div className="flex md:flex-col gap-1 shrink-0">
+                <span className="hidden md:block text-[9px] font-black text-amber-600 uppercase tracking-widest px-1.5 mb-1.5 mt-4">🎨 ডিজাইন ও পেজ বিল্ডার</span>
+                
+                {/* ডিজাইন ও সেকশন কাস্টমাইজার (HIGHLIGHTED PRIMARY OPTION!) */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('section_customizer')}
+                  className={`py-2.5 px-3 rounded-xl text-left text-xs transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 relative border ${
+                    activeTab === 'section_customizer'
+                      ? 'bg-gradient-to-r from-indigo-650 via-purple-600 to-pink-600 bg-indigo-600 text-white font-black shadow-md border-slate-900'
+                      : 'bg-amber-500/10 border-amber-500/25 text-slate-800 hover:bg-amber-500/20 hover:text-amber-950 font-bold animate-pulse'
+                  }`}
+                >
+                  <span className="flex h-1.5 w-1.5 rounded-full bg-pink-500 animate-ping absolute right-2.5 top-2.5" />
+                  <Sparkles className="h-4 w-4 text-pink-500 shrink-0" />
+                  <span>পেজ ও ডিজাইন কাস্টমাইজার</span>
+                </button>
 
-              {/* 8. টিম ইউজারস */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('users')}
-                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 ${
-                  activeTab === 'users'
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10 font-extrabold'
-                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
-                }`}
-              >
-                👥 টিম ইউজারস
-              </button>
+                {/* পেইজ মেকার */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('pages')}
+                  className={`py-2 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                    activeTab === 'pages'
+                      ? 'bg-indigo-650 bg-indigo-600 text-white shadow-sm font-extrabold'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                  }`}
+                >
+                  <Globe className="h-3.5 w-3.5" />
+                  <span>পেইজ মেকার</span>
+                </button>
 
-              {/* 9. স্প্যাম ডাইরেক্ট */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('blocking')}
-                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 ${
-                  activeTab === 'blocking'
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10 font-extrabold'
-                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
-                }`}
-              >
-                🛡️  স্প্যাম ডাইরেক্ট
-              </button>
+                {/* শপ প্রোডাক্টস */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('products')}
+                  className={`py-2 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                    activeTab === 'products'
+                      ? 'bg-indigo-600 text-white shadow-sm font-extrabold'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                  }`}
+                >
+                  <ShoppingBag className="h-3.5 w-3.5" />
+                  <span>শপ প্রোডাক্টস</span>
+                </button>
 
-              {/* 9b. ফ্রাড ফিল্টারিং API */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('fraud')}
-                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
-                  activeTab === 'fraud'
-                    ? 'bg-rose-600 text-white shadow-md shadow-rose-600/10 font-extrabold'
-                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
-                }`}
-              >
-                <span className="flex h-1.5 w-1.5 rounded-full bg-orange-400 animate-ping absolute right-2.5 top-2.5" />
-                🛡️ ফ্রাড ফিল্টারিং API
-              </button>
+                {/* মিডিয়া স্লাইডার */}
+                {/* মিডিয়া স্লাইডার */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('media')}
+                  className={`py-2 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                    activeTab === 'media'
+                      ? 'bg-indigo-600 text-white shadow-sm font-extrabold'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                  }`}
+                >
+                  <Image className="h-3.5 w-3.5" />
+                  <span>মিডিয়া স্লাইডার</span>
+                </button>
 
-              {/* 10. লাইভ ভিজিটরস */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('live-visitors')}
-                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
-                  activeTab === 'live-visitors'
-                    ? 'bg-rose-600 text-white shadow-md shadow-rose-600/10 font-extrabold'
-                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
-                }`}
-              >
-                <span className="flex h-1.5 w-1.5 rounded-full bg-rose-500 animate-ping absolute right-2.5 top-2.5" />
-                🔴 লাইভ ভিজিটরস
-              </button>
+                {/* হোম স্লাইডার ব্যানার */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('banners')}
+                  className={`py-2 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                    activeTab === 'banners'
+                      ? 'bg-indigo-600 text-white shadow-sm font-extrabold'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                  }`}
+                >
+                  <Sliders className="h-3.5 w-3.5" />
+                  <span>হোম স্লাইডার ব্যানার</span>
+                </button>
 
-              {/* 11. অ্যাডভান্সড প্লাগইনস */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('advanced_addons')}
-                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
-                  activeTab === 'advanced_addons'
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/10 font-extrabold'
-                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
-                }`}
-              >
-                <span className="flex h-1.5 w-1.5 rounded-full bg-blue-400 animate-ping absolute right-2.5 top-2.5" />
-                🚀 অ্যাডভান্সড প্লাগইনস
-              </button>
+                {/* টপ মেনুবার কাস্টমাইজার */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('menu_bar_settings')}
+                  className={`py-2 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                    activeTab === 'menu_bar_settings'
+                      ? 'bg-cyan-600 text-white shadow-sm font-extrabold'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                  }`}
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                  <span>টপ মেনুবার এডিটর</span>
+                </button>
 
-              {/* 11b. ডিজাইন ও সেকশন কাস্টমাইজার */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('section_customizer')}
-                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
-                  activeTab === 'section_customizer'
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10 font-extrabold'
-                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
-                }`}
-              >
-                <span className="flex h-1.5 w-1.5 rounded-full bg-indigo-400 animate-pulse absolute right-2.5 top-2.5" />
-                🎨 ভিজ্যুয়াল পেজ ও ডিজাইন কাস্টমাইজার
-              </button>
+                {/* সাইটম্যাপ লিঙ্ক ডিরেক্টরি */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('sitemap')}
+                  className={`py-2 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                    activeTab === 'sitemap'
+                      ? 'bg-indigo-600 text-white shadow-sm font-extrabold'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                  }`}
+                >
+                  <Globe className="h-3.5 w-3.5" />
+                  <span>সাইটম্যাপ ডিরেক্টরি</span>
+                </button>
+              </div>
 
-              {/* 12. কুরিয়ার বুকিং ও কুন্ডলী */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('courier_hub')}
-                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
-                  activeTab === 'courier_hub'
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/10 font-extrabold'
-                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
-                }`}
-              >
-                <span className="flex h-1.5 w-1.5 rounded-full bg-blue-500 animate-ping absolute right-2.5 top-2.5" />
-                🚚 কুরিয়ার বুকিং ও কুন্ডলী
-              </button>
+              {/* Category 3: কুপন ও মার্কেটিং */}
+              <div className="flex md:flex-col gap-1 shrink-0">
+                <span className="hidden md:block text-[9px] font-black text-rose-500 uppercase tracking-widest px-1.5 mb-1.5 mt-4">📣 মার্কেটিং ও কুপন</span>
+                
+                {/* কাস্টমার রিভিউ হাব */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('reviews_hub')}
+                  className={`py-2 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                    activeTab === 'reviews_hub'
+                      ? 'bg-amber-500 text-white shadow-sm font-extrabold'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                  }`}
+                >
+                  <Image className="h-3.5 w-3.5" />
+                  <span>কাস্টমার রিভিউজ</span>
+                </button>
 
-              {/* 12c. কুরিয়ার ও ট্র্যাক মনিটর */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('courier_monitor')}
-                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
-                  activeTab === 'courier_monitor'
-                    ? 'bg-indigo-700 text-white shadow-md shadow-indigo-700/10 font-extrabold'
-                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
-                }`}
-              >
-                <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse absolute right-2.5 top-2.5" />
-                📊 কুরিয়ার ও ট্র্যাক মনিটর
-              </button>
+                {/* কুপন সেটিংস ও ডিসকাউন্ট */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('coupons')}
+                  className={`py-2 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 relative ${
+                    activeTab === 'coupons'
+                      ? 'bg-rose-550 bg-rose-500 text-white shadow-sm font-extrabold'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                  }`}
+                >
+                  <Coins className="h-3.5 w-3.5" /> 
+                  <span>🎟️ কুপন ও ডিসকাউন্ট</span>
+                </button>
 
-              {/* 12d. Steadfast লাইভ সিঙ্ক ও নোটিফিকেশন */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('courier_live_sync')}
-                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
-                  activeTab === 'courier_live_sync'
-                    ? 'bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-md shadow-teal-600/10 font-extrabold'
-                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
-                }`}
-              >
-                <span className="flex h-1.5 w-1.5 rounded-full bg-rose-500 animate-ping absolute right-2.5 top-2.5" />
-                ⚡ Steadfast লাইভ সিঙ্ক
-              </button>
+                {/* ইমেইল সাবস্ক্রাইবার তালিকা */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('subscribers')}
+                  className={`py-2 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 relative ${
+                    activeTab === 'subscribers'
+                      ? 'bg-orange-550 bg-orange-500 text-white shadow-sm font-extrabold'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                  }`}
+                >
+                  <Mail className="h-3.5 w-3.5" />
+                  <span>📬 সাবস্ক্রাইবার তালিকা</span>
+                </button>
 
-              {/* 13. কাস্টমার রিভিউ হাব */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('reviews_hub')}
-                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
-                  activeTab === 'reviews_hub'
-                    ? 'bg-amber-500 text-white shadow-md shadow-amber-500/10 font-extrabold'
-                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
-                }`}
-              >
-                <span className="flex h-1.5 w-1.5 rounded-full bg-amber-400 animate-ping absolute right-2.5 top-2.5" />
-                📸 কাস্টমার রিভিউজ
-              </button>
+                {/* RankMath এসইও সেটিংস */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('seo')}
+                  className={`py-2 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 relative ${
+                    activeTab === 'seo'
+                      ? 'bg-pink-600 text-white shadow-md font-extrabold'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                  }`}
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span>⚡ RankMath এসইও সেটিংস</span>
+                </button>
+              </div>
 
-              {/* 14. টপ মেনুবার কাস্টমাইজার */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('menu_bar_settings')}
-                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
-                  activeTab === 'menu_bar_settings'
-                    ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/10 font-extrabold'
-                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
-                }`}
-              >
-                🛠️ টপ মেনুবার এডিটর
-              </button>
+              {/* Category 4: সেটিংস ও সিস্টেম */}
+              <div className="flex md:flex-col gap-1 shrink-0 pb-6">
+                <span className="hidden md:block text-[9px] font-black text-slate-500 uppercase tracking-widest px-1.5 mb-1.5 mt-4">⚙️ সেটিংস ও সিস্টেম</span>
+                
+                {/* স্টক ইনভেন্টরি */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('inventory')}
+                  className={`py-2 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                    activeTab === 'inventory'
+                      ? 'bg-slate-700 text-white shadow-sm font-extrabold'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                  }`}
+                >
+                  <Package className="h-3.5 w-3.5" />
+                  <span>স্টক ইনভেন্টরি</span>
+                </button>
 
-              {/* 15. সেলস কলিং এজেন্টস */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('calling_agents_management')}
-                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
-                  activeTab === 'calling_agents_management'
-                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/10 font-extrabold'
-                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
-                }`}
-              >
-                📞 সেলস কলিং এজেন্টস
-              </button>
+                {/* পিক্সেল ও মেটা ইন্টিগ্রেশন */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('pixels')}
+                  className={`py-2 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                    activeTab === 'pixels'
+                      ? 'bg-slate-700 text-white shadow-sm font-extrabold'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                  }`}
+                >
+                  <Activity className="h-3.5 w-3.5" />
+                  <span>মেটা পিক্সেল সেটিংস</span>
+                </button>
 
-              {/* 16. ফায়ারবেস কানেকশন সেটিংস */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('firebase_settings')}
-                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
-                  activeTab === 'firebase_settings'
-                    ? 'bg-rose-650 bg-gradient-to-r from-amber-600 to-rose-600 text-white shadow-lg shadow-orange-600/10 font-extrabold'
-                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
-                }`}
-              >
-                🔥 ফায়ারবেস এপিআই সেটিংস
-              </button>
+                {/* টিম ইউজারস */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('users')}
+                  className={`py-2 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                    activeTab === 'users'
+                      ? 'bg-slate-700 text-white shadow-sm font-extrabold'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                  }`}
+                >
+                  <Users className="h-3.5 w-3.5" />
+                  <span>টিম ইউজারস</span>
+                </button>
 
-              {/* 17. কুপন সেটিংস ও ডিসকাউন্ট */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('coupons')}
-                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
-                  activeTab === 'coupons'
-                    ? 'bg-gradient-to-r from-rose-500 to-red-600 text-white shadow-md shadow-rose-600/10 font-extrabold'
-                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
-                }`}
-              >
-                <Coins className="h-3.5 w-3.5" /> 🎟️ কুপন ও প্রমো কোড সেটিংস
-              </button>
+                {/* স্প্যাম ডাইরেক্ট */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('blocking')}
+                  className={`py-2 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                    activeTab === 'blocking'
+                      ? 'bg-slate-700 text-white shadow-sm font-extrabold'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                  }`}
+                >
+                  <ShieldAlert className="h-3.5 w-3.5" />
+                  <span>স্প্যাম ডাইরেক্ট</span>
+                </button>
 
-              {/* 18. ইমেইল সাবস্ক্রাইবার তালিকা */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('subscribers')}
-                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
-                  activeTab === 'subscribers'
-                    ? 'bg-gradient-to-r from-orange-550 to-amber-600 text-white shadow-md shadow-orange-600/10 font-extrabold'
-                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
-                }`}
-              >
-                <Mail className="h-3.5 w-3.5" /> 📬 ইমেইল সাবস্ক্রাইবার তালিকা
-              </button>
+                {/* ফ্রাড ফিল্টারিং API */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('fraud')}
+                  className={`py-2 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                    activeTab === 'fraud'
+                      ? 'bg-rose-600 text-white shadow-sm font-extrabold'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                  }`}
+                >
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  <span>ফ্রাড ফিল্টারিং API</span>
+                </button>
 
-              {/* 19. RankMath এসইও সেটিংস */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('seo')}
-                className={`py-2.5 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 shrink-0 relative ${
-                  activeTab === 'seo'
-                    ? 'bg-gradient-to-r from-pink-600 to-rose-600 text-white shadow-md shadow-rose-600/10 font-extrabold'
-                    : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
-                }`}
-              >
-                <Sparkles className="h-3.5 w-3.5" /> ⚡ RankMath এসইও সেটিংস
-              </button>
+                {/* লাইভ ভিজিটরস */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('live-visitors')}
+                  className={`py-2 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                    activeTab === 'live-visitors'
+                      ? 'bg-rose-600 text-white shadow-sm font-extrabold'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                  }`}
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                  <span>🔴 লাইভ ভিজিটরস</span>
+                </button>
+
+                {/* ফায়ারবেস কানেকশন সেটিংস */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('firebase_settings')}
+                  className={`py-2 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                    activeTab === 'firebase_settings'
+                      ? 'bg-orange-655 bg-orange-600 text-white shadow-sm font-extrabold'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                  }`}
+                >
+                  <Database className="h-3.5 w-3.5" />
+                  <span>ফায়ারবেস এপিআই</span>
+                </button>
+
+                {/* অ্যাডভান্সড প্লাগইনস */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('advanced_addons')}
+                  className={`py-2 px-3 rounded-xl text-left text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                    activeTab === 'advanced_addons'
+                      ? 'bg-blue-600 text-white shadow-sm font-extrabold'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'
+                  }`}
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                  <span>অ্যাডভান্সড প্লাগইনস</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -3156,10 +3316,14 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
                     <div>
                       <div className="flex items-center gap-1.5 font-bold text-slate-700 text-xs font-sans">
                         ফায়ারবেস ক্লাউড ডেটাবেস
-                        <span className="flex h-2 w-2 relative">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                        </span>
+                        {isSyncingLive ? (
+                          <span className="text-[10px] bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded-full font-black animate-pulse">সিঙ্কিং...</span>
+                        ) : (
+                          <span className="flex h-2 w-2 relative">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                          </span>
+                        )}
                       </div>
                       <span className="text-[9.5px] text-emerald-600 font-extrabold block font-sans">সক্রিয় রিয়েল-টাইম সিঙ্ক • ১০০% নিরাপদ</span>
                     </div>
@@ -5198,12 +5362,27 @@ export default function AdminPanel({ onClose, onRefreshOrdersCount, onRefreshPag
         </div>
       )}
 
+      {activeTab === 'barcode_reader' && (
+        <BarcodeReaderAdmin
+          orders={orders}
+          incompleteOrders={incompleteOrders}
+          onChangeStatus={handleChangeStatus}
+          onToggleConfirmOrder={handleToggleConfirmOrder}
+          onRefreshOrders={loadOrders}
+          perms={perms}
+        />
+      )}
+
       {activeTab === 'subscribers' && (
         <SubscribersAdmin />
       )}
 
       {activeTab === 'seo' && (
         <SEOAdmin />
+      )}
+
+      {activeTab === 'sitemap' && (
+        <SitemapPanel />
       )}
 
           </div>

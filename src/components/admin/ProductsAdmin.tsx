@@ -353,7 +353,7 @@ export default function ProductsAdmin({ onRefreshProducts, userRole }: ProductsA
       slug: cleanSlug,
       description: description.trim(),
       price: Number(price) || 0,
-      image: image.trim() || 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=600',
+      image: image.trim(),
       category: category,
       sizes: sizes.split(',').map(s => s.trim()).filter(Boolean),
       colors: colors.split(',').map(c => c.trim()).filter(Boolean),
@@ -745,13 +745,17 @@ export default function ProductsAdmin({ onRefreshProducts, userRole }: ProductsA
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {products.map(p => (
                 <div key={p.id} className="border border-slate-201/80 hover:border-slate-300 p-3.5 rounded-xl bg-slate-50/50 flex gap-3 text-xs items-start">
-                  <div className="w-16 h-16 bg-slate-100 rounded-lg overflow-hidden shrink-0 border">
-                    <img 
-                      src={p.image} 
-                      alt={p.title} 
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
+                  <div className="w-16 h-16 bg-slate-100 rounded-lg overflow-hidden shrink-0 border flex items-center justify-center text-slate-400">
+                    {p.image ? (
+                      <img 
+                        src={p.image} 
+                        alt={p.title} 
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <ImageIcon className="h-5 w-5" />
+                    )}
                   </div>
                   <div className="space-y-1 overflow-hidden flex-1">
                     <div className="flex justify-between items-start gap-1">

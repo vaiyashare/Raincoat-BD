@@ -3,7 +3,7 @@ import {
   Search, ShoppingCart, Tag, Star, ArrowUpRight, CheckCircle2, 
   MapPin, Phone, MessageSquare, Eye, ShoppingBag, Percent, 
   Truck, RotateCcw, ShieldCheck, Flame, Heart, Sparkles, Filter,
-  X, Check, AlertCircle, RefreshCw
+  X, Check, AlertCircle, RefreshCw, Image as ImageIcon
 } from 'lucide-react';
 import { RaincoatOrder } from '../types';
 import { getProductsFromFirestore, saveAllProductsToFirestore, getBannerSettingsFromFirestore, getAdvancedAddonsSettingsFromFirestore, getPagesFromFirestore } from '../lib/firebase';
@@ -879,16 +879,20 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
                       4.9
                     </div>
 
-                    <div className="bg-slate-50 cursor-pointer relative aspect-square overflow-hidden border-b border-slate-100" onClick={() => setSelectedProduct(product)}>
-                      <img 
-                        src={product.image} 
-                        alt={product.title} 
-                        onError={(e) => {
-                          e.currentTarget.src = 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=600';
-                        }}
-                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                        referrerPolicy="no-referrer"
-                      />
+                    <div className="bg-slate-50 cursor-pointer relative aspect-square overflow-hidden border-b border-slate-100 flex items-center justify-center text-slate-400" onClick={() => setSelectedProduct(product)}>
+                      {product.image ? (
+                        <img 
+                          src={product.image} 
+                          alt={product.title} 
+                          onError={(e) => {
+                            e.currentTarget.src = 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=600';
+                          }}
+                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <ImageIcon className="h-10 w-10 stroke-[1.2]" />
+                      )}
                       <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                         <button className="px-3.5 py-1.8 bg-white/95 backdrop-blur-xs text-slate-900 font-black text-xs rounded-xl shadow-md flex items-center gap-1 scale-90 group-hover:scale-100 transition-all">
                           <Eye className="h-3.5 w-3.5" /> বিস্তারিত দেখুন
@@ -997,16 +1001,20 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
                             4.9
                           </div>
 
-                          <div className="bg-slate-50 cursor-pointer relative aspect-square overflow-hidden border-b border-slate-100" onClick={() => setSelectedProduct(product)}>
-                            <img 
-                              src={product.image} 
-                              alt={product.title} 
-                              onError={(e) => {
-                                e.currentTarget.src = 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=600';
-                              }}
-                              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                              referrerPolicy="no-referrer"
-                            />
+                          <div className="bg-slate-50 cursor-pointer relative aspect-square overflow-hidden border-b border-slate-100 flex items-center justify-center text-slate-400" onClick={() => setSelectedProduct(product)}>
+                            {product.image ? (
+                              <img 
+                                src={product.image} 
+                                alt={product.title} 
+                                onError={(e) => {
+                                  e.currentTarget.src = 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=600';
+                                }}
+                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <ImageIcon className="h-10 w-10 stroke-[1.2]" />
+                            )}
                             <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                               <button className="px-3.5 py-1.8 bg-white/95 backdrop-blur-xs text-slate-900 font-black text-xs rounded-xl shadow-md flex items-center gap-1 scale-90 group-hover:scale-100 transition-all">
                                 <Eye className="h-3.5 w-3.5" /> বিস্তারিত দেখুন
@@ -1179,12 +1187,16 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
               {/* Image */}
               <div className="space-y-3">
-                <div className="rounded-2xl overflow-hidden border bg-slate-50 aspect-square">
-                  <img 
-                    src={activeImage || selectedProduct.image} 
-                    alt={selectedProduct.title} 
-                    className="w-full h-full object-cover transition-all"
-                  />
+                <div className="rounded-2xl overflow-hidden border bg-slate-50 aspect-square flex items-center justify-center text-slate-400">
+                  {(activeImage || selectedProduct.image) ? (
+                    <img 
+                      src={activeImage || selectedProduct.image} 
+                      alt={selectedProduct.title} 
+                      className="w-full h-full object-cover transition-all"
+                    />
+                  ) : (
+                    <ImageIcon className="h-12 w-12 stroke-[1.2]" />
+                  )}
                 </div>
                 {selectedProduct.images && selectedProduct.images.length > 0 && (
                   <div className="grid grid-cols-5 gap-1.5 pt-1">
@@ -1193,7 +1205,13 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
                       type="button"
                       className={`border aspect-square rounded-lg overflow-hidden relative cursor-pointer transition ${(!activeImage || activeImage === selectedProduct.image) ? 'border-orange-500 scale-95 ring-2 ring-orange-400/20' : 'border-slate-200 hover:border-slate-350'}`}
                     >
-                      <img src={selectedProduct.image} className="w-full h-full object-cover" />
+                      {selectedProduct.image ? (
+                        <img src={selectedProduct.image} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="h-full w-full flex items-center justify-center bg-slate-50 text-slate-400">
+                          <ImageIcon className="h-4 w-4" />
+                        </div>
+                      )}
                     </button>
                     {selectedProduct.images.map((imgUrl, i) => (
                       <button 
@@ -1202,7 +1220,13 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
                         type="button"
                         className={`border aspect-square rounded-lg overflow-hidden relative cursor-pointer transition ${(activeImage === imgUrl) ? 'border-orange-500 scale-95 ring-2 ring-orange-400/20' : 'border-slate-200 hover:border-slate-350'}`}
                       >
-                        <img src={imgUrl} className="w-full h-full object-cover" />
+                        {imgUrl ? (
+                          <img src={imgUrl} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="h-full w-full flex items-center justify-center bg-slate-50 text-slate-400">
+                            <ImageIcon className="h-4 w-4" />
+                          </div>
+                        )}
                       </button>
                     ))}
                   </div>
@@ -1296,11 +1320,17 @@ export default function AmazonMarketplace({ onOrderSuccess }: AmazonMarketplaceP
                 
                 {/* Product micro preview inside form */}
                 <div className="p-2.5 bg-slate-50 border border-slate-200/60 rounded-xl flex items-center gap-3">
-                  <img 
-                    src={checkoutProduct.image} 
-                    alt={checkoutProduct.title} 
-                    className="w-11 h-11 object-cover rounded-lg border bg-white shrink-0" 
-                  />
+                  {checkoutProduct.image ? (
+                    <img 
+                      src={checkoutProduct.image} 
+                      alt={checkoutProduct.title} 
+                      className="w-11 h-11 object-cover rounded-lg border bg-white shrink-0" 
+                    />
+                  ) : (
+                    <div className="w-11 h-11 rounded-lg border bg-white shrink-0 flex items-center justify-center text-slate-400">
+                      <ImageIcon className="h-5 w-5" />
+                    </div>
+                  )}
                   <div className="min-w-0 flex-1">
                     <h5 className="font-extrabold text-[11px] text-slate-800 truncate leading-snug">{checkoutProduct.title}</h5>
                     <p className="text-[11px] text-orange-600 font-black mt-0.5">৳{checkoutProduct.price} <span className="text-[10px] text-slate-500 font-bold ml-1.5">• কুরিয়ার চার্জ প্রযোজ্য</span></p>

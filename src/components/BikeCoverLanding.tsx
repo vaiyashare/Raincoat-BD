@@ -46,7 +46,15 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
   const [orderNotes, setOrderNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [bikeTripleCards, setBikeTripleCards] = useState<any[]>(defaultTripleCards);
+  const [formErrors, setFormErrors] = useState<{ name?: boolean; bikeModel?: boolean; village?: boolean; phone?: boolean }>({});
+  const sanitizeCardImage = (cardsList: any[]): any[] => {
+    return (cardsList || []).map((card) => ({
+      ...card,
+      imageUrl: (card.imageUrl && card.imageUrl.includes('unsplash.com')) ? '' : (card.imageUrl || '')
+    }));
+  };
+
+  const [bikeTripleCards, setBikeTripleCards] = useState<any[]>(() => sanitizeCardImage(defaultTripleCards));
 
   // Active state-driven slides and videos
   const [slides, setSlides] = useState<any[]>(() => {
@@ -179,16 +187,16 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
         if (settings) {
           setSiteSettings(settings);
           if (settings.bike_triple_cards && settings.bike_triple_cards.length === 3) {
-            setBikeTripleCards(settings.bike_triple_cards);
+            setBikeTripleCards(sanitizeCardImage(settings.bike_triple_cards));
           } else {
-            setBikeTripleCards(defaultTripleCards);
+            setBikeTripleCards(sanitizeCardImage(defaultTripleCards));
           }
         } else {
-          setBikeTripleCards(defaultTripleCards);
+          setBikeTripleCards(sanitizeCardImage(defaultTripleCards));
         }
       }).catch(err => {
         console.warn("Could not load triple cards/site settings:", err);
-        setBikeTripleCards(defaultTripleCards);
+        setBikeTripleCards(sanitizeCardImage(defaultTripleCards));
       });
     };
 
@@ -303,11 +311,12 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
   const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
+    const newErrors: { name?: boolean; bikeModel?: boolean; village?: boolean; phone?: boolean } = {};
 
-    if (!name.trim()) return setErrorMessage('অনুগ্রহ করে আপনার নাম লিখুন।');
-    if (!bikeModel.trim()) return setErrorMessage('অনুগ্রহ করে আপনার বাইকের মডেলটি সুন্দর করে লিখে দিন (যেমন: Pulsar 150, FZ-S)।');
-    if (!village.trim()) return setErrorMessage('অনুগ্রহ করে আপনার সম্পূর্ণ ঠিকানা (গ্রাম/পাড়া/থানা) লিখুন।');
-    
+    if (!name.trim()) newErrors.name = true;
+    if (!bikeModel.trim()) newErrors.bikeModel = true;
+    if (!village.trim()) newErrors.village = true;
+
     let cleanPhone = phone.replace(/[^0-9]/g, '');
     if (cleanPhone.startsWith('88')) {
       cleanPhone = cleanPhone.substring(2);
@@ -318,9 +327,37 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
       }
     }
     if (!cleanPhone.startsWith('01') || cleanPhone.length !== 11) {
-      return setErrorMessage('অনুগ্রহ করে একটি সঠিক ১১ ডিজিটের বাংলাদেশী মোবাইল নাম্বার দিন (যেমন: 017XXXXXXXX)।');
+      newErrors.phone = true;
     }
 
+    if (Object.keys(newErrors).length > 0) {
+      setFormErrors(newErrors);
+
+      if (newErrors.name) {
+        setErrorMessage('অনুগ্রহ করে আপনার নাম লিখুন।');
+        const el = document.getElementById('bike-name-input');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus();
+      } else if (newErrors.bikeModel) {
+        setErrorMessage('অনুগ্রহ করে আপনার বাইকের মডেলটি সুন্দর করে লিখে দিন (যেমন: Pulsar 150, FZ-S)।');
+        const el = document.getElementById('bike-model-input');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus();
+      } else if (newErrors.village) {
+        setErrorMessage('অনুগ্রহ করে আপনার সম্পূর্ণ ঠিকানা (গ্রাম/পাড়া/থানা) লিখুন।');
+        const el = document.getElementById('bike-village-input');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus();
+      } else if (newErrors.phone) {
+        setErrorMessage('অনুগ্রহ করে একটি সঠিক ১১ ডিজিটের বাংলাদেশী মোবাইল নাম্বার দিন (যেমন: 017XXXXXXXX)।');
+        const el = document.getElementById('bike-phone-input');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus();
+      }
+      return;
+    }
+
+    setFormErrors({});
     setIsSubmitting(true);
 
     const orderId = 'ord-bike-' + Math.floor(Math.random() * 100000);
@@ -1046,26 +1083,56 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* User Name input */}
                     <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-slate-300 block">আপনার নাম (Full Name):</label>
+                      <label className="text-xs font-semibold text-slate-300 block">আপনার নাম (Full Name): <span className="text-rose-500">*</span></label>
                       <input
                         type="text"
+                        id="bike-name-input"
                         placeholder="যেমন: এম.ডি শফিক"
                         value={name}
-                        onChange={(e)=>setName(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 text-white focus:outline-none"
+                        onChange={(e)=>{
+                          setName(e.target.value);
+                          if (e.target.value.trim()) {
+                            setFormErrors(prev => ({ ...prev, name: false }));
+                          }
+                        }}
+                        className={`w-full px-3.5 py-2.5 bg-slate-950 border rounded-xl text-xs focus:ring-2 text-white focus:outline-none transition-all ${
+                          formErrors.name 
+                            ? 'border-rose-500 ring-2 ring-rose-500/20 focus:ring-rose-500 bg-rose-500/5' 
+                            : 'border-slate-800 focus:ring-blue-500'
+                        }`}
                       />
+                      {formErrors.name && (
+                        <span className="text-[11px] font-bold text-rose-400 block mt-1 font-sans animate-pulse">
+                          * অনুগ্রহ করে আপনার নাম লিখুন।
+                        </span>
+                      )}
                     </div>
 
                     {/* User mobile phone input */}
                     <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-slate-300 block">আপনার মোবাইল নাম্বার (১১ ডিজিট):</label>
+                      <label className="text-xs font-semibold text-slate-300 block">আপনার মোবাইল নাম্বার (১১ ডিজিট): <span className="text-rose-500">*</span></label>
                       <input
                         type="tel"
+                        id="bike-phone-input"
                         placeholder="যেমন: 017XXXXXXXX"
                         value={phone}
-                        onChange={(e)=>setPhone(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 text-white focus:outline-none font-mono"
+                        onChange={(e)=>{
+                          setPhone(e.target.value);
+                          if (e.target.value.trim().length >= 11) {
+                            setFormErrors(prev => ({ ...prev, phone: false }));
+                          }
+                        }}
+                        className={`w-full px-3.5 py-2.5 bg-slate-950 border rounded-xl text-xs focus:ring-2 text-white focus:outline-none font-mono transition-all ${
+                          formErrors.phone 
+                            ? 'border-rose-500 ring-2 ring-rose-500/20 focus:ring-rose-500 bg-rose-500/5' 
+                            : 'border-slate-800 focus:ring-blue-500'
+                        }`}
                       />
+                      {formErrors.phone && (
+                        <span className="text-[11px] font-bold text-rose-400 block mt-1 font-sans animate-pulse">
+                          * অনুগ্রহ করে একটি সঠিক ১১ ডিজিটের বাংলাদেশী মোবাইল নাম্বার দিন।
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -1115,27 +1182,57 @@ export default function BikeCoverLanding({ onOrderSuccess }: BikeCoverLandingPro
                   {/* Bike Model Input */}
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-slate-300 block flex items-center gap-1.5">
-                      🏍️ আপনি কোন মডেল এর বাইক চালান? (Bike Model):
+                      🏍️ আপনি কোন মডেল এর বাইক চালান? (Bike Model): <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="text"
+                      id="bike-model-input"
                       placeholder="যেমন: Pulsar 150, FZ-S v3, Gixxer, Hornet, Splendor"
                       value={bikeModel}
-                      onChange={(e)=>setBikeModel(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 text-white focus:outline-none"
+                      onChange={(e)=>{
+                        setBikeModel(e.target.value);
+                        if (e.target.value.trim()) {
+                          setFormErrors(prev => ({ ...prev, bikeModel: false }));
+                        }
+                      }}
+                      className={`w-full px-3.5 py-2.5 bg-slate-950 border rounded-xl text-xs focus:ring-2 text-white focus:outline-none transition-all ${
+                        formErrors.bikeModel 
+                          ? 'border-rose-500 ring-2 ring-rose-500/20 focus:ring-rose-500 bg-rose-500/5' 
+                          : 'border-slate-800 focus:ring-blue-500'
+                      }`}
                     />
+                    {formErrors.bikeModel && (
+                      <span className="text-[11px] font-bold text-rose-400 block mt-1 font-sans animate-pulse">
+                        * অনুগ্রহ করে আপনার বাইকের মডেলটি সুন্দর করে লিখে দিন।
+                      </span>
+                    )}
                   </div>
 
                   {/* Detailed Village/Address input */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-slate-300 block">আপনার সম্পূর্ণ ঠিকানা (গ্রাম/পাড়া/মেলা/থানা/বাজার লিখে দিন):</label>
+                    <label className="text-xs font-semibold text-slate-300 block">আপনার সম্পূর্ণ ঠিকানা (গ্রাম/পাড়া/মেলা/থানা/বাজার লিখে দিন): <span className="text-rose-500">*</span></label>
                     <textarea
                       placeholder="যেমন: গ্রাম- শান্তিনগর, পোঃ- শান্তিনগর, থানা- শান্তিনগর, জেলা- শান্তিনগর"
+                      id="bike-village-input"
                       value={village}
-                      onChange={(e)=>setVillage(e.target.value)}
+                      onChange={(e)=>{
+                        setVillage(e.target.value);
+                        if (e.target.value.trim()) {
+                          setFormErrors(prev => ({ ...prev, village: false }));
+                        }
+                      }}
                       rows={3}
-                      className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 text-white focus:outline-none"
+                      className={`w-full px-3.5 py-2.5 bg-slate-950 border rounded-xl text-xs focus:ring-2 text-white focus:outline-none transition-all resize-none ${
+                        formErrors.village 
+                          ? 'border-rose-500 ring-2 ring-rose-500/20 focus:ring-rose-500 bg-rose-500/5' 
+                          : 'border-slate-800 focus:ring-blue-500'
+                      }`}
                     />
+                    {formErrors.village && (
+                      <span className="text-[11px] font-bold text-rose-400 block mt-1 font-sans animate-pulse">
+                        * অনুগ্রহ করে আপনার সম্পূর্ণ ঠিকানা (গ্রাম/পাড়া/থানা) লিখুন।
+                      </span>
+                    )}
                   </div>
 
                   {/* Pricing Overview Invoice Summary Panel Box */}
